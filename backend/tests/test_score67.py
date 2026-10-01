@@ -787,3 +787,74 @@ def test_basketball_scoring_requires_stopped_clock_and_numbered_scorer(system):
     s, _, _ = apply(s, 'clock_start', {}, 0)
     s, event, _ = apply(s, 'score', {'team': 'home', 'points': 2}, 600001)
     assert not s['clock']['running'] and event['points'] == 2
+
+
+def test_live_basketball_player_statistics_corrections_and_history(system):
+    app, client = system
+    slug = client.post('/api/scoreboards', json={'sport': 'basketball', 'period_count': 8}).json()['slug']
+    player = {'id': str(uuid4()), 'number': '7', 'name': 'Alex'}
+    kinds = {'rebound': 'reb', 'assist': 'ast', 'steal': 'stl', 'block': 'blk', 'turnover': 'to'}
+    def stats(team='home'):
+        return control_state(client, slug)[team]['statistics']
+    def row(identifier):
+        return next(p for p in stats()['players'] if p['id'] == identifier)
+    assert stats()['players'][0]['id'] is None
+    assert all(value == 0 for value in stats()['totals'].values())
+    # Unknown is available before and after a squad is configured.
+    command(client, slug, 'rebound', {'team': 'home'})
+    command(client, slug, 'squad', {'team': 'home', 'players': [player]})
+    command(client, slug, 'score', {'team': 'home', 'points': 2})
+    command(client, slug, 'score', {'team': 'home', 'points': 3, 'player_id': player['id']})
+    command(client, slug, 'personal_foul', {'team': 'home', 'player_id': player['id']})
+    command(client, slug, 'personal_foul', {'team': 'home'})
+    # Non-scoring stats can be recorded during play.
+    command(client, slug, 'period_start')
+    command(client, slug, 'clock_start')
+    for kind, column in kinds.items():
+        before = control_state(client, slug)
+        key = str(uuid4())
+        data = {'team': 'home', 'player_id': player['id']}
+        s = command(client, slug, kind, data, before, key).json()
+        assert command(client, slug, kind, data, before, key).status_code == 200
+        event_id = s['events'][-1]['id']
+        assert row(player['id'])[column] == 1
+        assert command(client, slug, kind + '_correction', {'team': 'away', 'event_id': event_id}).status_code == 422
+        corrected = command(client, slug, kind + '_correction', {'team': 'home', 'event_id': event_id}).json()
+        assert row(player['id'])[column] == 0
+        assert command(client, slug, kind + '_correction', {'team': 'home', 'event_id': event_id}).status_code == 422
+        command(client, slug, 'undo', {'event_id': corrected['events'][-1]['id']})
+        assert row(player['id'])[column] == 1
+        assert command(client, slug, kind, {'team': 'away', 'player_id': player['id']}).status_code == 422
+        command(client, slug, kind, {'team': 'home'})
+    assert row(None)['pts'] == 2 and row(player['id'])['pts'] == 3
+    assert stats()['totals']['pts'] == control_state(client, slug)['home']['score'] == 5
+    assert stats()['totals']['pf'] == 2
+    assert row(None)['reb'] == 2 and row(player['id'])['reb'] == 1
+    assert all(value == 0 for value in stats('away')['totals'].values())
+    # Score reassignment updates totals without changing the team score.
+    score = next(e for e in control_state(client, slug)['events'] if e['type'] == 'score' and e['player'] is None)
+    command(client, slug, 'assign_player', {'team': 'home', 'event_id': score['id'], 'player_id': player['id']})
+    assert row(None)['pts'] == 0 and row(player['id'])['pts'] == 5
+    command(client, slug, 'score_correction', {'team': 'home', 'event_id': score['id']})
+    assert stats()['totals']['pts'] == 3
+    command(client, slug, 'squad', {'team': 'home', 'players': [{**player, 'name': 'Alex renamed'}]})
+    assert row(player['id'])['name'] == 'Alex renamed'
+    command(client, slug, 'squad', {'team': 'home', 'players': []})
+    assert row(player['id'])['ast'] == 1
+    match_id = control_state(client, slug)['match_id']
+    # All seven columns, including PF, stay private.
+    public = TestClient(app)
+    for endpoint in (f'/api/s/{slug}/state', f'/api/s/{slug}/matches/{match_id}/state'):
+        result = public.get(endpoint).json()
+        assert 'statistics' not in result['home']
+        assert not any(e['type'] in kinds for e in result['events'])
+    with public.websocket_connect(f'/ws/s/{slug}') as ws:
+        assert 'statistics' not in ws.receive_json()['home']
+    command(client, slug, 'game_end')
+    command(client, slug, 'new_match')
+    assert all(value == 0 for value in stats()['totals'].values())
+    archived = client.get(f'/api/s/{slug}/matches/{match_id}/control-state').json()
+    assert archived['home']['statistics']['totals']['pts'] == 3
+    football = create(client)['slug']
+    for kind in kinds:
+        assert command(client, football, kind, {'team': 'home'}).status_code == 422

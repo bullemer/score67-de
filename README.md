@@ -49,11 +49,17 @@ The development database is `backend/data/score67.db` when started from `backend
 
 The five-scoreboards-per-hour creation cap is disabled during testing. `SCOREBOARD_CREATE_LIMIT=0` (default) keeps it off; a positive value enables an hourly IP limit later. PIN protection remains enabled.
 
-## Basketball pilot (v0.6)
+## Basketball pilot (v0.7)
 
 Choose Basketball when creating a scoreboard or preparing a game in the dashboard. Presets: 4 × 10 (default), 4 × 12, 8 × 5 and 2 × 20; custom lengths/counts remain editable in match settings. Games remain planned until the operator prepares the first period. Preparing a period resets its countdown and leaves it stopped; use Start clock at the referee’s signal. At zero the clock stops without ending the period automatically. Set remaining time uses MM:SS.
 
 Scoring supports +1/+2/+3 only while the basketball clock is stopped. Use the large Play/Stop button above the team panels. Each team has a squad editor; basketball squad entries require shirt numbers. With a squad, tap +1, +2 or +3 in the player’s row of the scoring matrix. The first matrix row is always Unknown player, including when a squad exists. Use this row to record points without player attribution. Remove event reverses the full selected basket; add a replacement if its value was wrong. Team fouls reset between regular periods and carry from the last regular period through repeated five-minute overtime. Overtime is offered after ending the final period with tied scores. Timeouts stop the clock and count total used across the game; competition-specific quotas are not enforced. Foul modes are team, personal, both, or off; 8 × 5 defaults to personal fouls. Personal foul totals and number-only entries remain private to controllers, with warnings at four and five fouls. Automatic player disqualification, shot clock and period-result summaries are not included.
+
+### Live player statistics
+
+Each team's controller shows PTS, REB, AST, STL, BLK, TO and PF, with Unknown player first and team totals below. PTS comes from scoring events; PF comes from personal-foul events. Enable personal or combined foul mode to record PF. Tap the other statistic cells to add an event, or enable correction mode to remove the latest matching event. Rebounds, assists, steals, blocks and turnovers can be recorded while the clock runs; points still require a stopped clock.
+
+Statistics update across connected controllers, remain available in game history, and reset for a new game. Corrections, undo and scorer reassignment update the totals. Historical players remain listed after removal from the squad. The table and new statistical events are private to authorized controllers; public spectator and OBS views remain unchanged.
 
 ## Not yet included
 

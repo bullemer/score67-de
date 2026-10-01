@@ -11,6 +11,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'dashboard.dart';
 import 'squad.dart';
 import 'personal_fouls.dart';
+import 'basketball_statistics.dart';
 import 'package:web/web.dart' as web;
 import 'package:web_socket_channel/web_socket_channel.dart';
 
@@ -1643,6 +1644,32 @@ class _Score67State extends State<Score67> {
     );
   }
 
+  Future<bool> recordStatistic(
+    String team,
+    String kind,
+    String? playerId,
+    bool correcting,
+  ) async {
+    if (correcting) {
+      final target = events
+          .where(
+            (e) =>
+                e['type'] == kind &&
+                e['team'] == team &&
+                e['cancelled'] == false &&
+                e['corrected'] != true &&
+                e['player']?['id'] == playerId,
+          )
+          .lastOrNull;
+      if (target == null) return false;
+      return command('${kind}_correction', {
+        'team': team,
+        'event_id': target['id'],
+      });
+    }
+    return command(kind, {'team': team, 'player_id': playerId});
+  }
+
   Widget teamPanel(String team) {
     final s = state[team];
     final color = teamColor(s['color']);
@@ -1698,6 +1725,22 @@ class _Score67State extends State<Score67> {
               ),
             ),
             if (basketball) basketballScoringMatrix(team),
+            if (basketball && s['statistics'] != null) ...[
+              const Divider(height: 24),
+              BasketballStatistics(
+                key: ValueKey('stats:${state['match_id']}:$team'),
+                statistics: Map<String, dynamic>.from(s['statistics']),
+                t: t,
+                enabled: canWrite,
+                personalFoulsEnabled: [
+                  'personal',
+                  'both',
+                ].contains(state['foul_mode']),
+                configureFouls: chooseFoulMode,
+                record: (kind, playerId, correcting) =>
+                    recordStatistic(team, kind, playerId, correcting),
+              ),
+            ],
             if (!basketball)
               FilledButton(
                 style: FilledButton.styleFrom(

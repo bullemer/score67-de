@@ -69,3 +69,5 @@ Version 0.4 adds optional per-game squads, player attribution and yellow cards u
 Version 0.5 adds basketball in existing match/event JSON; no database migration is required. New games can select either sport. Four presets, countdown control, 1/2/3-point scoring, team fouls, cumulative timeouts and repeat overtime are supported. Personal fouls and competition-specific timeout allocation are not implemented. Required schema remains `0003_board_location`.
 
 Version 0.6 adds private personal fouls, numbered basketball squads, player scoring matrices and a prominent Play/Stop control. Basketball points require a stopped clock, enforced by the API. No database migration is required; the schema remains `0003_board_location`.
+
+Version 0.7 adds private live per-player PTS/REB/AST/STL/BLK/TO/PF tables and event recording/correction for rebounds, assists, steals, blocks and turnovers. Statistics are derived from existing match events. No schema migration is required.

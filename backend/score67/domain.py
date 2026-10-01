@@ -12,6 +12,35 @@ FOOTBALL = json.loads((Path(__file__).parent / "profiles/football.json").read_te
 BASKETBALL = json.loads((Path(__file__).parent / "profiles/basketball.json").read_text())
 
 
+BASKETBALL_STATS = ("rebound", "assist", "steal", "block", "turnover")
+STAT_COLUMNS = {"score": "pts", "rebound": "reb", "assist": "ast",
+                "steal": "stl", "block": "blk", "turnover": "to", "personal_foul": "pf"}
+
+
+def player_statistics(team_state, events):
+    """Project active events; retain historical players after squad edits."""
+    def row(player=None):
+        return {**(player or {"id": None, "number": "", "name": ""}),
+                **dict.fromkeys(STAT_COLUMNS.values(), 0)}
+    rows = {None: row()}
+    for player in team_state.get("foul_players", []) + team_state.get("squad", []):
+        rows[player["id"]] = row(player)
+    for event in events:
+        column = STAT_COLUMNS.get(event["type"])
+        if column is None:
+            continue
+        player = event.get("player")
+        identifier = player["id"] if player else None
+        rows.setdefault(identifier, row(player))[column] += event.get("points", 0) if column == "pts" else 1
+    active_ids = {p["id"] for p in team_state.get("squad", [])}
+    foul_ids = {p["id"] for p in team_state.get("foul_players", [])}
+    for identifier, stats in rows.items():
+        stats["in_squad"] = identifier in active_ids
+        stats["foul_player"] = identifier in foul_ids
+    totals = {column: sum(r[column] for r in rows.values()) for column in STAT_COLUMNS.values()}
+    return {"players": list(rows.values()), "totals": totals}
+
+
 class RuleError(Exception):
     pass
 
@@ -133,6 +162,12 @@ def apply(state, action, data, now_ms):
         if data.get("team") not in ("home", "away") or points not in values or isinstance(points, bool):
             raise RuleError("invalid_score")
         event.update(team=data["team"], points=int(points))
+    elif action.removesuffix("_correction") in BASKETBALL_STATS:
+        if not basketball or data.get("team") not in ("home", "away"):
+            raise RuleError("invalid_value")
+        event.update(team=data["team"])
+        if not action.endswith("_correction"):
+            event["player"] = player_snapshot(s, data["team"], data.get("player_id"))
     elif action in ("red_card", "red_card_correction", "yellow_card", "yellow_card_correction"):
         if basketball or data.get("team") not in ("home", "away"):
             raise RuleError("invalid_value")

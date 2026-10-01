@@ -22,7 +22,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
 from .db import Admin, Board, Match, MatchEvent, RateLimit, Receipt, database
-from .domain import FOOTBALL, BASKETBALL, RuleError, apply, initial_state, normalize_clock, foul_mode
+from .domain import FOOTBALL, BASKETBALL, RuleError, apply, initial_state, normalize_clock, foul_mode, BASKETBALL_STATS, player_statistics
 
 ROOT = Path(__file__).resolve().parents[2]
 RELEASE = json.loads((ROOT / "shared/release.json").read_text())
@@ -82,15 +82,19 @@ class Command(StrictModel):
     data: dict = Field(default_factory=dict)
 
 
+COUNTED_EVENTS = ("score", "red_card", "yellow_card", "team_foul", "timeout", "personal_foul") + BASKETBALL_STATS
+CORRECTION_EVENTS = tuple(f"{kind}_correction" for kind in COUNTED_EVENTS)
+
+
 def available_events(events):
     available = []
     for event in events:
         if event.cancelled:
             continue
         kind = event.payload["type"]
-        if kind in ("score", "red_card", "yellow_card", "team_foul", "timeout", "personal_foul"):
+        if kind in COUNTED_EVENTS:
             available.append(event)
-        elif kind in ("score_correction", "red_card_correction", "yellow_card_correction", "team_foul_correction", "timeout_correction", "personal_foul_correction"):
+        elif kind in CORRECTION_EVENTS:
             candidates = [e for e in available if e.payload["type"] == kind.removesuffix("_correction") and e.payload.get("team") == event.payload.get("team")]
             target = next((e for e in candidates if e.id == event.payload.get("corrects")), None) if event.payload.get("corrects") else (candidates[-1] if candidates else None)
             if target:
@@ -218,9 +222,12 @@ def create_app(db_url=None, secure_cookies=None):
                 timeouts=sum(1 for e in available if e.payload["type"] == "timeout" and e.payload.get("team") == team))
         available_ids = {e.id for e in available}
         s["events"] = [{**e.payload, "id": e.id, "cancelled": e.cancelled,
-            "corrected": e.payload["type"] in ("score", "red_card", "yellow_card", "team_foul", "timeout", "personal_foul") and not e.cancelled and e.id not in available_ids} for e in events]
+            "corrected": e.payload["type"] in COUNTED_EVENTS and not e.cancelled and e.id not in available_ids} for e in events]
         if private:
             for team in ("home", "away"):
+                if s["sport"] == "basketball":
+                    s[team]["statistics"] = player_statistics(s[team], [
+                        e.payload for e in available if e.payload.get("team") == team])
                 totals = {}
                 for player in s[team].get("foul_players", []) + s[team].get("squad", []):
                     totals[player["id"]] = {**player, "fouls": 0}
@@ -238,7 +245,8 @@ def create_app(db_url=None, secure_cookies=None):
         else:
             for team in ("home", "away"):
                 s[team].pop("foul_players", None)
-            s["events"] = [e for e in s["events"] if e["type"] not in ("personal_foul", "personal_foul_correction", "assign_foul_player")]
+            s["events"] = [e for e in s["events"] if e["type"] not in ("personal_foul", "personal_foul_correction", "assign_foul_player")
+                           and e["type"].removesuffix("_correction") not in BASKETBALL_STATS]
         return s
 
     @app.get("/health")
@@ -514,7 +522,7 @@ def create_app(db_url=None, secure_cookies=None):
                 last.cancelled = True
             else:
                 target = None
-                correcting = body.action in ("score_correction", "red_card_correction", "yellow_card_correction", "team_foul_correction", "timeout_correction", "personal_foul_correction")
+                correcting = body.action in CORRECTION_EVENTS
                 if correcting or body.action in ("assign_player", "assign_foul_player"):
                     match_events = db.scalars(select(MatchEvent).where(MatchEvent.match_id == m.id).order_by(MatchEvent.id)).all()
                     available = available_events(match_events)
@@ -524,7 +532,7 @@ def create_app(db_url=None, secure_cookies=None):
                         target_id = body.data.get("event_id")
                         target = next((e for e in candidates if e.id == target_id), None) if target_id is not None else (candidates[-1] if candidates else None)
                         if not target:
-                            raise HTTPException(422, "event_unavailable" if target_id is not None else {"score": "score_zero", "red_card": "red_cards_zero", "yellow_card": "yellow_cards_zero", "team_foul": "event_unavailable", "timeout": "event_unavailable", "personal_foul": "event_unavailable"}[kind])
+                            raise HTTPException(422, "event_unavailable" if target_id is not None else {"score": "score_zero", "red_card": "red_cards_zero", "yellow_card": "yellow_cards_zero"}.get(kind, "event_unavailable"))
                     else:
                         target = next((e for e in available if e.id == body.data.get("event_id") and e.payload.get("team") == body.data.get("team")
                                        and (e.payload["type"] == "personal_foul" if body.action == "assign_foul_player" else e.payload["type"] in ("score", "red_card", "yellow_card"))), None)
