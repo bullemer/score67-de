@@ -1,0 +1,89 @@
+name: Main to production
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: score67-production
+  cancel-in-progress: false
+jobs:
+  production:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: production
+      url: https://score67.de
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: score67_test
+          POSTGRES_USER: score67
+          POSTGRES_PASSWORD: ci-only-disposable
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U score67 -d score67_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.11'
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e
+        with:
+          version: '0.6.2'
+      - name: Install locked backend dependencies
+        working-directory: backend
+        run: uv sync --locked
+      - name: SQLite rules and API tests through migrations
+        working-directory: backend
+        run: uv run pytest
+      - name: PostgreSQL rules and API tests through migrations
+        working-directory: backend
+        env:
+          TEST_DATABASE_URL: postgresql+psycopg://score67:ci-only-disposable@localhost:5432/score67_test
+        run: uv run pytest
+      - name: Display timing tests
+        run: node --test tests/display.test.mjs
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.38.9'
+          channel: stable
+          cache: true
+      - name: Analyze and build controller
+        working-directory: control
+        run: |
+          flutter pub get --enforce-lockfile
+          flutter analyze
+          flutter build web --release --base-href /app/ --no-web-resources-cdn
+      - name: Package release
+        run: >-
+          tar -czf release.tgz --exclude=__pycache__ --exclude='*.pyc'
+          backend/score67 backend/pyproject.toml backend/uv.lock
+          backend/alembic.ini backend/migrations shared control/build/web deploy .dockerignore
+      - name: Deploy immutable release over restricted SSH
+        env:
+          DEPLOY_KEY: ${{ secrets.SCORE67_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.SCORE67_KNOWN_HOSTS }}
+          DEPLOY_HOST: ${{ vars.SCORE67_HOST }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_KEY" > "$HOME/.ssh/score67"
+          printf '%s\n' "$KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/score67" "$HOME/.ssh/known_hosts"
+          trap 'rm -f "$HOME/.ssh/score67"' EXIT
+          { printf '%s\n' "$GITHUB_SHA"; cat release.tgz; } |
+            ssh -T -i "$HOME/.ssh/score67" -o BatchMode=yes -o StrictHostKeyChecking=yes \
+              -o ServerAliveInterval=15 -o ServerAliveCountMax=20 "score67-deploy@$DEPLOY_HOST"
+      - name: Verify public HTTPS release
+        run: |
+          curl --fail --silent --show-error --retry 3 https://score67.de/health > health.json
+          python3 - <<'PY'
+          import json, os
+          state = json.load(open('health.json'))
+          assert state == {'status': 'ok', 'release': os.environ['GITHUB_SHA']}, state
+          PY

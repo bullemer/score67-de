@@ -1,0 +1,8 @@
+[Unit]
+Description=Score67 PostgreSQL backup
+After=docker.service
+Requires=docker.service
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/score67-backup
+UMask=0077

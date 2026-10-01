@@ -1,0 +1,7 @@
+.git
+**/.venv
+**/.dart_tool
+**/__pycache__
+**/data
+**/.env
+*.docx

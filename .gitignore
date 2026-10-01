@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+.env
+data/
+control/build/
+control/.dart_tool/
+control/.flutter-plugins*
+control/.idea/
+*.iml
+dist/

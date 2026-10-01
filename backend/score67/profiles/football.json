@@ -1,0 +1,11 @@
+{
+  "id": "football",
+  "clock_direction": "up",
+  "clock_stoppable": false,
+  "score_values": [1],
+  "default_format": {"period_count": 2, "period_length_min": 45},
+  "formats": [
+    {"id": "halves", "period_count": 2, "period_length_min": 45},
+    {"id": "mini", "period_count": 1, "period_length_min": 10}
+  ]
+}

@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Score67</title><link rel="stylesheet" href="/static/display.css"></head>
+<body class="{{ 'overlay' if overlay else 'spectator' }}" data-slug="{{ slug }}">
+{% if not overlay %}<header><a class="brand" href="/">SCORE<span>67</span></a><button id="language" aria-label="Deutsch / English">DE / EN</button></header>{% endif %}
+<main id="scoreboard" class="scoreboard" hidden>
+<div id="phase" class="phase"></div><div class="teams"><div class="team home"><span id="home-name"></span><strong id="home-score">0</strong></div><span class="separator">:</span><div class="team away"><strong id="away-score">0</strong><span id="away-name"></span></div></div>
+<div class="time"><span id="period"></span><span id="clock"></span></div></main>
+{% if not overlay %}<footer><span id="connection"></span><a href="/s/{{ slug }}/control" data-i18n="control"></a></footer>{% endif %}
+<script type="module" src="/static/display.mjs"></script></body></html>
