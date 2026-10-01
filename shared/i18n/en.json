@@ -253,5 +253,10 @@
   "game.delete.running.confirm": "Delete this running game? It will immediately disappear from live displays and the dashboard. This cannot be undone here.",
   "dashboard.empty_boards": "Empty scoreboards",
   "dashboard.empty_boards.note": "No games here. Expand to reuse a scoreboard.",
-  "game.unscheduled": "No date scheduled"
+  "game.unscheduled": "No date scheduled",
+  "squad.quick_help": "Type a number and press Enter for the next player. Tab adds an optional name. Empty rows are ignored.",
+  "squad.paste": "Paste player list",
+  "squad.import": "Add players from list",
+  "squad.paste_error": "Use one player per line: number, then optional name (e.g. 7 Alex).",
+  "squad.limit": "Maximum 40 players per team."
 }
