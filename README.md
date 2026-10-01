@@ -32,14 +32,20 @@ The development database is `backend/data/score67.db` when started from `backend
 - Hashed device cookies, additional devices, revocation, PIN rotation and persistent rate limits.
 - Flutter phone controller; Jinja/HTML landing page, spectator page and transparent OBS overlay.
 - Home/Guest defaults, editable names and abbreviations, 1–12 periods of 1–60 minutes, optional clock.
+- Red cards per team with plus/minus correction, undo and live card icons in spectator/OBS views.
 - Plus/minus goals, tap-to-edit team names and colors, period transitions, clock correction, final whistle, undo and new games. Archived match state remains available by ID.
 - Revision checks, idempotent command retries, persistent event records and reconnecting live state.
 - Small, large, hidden, left/right and automatic break/final views; configurable broadcast delay.
 - Shared German and English JSON translations.
+- Device dashboard at `/dashboard`: running, ready, scheduled, completed and archived games; archive, restore and delete controls.
+- Future games can be prepared without interrupting the live game. Opening their controls activates them; kickoff remains manual.
+- Visible back navigation and global language/default game-format settings, saved on this browser.
+
+The five-scoreboards-per-hour creation cap is disabled during testing. `SCOREBOARD_CREATE_LIMIT=0` (default) keeps it off; a positive value enables an hourly IP limit later. PIN protection remains enabled.
 
 ## Not yet included
 
-Email recovery, QR codes, basketball controls/rules, rosters, goal banners, match export/history UI, custom branding and additional templates. The initial template styling is an interpretation of the textual design document, which contains no visual mockups.
+Email recovery, QR codes, basketball controls/rules, rosters, goal banners, match export, custom branding and additional templates. The initial template styling is an interpretation of the textual design document, which contains no visual mockups.
 
 Production uses the current football increment. Email recovery, the remaining stage-1 acceptance criteria, mobile/OBS field testing and operator/legal pages are still outstanding. Database migrations and PostgreSQL integration checks are part of every deployment.
 

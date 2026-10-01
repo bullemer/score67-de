@@ -2,6 +2,8 @@ import {translations, preferredLanguage, saveLanguage, clockText, periodLabel, D
 const overlay = document.body.classList.contains('overlay');
 const params = new URLSearchParams(location.search);
 const slug = document.body.dataset.slug;
+const historyMatch = !overlay && params.get('match');
+const endpoint = historyMatch ? `/api/s/${slug}/matches/${encodeURIComponent(historyMatch)}/state` : `/api/s/${slug}/state`;
 const el = id => document.getElementById(id);
 const queue = new DelayedStates();
 let state, lang = preferredLanguage(), words = {}, socket, reconnect = 500;
@@ -36,6 +38,11 @@ function render() {
     if (overlay && !params.has('lang') && state.language !== lang) setLanguage(state.language);
   }
   if (!state) return;
+  if (!state.match_id) {
+    el('scoreboard').hidden = true;
+    if (el('connection')) el('connection').textContent = words.no_match;
+    return;
+  }
   const o = state.overlay;
   let view = o.view;
   if (view !== 'hidden' && o.auto_big && ['break', 'finished'].includes(state.phase)) view = 'score_big';
@@ -49,6 +56,25 @@ function render() {
   for (const team of ['home', 'away']) {
     el(`${team}-name`).textContent = state[team][small ? 'short' : 'name'];
     el(`${team}-score`).textContent = state[team].score;
+    const count = state[team].counters?.red_cards || 0;
+    const cards = el(`${team}-cards`);
+    cards.hidden = count === 0;
+    cards.setAttribute('aria-label', `${state[team].name}: ${count} ${words.red_cards}`);
+    if (cards.dataset.count !== String(count)) {
+      cards.dataset.count = String(count);
+      const icons = Array.from({length: Math.min(count, 5)}, () => {
+        const icon = document.createElement('i');
+        icon.className = 'red-card';
+        icon.setAttribute('aria-hidden', 'true');
+        return icon;
+      });
+      if (count > 5) {
+        const extra = document.createElement('b');
+        extra.textContent = `+${count - 5}`;
+        icons.push(extra);
+      }
+      cards.replaceChildren(...icons);
+    }
     document.querySelector(`.team.${team}`).style.borderColor = state[team].color;
   }
   el('clock').textContent = clockText(state, serverAt + performance.now() - receivedAt - delayFor(state));
@@ -62,7 +88,14 @@ async function poll() {
   pollBusy = true;
   const start = performance.now();
   try {
-    const response = await fetch(`/api/s/${slug}/state`, {cache:'no-store', signal:AbortSignal.timeout(5000)});
+    const response = await fetch(endpoint, {cache:'no-store', signal:AbortSignal.timeout(5000)});
+    if (response.status === 410) {
+      state = null;
+      queue.queue = [];
+      el('scoreboard').hidden = true;
+      if (el('connection')) el('connection').textContent = words['error.match_deleted'];
+      return;
+    }
     if (!response.ok) throw new Error('state');
     receive(await response.json(), (performance.now() - start) / 2);
   } catch { online = false; } finally { pollBusy = false; }
@@ -74,6 +107,6 @@ function connect() {
   socket.onclose = () => { online = false; setTimeout(connect, reconnect); reconnect = Math.min(5000, reconnect * 2); };
   socket.onerror = () => socket.close();
 }
-await poll(); connect();
-setInterval(() => { if (socket.readyState !== WebSocket.OPEN) poll(); }, 2000);
+await poll(); if (!historyMatch) connect();
+setInterval(() => { if (historyMatch || socket?.readyState !== WebSocket.OPEN) poll(); }, 2000);
 setInterval(poll, 15000);

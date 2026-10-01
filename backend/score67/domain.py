@@ -67,6 +67,10 @@ def apply(state, action, data, now_ms):
         if data.get("team") not in ("home", "away") or data.get("points") != points or isinstance(data.get("points"), bool):
             raise RuleError("invalid_score")
         event.update(team=data["team"], points=points)
+    elif action in ("red_card", "red_card_correction"):
+        if data.get("team") not in ("home", "away"):
+            raise RuleError("invalid_value")
+        event.update(team=data["team"], cards=1 if action == "red_card" else -1)
     elif action == "period_start":
         if phase not in ("pre_game", "break") or s["period"] >= s["period_count"]:
             raise RuleError("invalid_transition")

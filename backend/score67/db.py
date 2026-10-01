@@ -1,4 +1,5 @@
 import os
+import time
 from pathlib import Path
 
 from sqlalchemy import JSON, Boolean, Float, ForeignKey, Integer, String, create_engine, event, text
@@ -17,7 +18,7 @@ class Board(Base):
     pin_hash: Mapped[str] = mapped_column(String(200))
     failed_count: Mapped[int] = mapped_column(default=0)
     locked_until: Mapped[float] = mapped_column(Float, default=0)
-    active_match: Mapped[str] = mapped_column(String(36))
+    active_match: Mapped[str | None] = mapped_column(String(36), nullable=True)
     created_at: Mapped[float] = mapped_column(Float)
 
 
@@ -37,6 +38,10 @@ class Match(Base):
     slug: Mapped[str] = mapped_column(ForeignKey("scoreboard.slug"), index=True)
     revision: Mapped[int] = mapped_column(Integer, default=0)
     state: Mapped[dict] = mapped_column(JSON)
+    created_at: Mapped[float] = mapped_column(Float, default=time.time)
+    scheduled_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+    archived_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+    deleted_at: Mapped[float | None] = mapped_column(Float, nullable=True)
 
 
 class MatchEvent(Base):
@@ -77,6 +82,6 @@ def database(url: str | None = None):
     else:
         with engine.connect() as connection:
             version = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            if version != "0001_initial":
+            if version != "0002_game_management":
                 raise RuntimeError("Database schema does not match this release; run migrations first")
     return engine, sessionmaker(engine, expire_on_commit=False)

@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_web_plugins/flutter_web_plugins.dart';
 import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'dashboard.dart';
 import 'package:web/web.dart' as web;
 import 'package:web_socket_channel/web_socket_channel.dart';
 
@@ -18,6 +20,8 @@ void main() {
 class ApiError implements Exception {
   final String code;
   ApiError(this.code);
+  @override
+  String toString() => 'ApiError:$code';
 }
 
 class Score67 extends StatefulWidget {
@@ -32,6 +36,8 @@ class _Score67State extends State<Score67> {
   final stopwatch = Stopwatch()..start();
   Map<String, dynamic> words = {}, state = {};
   String lang = 'en', slug = '', pin = '', error = '';
+  bool dashboardPage = false;
+  int defaultPeriods = 2, defaultMinutes = 45;
   bool ready = false,
       admin = false,
       busy = false,
@@ -57,6 +63,14 @@ class _Score67State extends State<Score67> {
   void initState() {
     super.initState();
     final url = Uri.parse(web.window.location.href);
+    dashboardPage = url.path == '/dashboard';
+    try {
+      final preferences = jsonDecode(
+        web.window.localStorage.getItem('score67-settings') ?? '{}',
+      );
+      defaultPeriods = (preferences['periods'] as int? ?? 2).clamp(1, 12);
+      defaultMinutes = (preferences['minutes'] as int? ?? 45).clamp(1, 60);
+    } catch (_) {}
     final segments = url.pathSegments;
     if (segments.length == 3 &&
         segments[0] == 's' &&
@@ -125,6 +139,113 @@ class _Score67State extends State<Score67> {
     if (mounted) setState(() => ready = true);
   }
 
+  void navigate(String path) {
+    final url = Uri.parse(path);
+    web.window.location.assign(
+      url
+          .replace(queryParameters: {...url.queryParameters, 'lang': lang})
+          .toString(),
+    );
+  }
+
+  void updateLanguageUrl(String value) {
+    final url = Uri.parse(web.window.location.href);
+    web.window.history.replaceState(
+      null,
+      '',
+      url
+          .replace(queryParameters: {...url.queryParameters, 'lang': value})
+          .toString(),
+    );
+  }
+
+  Future<void> appSettings() async {
+    String chosenLanguage = lang;
+    final periods = TextEditingController(text: '$defaultPeriods');
+    final minutes = TextEditingController(text: '$defaultMinutes');
+    await showDialog<void>(
+      context: navigator.currentContext!,
+      builder: (context) => StatefulBuilder(
+        builder: (context, update) => AlertDialog(
+          title: Text(t('app.settings')),
+          content: SizedBox(
+            width: 400,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  DropdownButtonFormField<String>(
+                    initialValue: chosenLanguage,
+                    decoration: InputDecoration(labelText: t('language')),
+                    items: const [
+                      DropdownMenuItem(value: 'de', child: Text('Deutsch')),
+                      DropdownMenuItem(value: 'en', child: Text('English')),
+                    ],
+                    onChanged: (value) =>
+                        update(() => chosenLanguage = value ?? lang),
+                  ),
+                  const SizedBox(height: 18),
+                  Text(t('app.defaults')),
+                  field(t('period_count'), periods, numeric: true),
+                  field(t('period_length'), minutes, numeric: true),
+                  Text(t('app.local'), style: const TextStyle(fontSize: 14)),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(t('cancel')),
+            ),
+            FilledButton(
+              onPressed: () async {
+                final p = int.tryParse(periods.text),
+                    m = int.tryParse(minutes.text);
+                if (p == null ||
+                    p < 1 ||
+                    p > 12 ||
+                    m == null ||
+                    m < 1 ||
+                    m > 60) {
+                  notify(t('error.invalid_value'));
+                  return;
+                }
+                try {
+                  final translated = await api('/i18n/$chosenLanguage.json');
+                  web.window.localStorage.setItem(
+                    'score67-settings',
+                    jsonEncode({'periods': p, 'minutes': m}),
+                  );
+                  web.window.localStorage.setItem(
+                    'score67-language',
+                    chosenLanguage,
+                  );
+                  if (!mounted || !context.mounted) return;
+                  setState(() {
+                    defaultPeriods = p;
+                    defaultMinutes = m;
+                    lang = chosenLanguage;
+                    words = Map<String, dynamic>.from(translated);
+                  });
+                  updateLanguageUrl(chosenLanguage);
+                  Navigator.pop(context);
+                  notify(t('saved'));
+                } catch (_) {
+                  notify(t('error.network'));
+                }
+              },
+              child: Text(t('save')),
+            ),
+          ],
+        ),
+      ),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    periods.dispose();
+    minutes.dispose();
+  }
+
   Future<void> switchLanguage() async {
     final next = lang == 'de' ? 'en' : 'de';
     try {
@@ -137,6 +258,7 @@ class _Score67State extends State<Score67> {
           lang = next;
           words = Map<String, dynamic>.from(data);
         });
+        updateLanguageUrl(next);
       }
     } catch (_) {
       notify(t('error.network'));
@@ -281,7 +403,12 @@ class _Score67State extends State<Score67> {
       final result = await api(
         '/api/scoreboards',
         method: 'POST',
-        body: {'sport': 'football', 'language': lang},
+        body: {
+          'sport': 'football',
+          'language': lang,
+          'period_count': defaultPeriods,
+          'period_length_min': defaultMinutes,
+        },
       );
       slug = result['slug'];
       pin = result['pin'];
@@ -676,6 +803,7 @@ class _Score67State extends State<Score67> {
       () => web.window.location.assign('/s/$slug/control?lang=$lang'),
       primary: true,
     ),
+    action(t('dashboard'), () => navigate('/dashboard')),
   ]);
 
   Widget claimView() => section(t('claim'), [
@@ -928,6 +1056,30 @@ class _Score67State extends State<Score67> {
                   : null,
               child: Text('− ${t('score')}'),
             ),
+            const Divider(height: 28),
+            Text(
+              '${t('red_cards')}: ${s['counters']?['red_cards'] ?? 0}',
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Color(0xffffb4ab)),
+            ),
+            const SizedBox(height: 8),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xffb91c1c),
+                foregroundColor: Colors.white,
+              ),
+              onPressed: canWrite
+                  ? () => command('red_card', {'team': team})
+                  : null,
+              child: Text('+ ${t('red_card')}'),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton(
+              onPressed: canWrite && (s['counters']?['red_cards'] ?? 0) > 0
+                  ? () => command('red_card_correction', {'team': team})
+                  : null,
+              child: Text('− ${t('red_card')}'),
+            ),
           ],
         ),
       ),
@@ -1132,6 +1284,9 @@ class _Score67State extends State<Score67> {
     scaffoldMessengerKey: messenger,
     debugShowCheckedModeBanner: false,
     title: 'Score67',
+    locale: Locale(lang),
+    supportedLocales: const [Locale('de'), Locale('en')],
+    localizationsDelegates: GlobalMaterialLocalizations.delegates,
     theme: ThemeData(
       brightness: Brightness.dark,
       scaffoldBackgroundColor: const Color(0xff0b1018),
@@ -1167,11 +1322,21 @@ class _Score67State extends State<Score67> {
     ),
     home: Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          tooltip: t('back'),
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => navigate(dashboardPage ? '/' : '/dashboard'),
+        ),
         title: const Text(
           'SCORE67',
           style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: -1),
         ),
         actions: [
+          IconButton(
+            tooltip: t('app.settings'),
+            icon: const Icon(Icons.settings_outlined),
+            onPressed: ready ? appSettings : null,
+          ),
           TextButton(
             onPressed: ready ? switchLanguage : null,
             child: Text(lang == 'de' ? 'EN' : 'DE'),
@@ -1205,7 +1370,16 @@ class _Score67State extends State<Score67> {
                             primary: true,
                           ),
                         ]),
-                      if (pin.isNotEmpty)
+                      if (dashboardPage)
+                        Dashboard(
+                          api: (path, method, body) =>
+                              api(path, method: method, body: body),
+                          t: t,
+                          navigate: navigate,
+                          periods: defaultPeriods,
+                          minutes: defaultMinutes,
+                        )
+                      else if (pin.isNotEmpty)
                         pinView()
                       else if (slug.isEmpty)
                         createView()
@@ -1213,6 +1387,14 @@ class _Score67State extends State<Score67> {
                         section(t('connecting'), [action(t('retry'), refresh)])
                       else if (!admin)
                         claimView()
+                      else if (state['match_id'] == null)
+                        section(t('no_match'), [
+                          action(
+                            t('dashboard'),
+                            () => navigate('/dashboard'),
+                            primary: true,
+                          ),
+                        ])
                       else
                         matchView(),
                     ],

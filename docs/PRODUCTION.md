@@ -39,7 +39,7 @@ Reference: [Certbot webroot and renewal hooks](https://github.com/certbot/certbo
 
 ## Database safety and rollback
 
-Alembic migration `0001_initial` provides the production baseline. Production refuses automatic table creation and checks the schema revision at startup. Future migrations must be backwards compatible with the previous app release if automatic application rollback is expected. Update the startup schema check when adding a new revision.
+Alembic migration `0001_initial` provides the production baseline; `0002_game_management` adds game lifecycle dates and allows a board to have no active game. An upgrade test verifies existing boards, credentials, scores and events survive. Production refuses automatic table creation and checks the schema revision at startup. The old release requires revision 0001, so after this migration an old-image restart alone cannot roll back; prefer a forward fix or a compatible code revert retaining the new schema support. Update the startup schema check when adding a new revision.
 
 Every deployment takes a PostgreSQL custom-format dump before applying migrations. A daily systemd timer also backs up the database; completed dumps are retained for 14 days. Backups currently live on the same server: they support application/database recovery, but do not protect against total server loss. Off-server backup storage remains to be configured.
 
@@ -61,3 +61,5 @@ To roll back code, prefer reverting the relevant commit on `main`; the checked d
 ## Current product scope
 
 Production initially contains the football increment. Email recovery, basketball, rosters, goal banners, QR codes and custom design templates remain future work. The latest requested controls are included: timestamp-generated board labels, tap-to-edit team names and colors, and explicit plus/minus goals with audited, nonnegative corrections. Original source documents are retained as historical requirements; these later instructions supersede their conflicting creation/design details.
+
+The device dashboard adds historical results, future-game preparation, archive/restore/delete, visible back navigation and browser-local global defaults. Creation throttling is disabled by default for testing (`SCOREBOARD_CREATE_LIMIT=0`). A positive hourly count can be configured when needed; PIN attempt throttling remains active.

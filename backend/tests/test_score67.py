@@ -240,3 +240,155 @@ def test_creation_is_unlimited_by_default(system):
     _, client = system
     for _ in range(6):
         create(client)
+
+
+def test_dashboard_only_lists_authorized_devices_and_existing_games(system):
+    app, client = system
+    a, b = create(client), create(client)
+    assert {x['slug'] for x in client.get('/api/dashboard').json()['boards']} == {a['slug'], b['slug']}
+    outsider = TestClient(app)
+    assert outsider.get('/api/dashboard').json() == {'boards': []}
+    outsider.post(f'/api/s/{a["slug"]}/admin/claim', json={'pin': a['pin'], 'label': 'Dashboard device'})
+    boards = outsider.get('/api/dashboard').json()['boards']
+    assert len(boards) == 1 and boards[0]['slug'] == a['slug']
+    assert boards[0]['matches'][0]['home']['score'] == 0
+    admins = client.get(f'/api/s/{a["slug"]}/admins').json()
+    device = next(x for x in admins if x['label'] == 'Dashboard device')
+    client.delete(f'/api/s/{a["slug"]}/admins/{device["id"]}')
+    assert outsider.get('/api/dashboard').json()['boards'] == []
+
+
+def test_schedule_is_idempotent_and_does_not_replace_live_game(system):
+    import time
+    _, client = system
+    slug = create(client)['slug']
+    original = command(client, slug, 'period_start').json()
+    payload = {'command_id': str(uuid4()), 'home': 'Harbor', 'away': 'Town',
+               'scheduled_at': int((time.time()+86400)*1000), 'period_count': 1, 'period_length_min': 10}
+    created = client.post(f'/api/s/{slug}/matches', json=payload)
+    assert created.status_code == 201
+    assert client.post(f'/api/s/{slug}/matches', json=payload).status_code == 201
+    games = client.get('/api/dashboard').json()['boards'][0]['matches']
+    assert len(games) == 2 and state(client, slug)['match_id'] == original['match_id']
+    scheduled = next(x for x in games if x['match_id'] != original['match_id'])
+    assert scheduled['scheduled_at'] == payload['scheduled_at']
+    assert command(client, slug, 'activate', current=scheduled).status_code == 409
+    command(client, slug, 'game_end')
+    active = command(client, slug, 'activate', current=scheduled).json()
+    assert active['home']['name'] == 'Harbor' and active['phase'] == 'pre_game'
+    assert active['period_count'] == 1
+
+
+def test_archive_restore_delete_and_empty_live_state(system):
+    _, client = system
+    slug = create(client)['slug']
+    command(client, slug, 'period_start')
+    assert command(client, slug, 'archive').status_code == 409
+    assert command(client, slug, 'delete').status_code == 409
+    old = command(client, slug, 'game_end').json()
+    empty = command(client, slug, 'archive').json()
+    assert empty['match_id'] is None and empty['overlay']['view'] == 'hidden'
+    with client.websocket_connect(f'/ws/s/{slug}') as ws:
+        assert ws.receive_json()['match_id'] is None
+    archived = client.get('/api/dashboard').json()['boards'][0]['matches'][0]
+    assert archived['archived']
+    assert command(client, slug, 'activate', current=archived).status_code == 409
+    assert command(client, slug, 'restore', current=archived).status_code == 200
+    restored = client.get('/api/dashboard').json()['boards'][0]['matches'][0]
+    assert not restored['archived']
+    key = str(uuid4())
+    assert command(client, slug, 'delete', current=restored, command_id=key).status_code == 200
+    assert command(client, slug, 'delete', current=restored, command_id=key).status_code == 200
+    assert client.get('/api/dashboard').json()['boards'][0]['matches'] == []
+    assert client.get(f'/api/s/{slug}/matches/{old["match_id"]}/state').status_code == 410
+
+
+def test_scheduling_validation_and_cross_board_management(system):
+    import time
+    app, client = system
+    a, b = create(client), create(client)
+    payload = {'command_id': str(uuid4()), 'scheduled_at': int((time.time()-60)*1000)}
+    assert client.post(f'/api/s/{a["slug"]}/matches', json=payload).status_code == 422
+    stranger = TestClient(app)
+    assert stranger.post(f'/api/s/{a["slug"]}/matches', json={'command_id': str(uuid4())}).status_code == 401
+    other_game = state(client, b['slug'])
+    assert command(client, a['slug'], 'delete', current=other_game).status_code == 404
+    assert command(client, a['slug'], 'schedule', {'scheduled_at': 'tomorrow'}).status_code == 422
+    before = state(client, a['slug'])
+    when = int((time.time()+3600)*1000)
+    assert command(client, a['slug'], 'schedule', {'scheduled_at':when}).json()['scheduled_at'] == when
+    assert command(client, a['slug'], 'delete', current=before).status_code == 409
+
+
+def test_board_creation_accepts_device_format_defaults(system):
+    _, client = system
+    b = client.post('/api/scoreboards', json={'period_count':1, 'period_length_min':10}).json()
+    s = state(client,b['slug'])
+    assert (s['period_count'],s['period_length_min']) == (1,10)
+
+
+def test_upgrade_preserves_existing_board_match_and_admin(tmp_path, monkeypatch):
+    import time
+    from sqlalchemy import MetaData, Table
+    from score67.app import digest
+    from score67.domain import initial_state
+    url = os.getenv('TEST_DATABASE_URL', f'sqlite:///{tmp_path}/upgrade.db')
+    engine = create_engine(url)
+    if not url.startswith('sqlite'):
+        assert make_url(url).database == 'score67_test'
+        Base.metadata.drop_all(engine)
+        with engine.begin() as db:
+            db.execute(text('DROP TABLE IF EXISTS alembic_version'))
+    monkeypatch.setenv('DATABASE_URL', url)
+    config = Config(str(Path(__file__).parents[1] / 'alembic.ini'))
+    migrations.upgrade(config, '0001_initial')
+    meta = MetaData()
+    tables = {name: Table(name, meta, autoload_with=engine) for name in ('scoreboard','scoreboard_admin','match','match_event')}
+    slug, match_id, admin_id = 'oldboard01', str(uuid4()), str(uuid4())
+    with engine.begin() as db:
+        db.execute(tables['scoreboard'].insert().values(slug=slug,name='Existing board',language='en',pin_hash='hash',failed_count=0,locked_until=0,active_match=match_id,created_at=1000))
+        db.execute(tables['scoreboard_admin'].insert().values(id=admin_id,slug=slug,token_hash=digest('migration-test'),label='Existing device',last_seen_at=time.time(),revoked=False))
+        db.execute(tables['match'].insert().values(id=match_id,slug=slug,revision=1,state=initial_state()))
+        db.execute(tables['match_event'].insert().values(match_id=match_id,admin_id=admin_id,payload={'type':'score','team':'home','points':1},before={},cancelled=False))
+    migrations.upgrade(config, 'head')
+    monkeypatch.setenv('AUTO_CREATE_SCHEMA', 'false')
+    with TestClient(create_app(url,secure_cookies=False)) as client:
+        client.cookies.set(f'score67_{slug}', 'migration-test')
+        s = state(client,slug)
+        assert s['home']['score'] == 1 and s['match_id'] == match_id
+        assert s['created_at'] == 1000000
+        assert client.get('/api/dashboard').json()['boards'][0]['slug'] == slug
+    engine.dispose()
+
+
+def test_red_cards_correct_undo_retry_and_new_game(system):
+    app, client = system
+    slug = create(client)['slug']
+    original = state(client, slug)
+    assert original['home']['counters']['red_cards'] == 0
+    assert command(client, slug, 'red_card_correction', {'team': 'home'}).status_code == 422
+    assert command(client, slug, 'red_card', {'team': 'other'}).status_code == 422
+    outsider = TestClient(app)
+    assert command(outsider, slug, 'red_card', {'team': 'home'}).status_code == 401
+    command(client, slug, 'period_start')
+    before = state(client, slug)
+    key = str(uuid4())
+    added = command(client, slug, 'red_card', {'team': 'home'}, before, key).json()
+    assert added['home']['counters']['red_cards'] == 1
+    assert added['home']['score'] == 0
+    assert added['clock'] == before['clock']
+    repeated = command(client, slug, 'red_card', {'team': 'home'}, before, key).json()
+    assert repeated['home']['counters']['red_cards'] == 1
+    command(client, slug, 'red_card', {'team': 'away'})
+    removed = command(client, slug, 'red_card_correction', {'team': 'home'}).json()
+    assert removed['home']['counters']['red_cards'] == 0
+    assert removed['away']['counters']['red_cards'] == 1
+    undone = command(client, slug, 'undo', {'event_id': removed['events'][-1]['id']}).json()
+    assert undone['home']['counters']['red_cards'] == 1
+    with client.websocket_connect(f'/ws/s/{slug}') as ws:
+        assert ws.receive_json()['home']['counters']['red_cards'] == 1
+    command(client, slug, 'game_end')
+    fresh = command(client, slug, 'new_match').json()
+    assert fresh['home']['counters']['red_cards'] == fresh['away']['counters']['red_cards'] == 0
+    old = client.get(f'/api/s/{slug}/matches/{original["match_id"]}/state').json()
+    assert old['home']['counters']['red_cards'] == old['away']['counters']['red_cards'] == 1

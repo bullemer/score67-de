@@ -43,6 +43,17 @@ class StrictModel(BaseModel):
 class CreateBoard(StrictModel):
     sport: Literal["football"] = "football"
     language: Literal["de", "en"] = "de"
+    period_count: int = Field(default=2, ge=1, le=12)
+    period_length_min: int = Field(default=45, ge=1, le=60)
+
+
+class CreateMatch(StrictModel):
+    command_id: UUID
+    home: str = Field(default="Home", min_length=1, max_length=60)
+    away: str = Field(default="Guest", min_length=1, max_length=60)
+    scheduled_at: int | None = Field(default=None, ge=0)
+    period_count: int = Field(default=2, ge=1, le=12)
+    period_length_min: int = Field(default=45, ge=1, le=60)
 
 
 class Claim(StrictModel):
@@ -102,7 +113,7 @@ def create_app(db_url=None, secure_cookies=None):
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
-        if request.url.path.startswith("/api/") or request.url.path.endswith("/control") or request.url.path == "/new":
+        if request.url.path.startswith("/api/") or request.url.path.endswith("/control") or request.url.path in ("/new", "/dashboard"):
             response.headers["Cache-Control"] = "no-store"
         return response
 
@@ -135,17 +146,33 @@ def create_app(db_url=None, secure_cookies=None):
                             samesite="lax", max_age=180 * 86400, path="/")
 
     def state(db, b, match_id=None):
-        m = db.get(Match, match_id or b.active_match)
+        target = match_id or b.active_match
+        if not target:
+            s = initial_state()
+            s.update(scoreboard=b.slug, name=b.name, language=b.language, match_id=None,
+                     revision=0, server_now=round(time.time() * 1000), phase="no_match", events=[])
+            s["overlay"]["view"] = "hidden"
+            for team in ("home", "away"):
+                s[team].update(score=0, counters={"red_cards": 0})
+            return s
+        m = db.get(Match, target)
         if not m or m.slug != b.slug:
             raise HTTPException(404, "not_found")
+        if m.deleted_at:
+            raise HTTPException(410, "match_deleted")
         s = deepcopy(m.state)
         events = db.scalars(select(MatchEvent).where(MatchEvent.match_id == m.id).order_by(MatchEvent.id)).all()
         s.update(scoreboard=b.slug, name=b.name, language=b.language, match_id=m.id,
-                 revision=m.revision, server_now=round(time.time() * 1000))
+                 revision=m.revision, server_now=round(time.time() * 1000),
+                 created_at=round(m.created_at * 1000),
+                 scheduled_at=round(m.scheduled_at * 1000) if m.scheduled_at else None,
+                 archived=bool(m.archived_at), active=m.id == b.active_match)
         for team in ("home", "away"):
             s[team]["score"] = sum(e.payload.get("points", 0) for e in events
                                    if not e.cancelled and e.payload.get("team") == team and e.payload["type"] in ("score", "score_correction"))
-            s[team]["counters"] = {}
+            s[team]["counters"] = {"red_cards": sum(e.payload.get("cards", 0) for e in events
+                if not e.cancelled and e.payload.get("team") == team
+                and e.payload["type"] in ("red_card", "red_card_correction"))}
         s["events"] = [{**e.payload, "id": e.id, "cancelled": e.cancelled} for e in events]
         return s
 
@@ -188,7 +215,7 @@ def create_app(db_url=None, secure_cookies=None):
                       active_match=match_id, created_at=now)
             db.add(b)
             db.flush()
-            db.add(Match(id=match_id, slug=slug, state=initial_state()))
+            db.add(Match(id=match_id, slug=slug, state=initial_state(body.period_count, body.period_length_min)))
             grant(db, slug, response, "Browser")
             db.commit()
             return {"slug": slug, "pin": pin, "links": {"public": f"/s/{slug}",
@@ -248,6 +275,59 @@ def create_app(db_url=None, secure_cookies=None):
         with lock, app.state.sessions() as db:
             return state(db, board(db, slug))
 
+    @app.get("/api/dashboard")
+    def dashboard(request: Request, response: Response):
+        with lock, app.state.sessions() as db:
+            boards = []
+            for cookie, token in request.cookies.items():
+                if not cookie.startswith("score67_") or len(cookie) != 18:
+                    continue
+                slug = cookie[8:]
+                try:
+                    authorize(db, slug, request)
+                except HTTPException:
+                    continue
+                b = board(db, slug)
+                games = []
+                for m in db.scalars(select(Match).where(Match.slug == slug, Match.deleted_at.is_(None))
+                                    .order_by(Match.created_at.desc())):
+                    s = state(db, b, m.id)
+                    games.append({k: s[k] for k in ("match_id", "revision", "phase", "home", "away", "period_count",
+                        "period_length_min", "created_at", "scheduled_at", "archived", "active")})
+                boards.append({"slug": b.slug, "name": b.name, "active_match": b.active_match,
+                               "created_at": round(b.created_at * 1000), "matches": games})
+                response.set_cookie(cookie, token, httponly=True, secure=secure,
+                                    samesite="lax", max_age=180 * 86400, path="/")
+            db.commit()
+            return {"boards": sorted(boards, key=lambda b: b["created_at"], reverse=True)}
+
+    @app.post("/api/s/{slug}/matches", status_code=201)
+    def create_match(slug: str, body: CreateMatch, request: Request):
+        with lock, app.state.sessions() as db:
+            authorize(db, slug, request)
+            b = board(db, slug)
+            key = f"{slug}:{body.command_id}"
+            fingerprint = digest("create_match:" + json.dumps(body.model_dump(mode="json"), sort_keys=True))
+            receipt = db.get(Receipt, key)
+            if receipt:
+                if receipt.fingerprint != fingerprint:
+                    raise HTTPException(409, "command_reused")
+                return {"ok": True}
+            if body.scheduled_at is not None and body.scheduled_at <= time.time() * 1000:
+                raise HTTPException(422, "schedule_future")
+            if not body.home.strip() or not body.away.strip():
+                raise HTTPException(422, "invalid_value")
+            s = initial_state(body.period_count, body.period_length_min)
+            for team in ("home", "away"):
+                name = getattr(body, team).strip()
+                s[team].update(name=name, short="".join(name.split())[:5].upper())
+            m = Match(id=str(uuid4()), slug=slug, state=s,
+                      scheduled_at=body.scheduled_at / 1000 if body.scheduled_at else None)
+            db.add(m)
+            db.add(Receipt(id=key, fingerprint=fingerprint))
+            db.commit()
+            return {"ok": True, "match_id": m.id}
+
     @app.get("/api/s/{slug}/matches/{match_id}/state")
     def archived_state(slug: str, match_id: str):
         with lock, app.state.sessions() as db:
@@ -269,9 +349,40 @@ def create_app(db_url=None, secure_cookies=None):
                 if receipt.fingerprint != fingerprint:
                     raise HTTPException(409, "command_reused")
                 return state(db, b)
-            if b.active_match != m.id or m.revision != body.expected_revision:
+            management = body.action in ("activate", "archive", "restore", "delete", "schedule")
+            if m.deleted_at:
+                raise HTTPException(410, "match_deleted")
+            if (not management and b.active_match != m.id) or m.revision != body.expected_revision:
                 raise HTTPException(409, "state_changed")
-            if body.action == "new_match":
+            if management:
+                if body.action == "activate":
+                    if body.data.get("expected_active_match", b.active_match) != b.active_match:
+                        raise HTTPException(409, "state_changed")
+                    current = db.get(Match, b.active_match) if b.active_match else None
+                    if current and current.id != m.id and current.state["phase"] in ("period_running", "break"):
+                        raise HTTPException(409, "finish_first")
+                    if m.archived_at:
+                        raise HTTPException(409, "restore_first")
+                    b.active_match = m.id
+                elif body.action in ("archive", "delete"):
+                    if m.state["phase"] in ("period_running", "break"):
+                        raise HTTPException(409, "finish_first")
+                    if body.action == "archive":
+                        m.archived_at = time.time()
+                    else:
+                        m.deleted_at = time.time()
+                    if b.active_match == m.id:
+                        b.active_match = None
+                elif body.action == "restore":
+                    m.archived_at = None
+                elif body.action == "schedule":
+                    value = body.data.get("scheduled_at")
+                    if m.state["phase"] != "pre_game" or m.archived_at:
+                        raise HTTPException(409, "invalid_transition")
+                    if value is not None and (type(value) is not int or value <= time.time() * 1000):
+                        raise HTTPException(422, "schedule_future")
+                    m.scheduled_at = value / 1000 if value else None
+            elif body.action == "new_match":
                 if m.state["phase"] != "finished":
                     raise HTTPException(409, "finish_first")
                 new = Match(id=str(uuid4()), slug=slug,
@@ -288,6 +399,9 @@ def create_app(db_url=None, secure_cookies=None):
                 m.state = updated
                 last.cancelled = True
             else:
+                if body.action == "red_card_correction" and body.data.get("team") in ("home", "away"):
+                    if state(db, b)[body.data["team"]]["counters"]["red_cards"] <= 0:
+                        raise HTTPException(422, "red_cards_zero")
                 if body.action == "score_correction" and body.data.get("team") in ("home", "away"):
                     if state(db, b)[body.data["team"]]["score"] <= 0:
                         raise HTTPException(422, "score_zero")
@@ -314,8 +428,8 @@ def create_app(db_url=None, secure_cookies=None):
             while True:
                 with lock, app.state.sessions() as db:
                     b = board(db, slug)
-                    m = db.get(Match, b.active_match)
-                    current = (m.id, m.revision)
+                    m = db.get(Match, b.active_match) if b.active_match else None
+                    current = (m.id, m.revision) if m else (None, 0)
                     if current != signature:
                         s = state(db, b)
                 if current != signature:
@@ -345,6 +459,7 @@ def create_app(db_url=None, secure_cookies=None):
                                           context={"slug": slug, "overlay": request.url.path.endswith("/overlay")})
 
     @app.get("/new")
+    @app.get("/dashboard")
     @app.get("/s/{slug}/control")
     def control(slug: str | None = None):
         if not (build / "index.html").exists():

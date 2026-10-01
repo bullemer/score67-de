@@ -19,6 +19,8 @@ This is the first development increment. It deliberately does not satisfy all of
 
 ## Increment 1B — complete football pilot and release preparation
 
+Requested usability extension implemented: device dashboard with game history/status filters, scheduling, archive/restore/delete; in-app back navigation; global language and new-game defaults. Creation throttling is disabled during testing and remains configurable for later use. Scheduling prepares games; kickoff is manual.
+
 1. **Done:** Alembic baseline and the API/rules suite exercised against both SQLite and PostgreSQL. Production deployment from main, Nginx HTTPS, renewal, pre-deployment backups and daily backup timer are implemented; see PRODUCTION.md.
 2. Implement email recovery with a configured SMTP provider/sender, expiring single-use hashed tokens, generic responses, rate limits and old-address notifications. Test token races and replay. Decide creation/rotation behavior when the response is lost.
 3. Add QR codes, scoreboard language/name settings and admin last-used dates. Make first-load/retry errors explicit and refine the event log/undo distinction between match actions and display settings.

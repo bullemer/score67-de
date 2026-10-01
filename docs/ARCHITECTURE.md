@@ -2,11 +2,11 @@
 
 ## Processes and state
 
-FastAPI serves the REST API, WebSocket snapshots, Jinja pages and compiled Flutter assets. The browser never stores the admin token in JavaScript; the server sets an HttpOnly cookie. The Flutter controller uses same-origin HTTP. Browser preferences store only the language. The public outputs use no Flutter code.
+FastAPI serves the REST API, WebSocket snapshots, Jinja pages and compiled Flutter assets. The browser never stores the admin token in JavaScript; the server sets an HttpOnly cookie. The Flutter controller uses same-origin HTTP. Browser preferences store language and defaults for new game formats. The public outputs use no Flutter code.
 
 `backend/score67/domain.py` implements rules without I/O. `db.py` contains SQLAlchemy tables. `app.py` coordinates authentication, bounded input, transactions and state projection. The frontend shares its JSON translations with the server-rendered pages under `shared/i18n/`.
 
-For this increment, times on the wire are UTC epoch milliseconds (not the illustrative ISO strings from the spec). The API is internal to this checkout and version 0.1. IDs for matches/devices are UUIDs. Score is derived from non-cancelled goal events. Current match lifecycle and clock state are materialized in JSON, with field snapshots for last-action undo. Each event preserves its original format for stable historical time labels.
+For this increment, times on the wire are UTC epoch milliseconds (not the illustrative ISO strings from the spec). The API is internal to this checkout and version 0.1. IDs for matches/devices are UUIDs. Scores and red-card counters are derived from non-cancelled events. Red-card corrections cannot make a counter negative; card events preserve the running clock and reset with each new game. Current match lifecycle and clock state are materialized in JSON, with field snapshots for last-action undo. Each event preserves its original format for stable historical time labels.
 
 ## Narrow command API
 
@@ -24,11 +24,19 @@ Content-Type: application/json
 }
 ```
 
-Actions: `score`, `score_correction`, `period_start`, `period_end`, `game_end`, `clock_adjust`, `settings`, `overlay`, `undo`, `new_match`. Undo includes `data.event_id`. Creating a new match requires the current match to be finished. All writes authorize first, including retries; revoked devices cannot use old command IDs to regain access.
+Actions: `score`, `score_correction`, `red_card`, `red_card_correction`, `period_start`, `period_end`, `game_end`, `clock_adjust`, `settings`, `overlay`, `undo`, `new_match`. Undo includes `data.event_id`. Creating a new match requires the current match to be finished. All writes authorize first, including retries; revoked devices cannot use old command IDs to regain access.
 
 A successful command returns the full active state. A repeated command with the same ID/body returns the latest state without reapplying it. A reused ID with different content returns 409. A stale revision returns `state_changed` (409); the UI refreshes and asks the operator to re-evaluate. Errors have an `error` code and no user-submitted data echo. Commands are serialized in one process and committed atomically. Run **exactly one worker** until database-level locking is added.
 
 The separate events/clock/overlay write endpoints from the full spec have not been implemented as redundant adapters. Add them only if an external client needs that exact interface. Likewise there are no stub email, roster or upload endpoints.
+
+## Dashboard and game management
+
+`/dashboard` lists boards authorized by this browser's existing board cookies; it is not an account or a public directory. Another device must claim each board using its control link and PIN. Clearing cookies removes dashboard access until the PIN is entered again.
+
+`GET /api/dashboard` projects authorized boards and their non-deleted games. `POST /api/s/{slug}/matches` prepares a game independently of the active one. Additional commands are `activate`, `schedule`, `archive`, `restore` and `delete`; these retain UUID retry protection and revision checks. Activating a prepared game is blocked while another game is running or in a break. Scheduling stores a UTC timestamp and displays local browser time; it never automatically starts a match.
+
+Archive and delete cannot interrupt a running game. Deleting is a soft deletion: it hides the game from the dashboard and returns HTTP 410 for its historical state, retaining database records for consistency. Archiving the active game clears the active pointer and hides the overlay until another game is activated. Historical spectator links use `?match=<uuid>` and never switch to a newer game.
 
 ## Live displays
 
