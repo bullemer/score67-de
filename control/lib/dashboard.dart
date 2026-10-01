@@ -24,7 +24,7 @@ class Dashboard extends StatefulWidget {
 
 class _DashboardState extends State<Dashboard> {
   List<dynamic> boards = [];
-  String filter = 'all', error = '';
+  String filter = 'planned', error = '';
   bool loading = true, busy = false, online = false, refreshing = false;
   Map<String, dynamic>? pending;
   Timer? timer;
@@ -125,8 +125,7 @@ class _DashboardState extends State<Dashboard> {
     if (game['archived']) return 'archived';
     if (game['phase'] == 'finished') return 'completed';
     if (['period_running', 'break'].contains(game['phase'])) return 'running';
-    if (game['scheduled_at'] != null) return 'scheduled';
-    return 'ready';
+    return 'planned';
   }
 
   String dateLabel(int milliseconds) {
@@ -452,6 +451,11 @@ class _DashboardState extends State<Dashboard> {
         onPressed: busy ? null : () => widget.navigate('/new'),
         child: Text(t('create')),
       ),
+      const SizedBox(height: 8),
+      OutlinedButton(
+        onPressed: () => widget.navigate('/live'),
+        child: Text(t('live.title')),
+      ),
       const SizedBox(height: 18),
       if (error.isNotEmpty)
         Text(
@@ -469,17 +473,10 @@ class _DashboardState extends State<Dashboard> {
           spacing: 8,
           runSpacing: 8,
           children: [
-            for (final key in [
-              'all',
-              'ready',
-              'running',
-              'scheduled',
-              'completed',
-              'archived',
-            ])
+            for (final key in ['planned', 'running', 'completed', 'archived'])
               ChoiceChip(
                 label: Text(
-                  '${t('games.$key')} (${boards.expand((b) => b['matches'] as List).where((g) => key == 'all' || category(g) == key).length})',
+                  '${t('games.$key')} (${boards.expand((b) => b['matches'] as List).where((g) => category(g) == key).length})',
                 ),
                 selected: filter == key,
                 onSelected: (_) => setState(() => filter = key),
@@ -488,8 +485,16 @@ class _DashboardState extends State<Dashboard> {
         ),
         const SizedBox(height: 20),
         if (boards.isEmpty) Text(t('dashboard.empty')),
+        if (boards.isNotEmpty &&
+            !boards
+                .expand((b) => b['matches'] as List)
+                .any((g) => category(g) == filter))
+          Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: Text(t('games.filtered_empty')),
+          ),
         for (final board in boards)
-          if (filter == 'all' ||
+          if ((filter == 'planned' && (board['matches'] as List).isEmpty) ||
               (board['matches'] as List).any((g) => category(g) == filter))
             Container(
               margin: const EdgeInsets.only(bottom: 20),
@@ -522,8 +527,7 @@ class _DashboardState extends State<Dashboard> {
                   ),
                   const SizedBox(height: 12),
                   for (final game in board['matches'])
-                    if (filter == 'all' || category(game) == filter)
-                      gameCard(board, game),
+                    if (category(game) == filter) gameCard(board, game),
                   if ((board['matches'] as List).isEmpty)
                     Text(t('games.empty')),
                 ],

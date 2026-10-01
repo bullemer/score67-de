@@ -40,6 +40,10 @@ Archive and delete cannot interrupt a running game. Deleting is a soft deletion:
 
 ## Live displays
 
+`/live` uses the public `GET /api/live` projection, restricted to active, non-archived/non-deleted games in play or in a break. It includes only public display fields and polls every five seconds; clocks interpolate between snapshots. Finished and planned games are excluded. No cookie or account is required.
+
+Sharing links target only the spectator page, preserving a historical match ID when sharing an old result. WhatsApp and Facebook open their share composer; the user chooses whether to send. No third-party SDK or automatic posting is used.
+
 The socket checks the current revision every 250 ms, sends full state initially/on change, and responds to `ping`. Clients reconnect with bounded backoff. REST remains available for fallback. The HTML client polls every two seconds while disconnected and periodically resynchronizes server time even while connected. It continues the last known clock during an outage and never puts a connection error into the overlay.
 
 Overlay query options implemented: `delay=0..30000`, `preview=1`, `view=small|big`, `pos=tl|tr`, `lang=de|en`. Only the initial standard template exists; `template` selection is deferred. Hidden takes precedence over automatic big mode; a fixed URL view takes precedence over controller settings. Spectators receive immediate scores, independent of broadcast delay.

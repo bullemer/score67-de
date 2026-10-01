@@ -301,6 +301,20 @@ def create_app(db_url=None, secure_cookies=None):
             db.commit()
             return {"boards": sorted(boards, key=lambda b: b["created_at"], reverse=True)}
 
+    @app.get("/api/live")
+    def live_games():
+        with lock, app.state.sessions() as db:
+            games = []
+            active = db.scalars(select(Board).join(Match, Board.active_match == Match.id).where(
+                Match.deleted_at.is_(None), Match.archived_at.is_(None),
+                Match.state["phase"].as_string().in_(("period_running", "break")))
+                .order_by(Match.created_at.desc(), Board.slug))
+            for b in active:
+                s = state(db, b)
+                games.append({k: s[k] for k in ("scoreboard", "match_id", "home", "away", "clock",
+                    "phase", "period", "period_count", "period_length_min", "server_now")})
+            return {"games": games, "server_now": round(time.time() * 1000)}
+
     @app.post("/api/s/{slug}/matches", status_code=201)
     def create_match(slug: str, body: CreateMatch, request: Request):
         with lock, app.state.sessions() as db:
@@ -449,6 +463,10 @@ def create_app(db_url=None, secure_cookies=None):
     @app.get("/", response_class=HTMLResponse)
     def landing(request: Request):
         return templates.TemplateResponse(request=request, name="landing.html")
+
+    @app.get("/live", response_class=HTMLResponse)
+    def live_page(request: Request):
+        return templates.TemplateResponse(request=request, name="live.html")
 
     @app.get("/s/{slug}", response_class=HTMLResponse)
     @app.get("/s/{slug}/overlay", response_class=HTMLResponse)

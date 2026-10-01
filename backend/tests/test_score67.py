@@ -392,3 +392,36 @@ def test_red_cards_correct_undo_retry_and_new_game(system):
     assert fresh['home']['counters']['red_cards'] == fresh['away']['counters']['red_cards'] == 0
     old = client.get(f'/api/s/{slug}/matches/{original["match_id"]}/state').json()
     assert old['home']['counters']['red_cards'] == old['away']['counters']['red_cards'] == 1
+
+
+def test_public_live_directory_only_running_active_games(system):
+    app, client = system
+    public = TestClient(app)
+    ready = create(client)['slug']
+    running = create(client)['slug']
+    paused = create(client)['slug']
+    ended = create(client)['slug']
+    removed = create(client)['slug']
+    command(client, running, 'period_start')
+    command(client, running, 'score', {'team': 'home', 'points': 1})
+    command(client, running, 'red_card', {'team': 'away'})
+    command(client, paused, 'period_start')
+    command(client, paused, 'period_end')
+    command(client, ended, 'game_end')
+    command(client, removed, 'delete')
+    response = public.get('/api/live')
+    assert response.status_code == 200 and response.headers['cache-control'] == 'no-store'
+    assert not response.headers.get('set-cookie')
+    games = {g['scoreboard']: g for g in response.json()['games']}
+    assert set(games) == {running, paused}
+    assert games[running]['home']['score'] == 1
+    assert games[running]['away']['counters']['red_cards'] == 1
+    assert games[paused]['phase'] == 'break'
+    assert set(games[running]) == {'scoreboard', 'match_id', 'home', 'away', 'clock', 'phase', 'period', 'period_count', 'period_length_min', 'server_now'}
+    command(client, running, 'game_end')
+    assert [g['scoreboard'] for g in public.get('/api/live').json()['games']] == [paused]
+    command(client, paused, 'game_end')
+    assert public.get('/api/live').json()['games'] == []
+    assert public.get('/live').status_code == 200
+    assert '/static/share.mjs' in public.get(f'/s/{ready}').text
+    assert '/static/share.mjs' not in public.get(f'/s/{ready}/overlay').text

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:js_interop';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -754,7 +755,88 @@ class _Score67State extends State<Score67> {
     );
   }
 
+  String get spectatorUrl =>
+      uri('/s/$slug').replace(queryParameters: {'lang': lang}).toString();
+
+  Future<void> nativeShare() async {
+    final data = web.ShareData(title: t('spectator'), url: spectatorUrl);
+    bool supported = false;
+    try {
+      supported = web.window.navigator.canShare(data);
+    } catch (_) {}
+    if (!supported) {
+      await copy(spectatorUrl);
+      return;
+    }
+    try {
+      await web.window.navigator.share(data).toDart;
+    } catch (_) {
+      /* The share sheet can be cancelled. */
+    }
+  }
+
+  Widget shareActions() => Wrap(
+    spacing: 8,
+    runSpacing: 8,
+    children: [
+      OutlinedButton(
+        onPressed: () => web.window.open(
+          'https://wa.me/?text=${Uri.encodeComponent(spectatorUrl)}',
+          '_blank',
+          'noopener,noreferrer',
+        ),
+        child: const Text('WhatsApp'),
+      ),
+      OutlinedButton(
+        onPressed: () => web.window.open(
+          'https://www.facebook.com/sharer/sharer.php?u=${Uri.encodeComponent(spectatorUrl)}',
+          '_blank',
+          'noopener,noreferrer',
+        ),
+        child: const Text('Facebook'),
+      ),
+      OutlinedButton(
+        onPressed: () => copy(spectatorUrl),
+        child: Text(t('share.copy')),
+      ),
+      OutlinedButton(onPressed: nativeShare, child: Text(t('share.more'))),
+    ],
+  );
+
+  Future<void> showSharing() async {
+    await showDialog<void>(
+      context: navigator.currentContext!,
+      builder: (context) => AlertDialog(
+        title: Text(t('share.spectator')),
+        content: SizedBox(
+          width: 400,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SelectableText(spectatorUrl),
+                const SizedBox(height: 16),
+                shareActions(),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(t('close')),
+          ),
+        ],
+      ),
+    );
+  }
+
   List<Widget> linkWidgets() => [
+    Text(t('share.spectator')),
+    const SizedBox(height: 8),
+    shareActions(),
+    const SizedBox(height: 20),
     for (final entry in {
       'spectator': '/s/$slug',
       'overlay.link': '/s/$slug/overlay',
@@ -1116,6 +1198,11 @@ class _Score67State extends State<Score67> {
               tooltip: t('links'),
               onPressed: admin ? manageAccess : null,
               icon: const Icon(Icons.link),
+            ),
+            IconButton(
+              tooltip: t('share.spectator'),
+              onPressed: showSharing,
+              icon: const Icon(Icons.share_outlined),
             ),
           ],
         ),

@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Live · Score67</title><meta name="description" content="Aktuelle Fußball-Liveticker: Spielstände, Spielzeit und rote Karten ohne Anmeldung.">
+<link rel="stylesheet" href="/static/display.css"><link rel="stylesheet" href="/static/live.css"></head>
+<body class="live-page">
+<header><a class="brand" href="/">SCORE<span>67</span></a><button id="language" aria-label="Deutsch / English">DE / EN</button></header>
+<main><nav><a href="/" data-i18n="back">Zurück</a><a id="dashboard-link" href="/dashboard" data-i18n="dashboard">Meine Scoreboards</a></nav>
+<p class="eyebrow" data-i18n="live.public">Ohne Anmeldung</p><h1 data-i18n="live.title">Aktuelle Liveticker</h1>
+<p class="intro" data-i18n="live.description">Alle laufenden Spiele – auch während der Pause. Öffne einen Liveticker für die große Spielanzeige.</p>
+<p id="status" role="status" aria-live="polite"></p><p id="empty" data-i18n="live.empty" hidden>Aktuell laufen keine Spiele.</p>
+<div id="games" class="live-grid"></div>
+<noscript>Bitte JavaScript aktivieren, um die aktuellen Liveticker anzuzeigen.</noscript></main>
+<script type="module" src="/static/live.mjs"></script></body></html>

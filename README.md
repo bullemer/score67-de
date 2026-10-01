@@ -37,7 +37,9 @@ The development database is `backend/data/score67.db` when started from `backend
 - Revision checks, idempotent command retries, persistent event records and reconnecting live state.
 - Small, large, hidden, left/right and automatic break/final views; configurable broadcast delay.
 - Shared German and English JSON translations.
-- Device dashboard at `/dashboard`: running, ready, scheduled, completed and archived games; archive, restore and delete controls.
+- Device dashboard at `/dashboard`: planned (with or without a date), running, completed and archived games; archive, restore and delete controls.
+- Public `/live` directory of active games, including breaks, with automatically updated scores, clocks and red cards. No sign-in required.
+- WhatsApp, Facebook, copy-link and native sharing for spectator links from the public view and controller.
 - Future games can be prepared without interrupting the live game. Opening their controls activates them; kickoff remains manual.
 - Visible back navigation and global language/default game-format settings, saved on this browser.
 

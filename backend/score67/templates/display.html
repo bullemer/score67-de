@@ -4,7 +4,22 @@
 <body class="{{ 'overlay' if overlay else 'spectator' }}" data-slug="{{ slug }}">
 {% if not overlay %}<header><a class="brand" href="/">SCORE<span>67</span></a><button id="language" aria-label="Deutsch / English">DE / EN</button></header>{% endif %}
 <main id="scoreboard" class="scoreboard" hidden>
-<div id="phase" class="phase"></div><div class="teams"><div class="team home"><div class="team-label"><span id="home-name"></span><div id="home-cards" class="red-cards" role="img" hidden></div></div><strong id="home-score">0</strong></div><span class="separator">:</span><div class="team away"><strong id="away-score">0</strong><div class="team-label"><span id="away-name"></span><div id="away-cards" class="red-cards" role="img" hidden></div></div></div>
+<div id="phase" class="phase"></div>
+<div class="teams">
+  <div class="team home">
+    <div class="team-label"><span id="home-name"></span><div id="home-cards" class="red-cards" role="img" hidden></div></div>
+    <strong id="home-score">0</strong>
+  </div>
+  <span class="separator">:</span>
+  <div class="team away">
+    <strong id="away-score">0</strong>
+    <div class="team-label"><span id="away-name"></span><div id="away-cards" class="red-cards" role="img" hidden></div></div>
+  </div>
+</div>
 <div class="time"><span id="period"></span><span id="clock"></span></div></main>
-{% if not overlay %}<footer><a href="/dashboard" data-i18n="back"></a><span id="connection"></span><a href="/s/{{ slug }}/control" data-i18n="control"></a></footer>{% endif %}
+{% if not overlay %}
+<section class="share-panel" aria-labelledby="share-title"><h2 id="share-title" data-i18n="share.spectator"></h2>
+<div class="share-actions"><a id="share-whatsapp" target="_blank" rel="noopener noreferrer">WhatsApp</a><a id="share-facebook" target="_blank" rel="noopener noreferrer">Facebook</a><button id="share-copy" data-i18n="share.copy"></button><button id="share-native" data-i18n="share.more" hidden></button></div><p id="share-status" role="status"></p></section>
+<footer><a href="/live" data-i18n="live.title"></a><span id="connection"></span><a href="/s/{{ slug }}/control" data-i18n="control"></a></footer>
+<script type="module" src="/static/share.mjs"></script>{% endif %}
 <script type="module" src="/static/display.mjs"></script></body></html>
