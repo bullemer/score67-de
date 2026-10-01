@@ -22,7 +22,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
 from .db import Admin, Board, Match, MatchEvent, RateLimit, Receipt, database
-from .domain import FOOTBALL, BASKETBALL, RuleError, apply, initial_state, normalize_clock
+from .domain import FOOTBALL, BASKETBALL, RuleError, apply, initial_state, normalize_clock, foul_mode
 
 ROOT = Path(__file__).resolve().parents[2]
 RELEASE = json.loads((ROOT / "shared/release.json").read_text())
@@ -88,9 +88,9 @@ def available_events(events):
         if event.cancelled:
             continue
         kind = event.payload["type"]
-        if kind in ("score", "red_card", "yellow_card", "team_foul", "timeout"):
+        if kind in ("score", "red_card", "yellow_card", "team_foul", "timeout", "personal_foul"):
             available.append(event)
-        elif kind in ("score_correction", "red_card_correction", "yellow_card_correction", "team_foul_correction", "timeout_correction"):
+        elif kind in ("score_correction", "red_card_correction", "yellow_card_correction", "team_foul_correction", "timeout_correction", "personal_foul_correction"):
             candidates = [e for e in available if e.payload["type"] == kind.removesuffix("_correction") and e.payload.get("team") == event.payload.get("team")]
             target = next((e for e in candidates if e.id == event.payload.get("corrects")), None) if event.payload.get("corrects") else (candidates[-1] if candidates else None)
             if target:
@@ -176,7 +176,7 @@ def create_app(db_url=None, secure_cookies=None):
         response.set_cookie(f"score67_{slug}", token, httponly=True, secure=secure,
                             samesite="lax", max_age=180 * 86400, path="/")
 
-    def state(db, b, match_id=None):
+    def state(db, b, match_id=None, private=False):
         public_location = {k: b.location[k] for k in ("lat", "lng", "label")} if b.location and b.location.get("visible") else None
         target = match_id or b.active_match
         if not target:
@@ -194,6 +194,7 @@ def create_app(db_url=None, secure_cookies=None):
             raise HTTPException(410, "match_deleted")
         s = deepcopy(m.state)
         s.setdefault("team_fouls_enabled", False)
+        s["foul_mode"] = foul_mode(s)
         s.setdefault("overtime_length_min", 5)
         normalize_clock(s, round(time.time() * 1000))
         events = db.scalars(select(MatchEvent).where(MatchEvent.match_id == m.id).order_by(MatchEvent.id)).all()
@@ -212,12 +213,32 @@ def create_app(db_url=None, secure_cookies=None):
         available = available_events(events)
         for team in ("home", "away"):
             s[team]["counters"].update(
-                team_fouls=sum(1 for e in available if e.payload["type"] == "team_foul" and e.payload.get("team") == team
+                team_fouls=sum(1 for e in available if (e.payload["type"] == "team_foul" or (e.payload["type"] == "personal_foul" and e.payload.get("counts_team"))) and e.payload.get("team") == team
                                and min(e.payload["period"], s["period_count"]) == min(s["period"], s["period_count"])),
                 timeouts=sum(1 for e in available if e.payload["type"] == "timeout" and e.payload.get("team") == team))
         available_ids = {e.id for e in available}
         s["events"] = [{**e.payload, "id": e.id, "cancelled": e.cancelled,
-            "corrected": e.payload["type"] in ("score", "red_card", "yellow_card", "team_foul", "timeout") and not e.cancelled and e.id not in available_ids} for e in events]
+            "corrected": e.payload["type"] in ("score", "red_card", "yellow_card", "team_foul", "timeout", "personal_foul") and not e.cancelled and e.id not in available_ids} for e in events]
+        if private:
+            for team in ("home", "away"):
+                totals = {}
+                for player in s[team].get("foul_players", []) + s[team].get("squad", []):
+                    totals[player["id"]] = {**player, "fouls": 0}
+                unassigned = 0
+                for e in available:
+                    if e.payload["type"] != "personal_foul" or e.payload["team"] != team:
+                        continue
+                    player = e.payload.get("player")
+                    if player:
+                        totals.setdefault(player["id"], {**player, "fouls": 0})["fouls"] += 1
+                    else:
+                        unassigned += 1
+                s[team]["personal_fouls"] = list(totals.values())
+                s[team]["unassigned_fouls"] = unassigned
+        else:
+            for team in ("home", "away"):
+                s[team].pop("foul_players", None)
+            s["events"] = [e for e in s["events"] if e["type"] not in ("personal_foul", "personal_foul_correction", "assign_foul_player")]
         return s
 
     @app.get("/health")
@@ -336,6 +357,15 @@ def create_app(db_url=None, secure_cookies=None):
         with lock, app.state.sessions() as db:
             return state(db, board(db, slug))
 
+    @app.get("/api/s/{slug}/control-state")
+    @app.get("/api/s/{slug}/matches/{match_id}/control-state")
+    def control_state(slug: str, request: Request, match_id: str | None = None):
+        with lock, app.state.sessions() as db:
+            authorize(db, slug, request)
+            result = state(db, board(db, slug), match_id, private=True)
+            db.commit()
+            return result
+
     @app.get("/api/dashboard")
     def dashboard(request: Request, response: Response):
         with lock, app.state.sessions() as db:
@@ -423,7 +453,7 @@ def create_app(db_url=None, secure_cookies=None):
             if receipt:
                 if receipt.fingerprint != fingerprint:
                     raise HTTPException(409, "command_reused")
-                return state(db, b)
+                return state(db, b, private=True)
             management = body.action in ("activate", "archive", "restore", "delete", "schedule")
             if m.deleted_at:
                 raise HTTPException(410, "match_deleted")
@@ -463,6 +493,7 @@ def create_app(db_url=None, secure_cookies=None):
                 new = Match(id=str(uuid4()), slug=slug,
                             state=initial_state(m.state["period_count"], m.state["period_length_min"], m.state["sport"]))
                 new.state["team_fouls_enabled"] = m.state.get("team_fouls_enabled", False)
+                new.state["foul_mode"] = foul_mode(m.state)
                 db.add(new)
                 b.active_match = new.id
             elif body.action == "undo":
@@ -470,9 +501,12 @@ def create_app(db_url=None, secure_cookies=None):
                                  .order_by(MatchEvent.id.desc()).limit(1))
                 if not last or body.data.get("event_id") != last.id:
                     raise HTTPException(409, "undo_changed")
-                if last.payload["type"] == "assign_player":
+                if last.payload["type"] in ("assign_player", "assign_foul_player"):
                     target = db.get(MatchEvent, last.payload["target"])
                     target.payload = {**target.payload, "player": last.before.get("player")}
+                    updated = deepcopy(m.state)
+                    updated.update({k: v for k, v in last.before.items() if k != "player"})
+                    m.state = updated
                 else:
                     updated = deepcopy(m.state)
                     updated.update(last.before)
@@ -480,8 +514,8 @@ def create_app(db_url=None, secure_cookies=None):
                 last.cancelled = True
             else:
                 target = None
-                correcting = body.action in ("score_correction", "red_card_correction", "yellow_card_correction", "team_foul_correction", "timeout_correction")
-                if correcting or body.action == "assign_player":
+                correcting = body.action in ("score_correction", "red_card_correction", "yellow_card_correction", "team_foul_correction", "timeout_correction", "personal_foul_correction")
+                if correcting or body.action in ("assign_player", "assign_foul_player"):
                     match_events = db.scalars(select(MatchEvent).where(MatchEvent.match_id == m.id).order_by(MatchEvent.id)).all()
                     available = available_events(match_events)
                     if correcting:
@@ -490,9 +524,10 @@ def create_app(db_url=None, secure_cookies=None):
                         target_id = body.data.get("event_id")
                         target = next((e for e in candidates if e.id == target_id), None) if target_id is not None else (candidates[-1] if candidates else None)
                         if not target:
-                            raise HTTPException(422, "event_unavailable" if target_id is not None else {"score": "score_zero", "red_card": "red_cards_zero", "yellow_card": "yellow_cards_zero", "team_foul": "event_unavailable", "timeout": "event_unavailable"}[kind])
+                            raise HTTPException(422, "event_unavailable" if target_id is not None else {"score": "score_zero", "red_card": "red_cards_zero", "yellow_card": "yellow_cards_zero", "team_foul": "event_unavailable", "timeout": "event_unavailable", "personal_foul": "event_unavailable"}[kind])
                     else:
-                        target = next((e for e in available if e.id == body.data.get("event_id") and e.payload.get("team") == body.data.get("team")), None)
+                        target = next((e for e in available if e.id == body.data.get("event_id") and e.payload.get("team") == body.data.get("team")
+                                       and (e.payload["type"] == "personal_foul" if body.action == "assign_foul_player" else e.payload["type"] in ("score", "red_card", "yellow_card"))), None)
                         if not target:
                             raise HTTPException(422, "event_unavailable")
                 if body.action == "overtime_start":
@@ -510,8 +545,8 @@ def create_app(db_url=None, secure_cookies=None):
                     raise HTTPException(422, str(exc)) from exc
                 if correcting:
                     payload.update(corrects=target.id, player=target.payload.get("player"))
-                elif body.action == "assign_player":
-                    before = {"player": target.payload.get("player")}
+                elif body.action in ("assign_player", "assign_foul_player"):
+                    before["player"] = target.payload.get("player")
                     target.payload = {**target.payload, "player": payload["player"]}
                 m.state = updated
                 payload["command_id"] = str(body.command_id)
@@ -519,7 +554,7 @@ def create_app(db_url=None, secure_cookies=None):
             m.revision += 1
             db.add(Receipt(id=key, fingerprint=fingerprint))
             db.commit()
-            return state(db, b)
+            return state(db, b, private=True)
 
     @app.websocket("/ws/s/{slug}")
     async def live(ws: WebSocket, slug: str):

@@ -4,7 +4,7 @@ import json
 import re
 from math import isfinite
 from pathlib import Path
-from uuid import UUID
+from uuid import UUID, uuid4
 
 FOOTBALL = json.loads((Path(__file__).parent / "profiles/football.json").read_text())
 
@@ -21,7 +21,7 @@ def initial_state(period_count=None, period_length_min=None, sport="football"):
     period_count = period_count if period_count is not None else (4 if basketball else 2)
     period_length_min = period_length_min if period_length_min is not None else (10 if basketball else 45)
     return {
-        "sport": sport, "team_fouls_enabled": basketball and period_count != 8, "overtime_length_min": 5, "phase": "pre_game", "period": 0,
+        "sport": sport, "foul_mode": ("personal" if period_count == 8 else "team") if basketball else "off", "team_fouls_enabled": basketball and period_count != 8, "overtime_length_min": 5, "phase": "pre_game", "period": 0,
         "period_count": period_count, "period_length_min": period_length_min,
         "clock": {"enabled": True, "direction": "down" if basketball else "up", "running": False,
                   "started_at": None, "elapsed_ms": 0},
@@ -81,6 +81,38 @@ def player_snapshot(state, team, player_id):
     raise RuleError("player_not_found")
 
 
+def foul_mode(state):
+    return state.get("foul_mode", "team" if state.get("team_fouls_enabled") else "off")
+
+
+def foul_player(state, team, data):
+    """Resolve a squad member or a private number-only foul entry."""
+    if data.get("player_id") is not None and data.get("player_number") is not None:
+        raise RuleError("invalid_value")
+    players = state[team].get("squad", []) + state[team].get("foul_players", [])
+    def remember(player):
+        if not any(p["id"] == player["id"] for p in state[team].get("foul_players", [])):
+            state[team].setdefault("foul_players", []).append(deepcopy(player))
+        return deepcopy(player)
+    if data.get("player_id") is not None:
+        for player in players:
+            if player["id"] == data["player_id"]:
+                return remember(player)
+        raise RuleError("player_not_found")
+    if data.get("player_number") is not None:
+        number = data["player_number"]
+        if not isinstance(number, str) or not re.fullmatch(r"[0-9]{1,3}", number.strip()):
+            raise RuleError("invalid_value")
+        number = str(int(number))
+        for player in players:
+            if player["number"] == number:
+                return remember(player)
+        player = {"id": str(uuid4()), "number": number, "name": ""}
+        state[team].setdefault("foul_players", []).append(player)
+        return remember(player)
+    return None
+
+
 def apply(state, action, data, now_ms):
     s = deepcopy(state)
     c = s["clock"]
@@ -92,6 +124,8 @@ def apply(state, action, data, now_ms):
              "period_length_min": s["period_length_min"], "period_count": s["period_count"],
              "occurred_at": now_ms, "sport": s["sport"], "period_duration_ms": period_ms(s)}
     if action in ("score", "score_correction"):
+        if basketball and action == "score" and c["running"]:
+            raise RuleError("clock_running")
         points = data.get("points")
         values = (1, 2, 3) if basketball else (1,)
         if action == "score_correction":
@@ -106,11 +140,22 @@ def apply(state, action, data, now_ms):
     elif action in ("team_foul", "team_foul_correction", "timeout", "timeout_correction"):
         if not basketball or data.get("team") not in ("home", "away"):
             raise RuleError("invalid_value")
-        if action.startswith("team_foul") and not s.get("team_fouls_enabled", True):
+        if action == "team_foul" and foul_mode(s) not in ("team", "both"):
             raise RuleError("invalid_value")
         event.update(team=data["team"], count=-1 if action.endswith("_correction") else 1)
         if action == "timeout" and phase == "period_running":
             c.update(elapsed_ms=round(elapsed(s, now_ms)), running=False, started_at=None)
+    elif action in ("personal_foul", "personal_foul_correction", "assign_foul_player"):
+        team = data.get("team")
+        if not basketball or team not in ("home", "away"):
+            raise RuleError("invalid_value")
+        if action == "personal_foul" and foul_mode(s) not in ("personal", "both"):
+            raise RuleError("invalid_value")
+        event.update(team=team)
+        if action == "personal_foul":
+            event.update(player=foul_player(s, team, data), counts_team=foul_mode(s) == "both")
+        elif action == "assign_foul_player":
+            event.update(player=foul_player(s, team, data), target=data.get("event_id"))
     elif action == "squad":
         team, players = data.get("team"), data.get("players")
         if team not in ("home", "away") or not isinstance(players, list) or len(players) > 40:
@@ -129,6 +174,8 @@ def apply(state, action, data, now_ms):
             jersey, name = jersey.strip(), name.strip()
             if (jersey and not re.fullmatch(r"[0-9]{1,3}", jersey)) or len(name) > 60 or not (jersey or name):
                 raise RuleError("invalid_squad")
+            if basketball and not jersey:
+                raise RuleError("player_number_required")
             jersey = str(int(jersey)) if jersey else ""
             if identifier in ids or (jersey and jersey in numbers):
                 raise RuleError("duplicate_player")
@@ -136,7 +183,20 @@ def apply(state, action, data, now_ms):
             if jersey:
                 numbers.add(jersey)
             cleaned.append({"id": identifier, "number": jersey, "name": name})
+        private = s[team].get("foul_players", [])
+        for player in cleaned:
+            match = next((p for p in private if player["number"] and p["number"] == player["number"]), None)
+            if match:
+                known = {p["id"] for p in s[team].get("squad", []) + private}
+                if player["id"] in known and player["id"] != match["id"]:
+                    raise RuleError("duplicate_player")
+                player["id"] = match["id"]
+        if len({p["id"] for p in cleaned}) != len(cleaned):
+            raise RuleError("duplicate_player")
         s[team]["squad"] = cleaned
+        if private:
+            by_id = {p["id"]: p for p in cleaned}
+            s[team]["foul_players"] = [deepcopy(by_id.get(p["id"], p)) for p in private]
         event.update(team=team)
     elif action == "assign_player":
         if data.get("team") not in ("home", "away"):
@@ -179,13 +239,20 @@ def apply(state, action, data, now_ms):
         c.update(elapsed_ms=max(0, round(elapsed(s, now_ms) + seconds * 1000 * (-1 if basketball else 1))),
                  started_at=now_ms if c["running"] else None)
     elif action == "settings":
-        allowed = {"period_count", "period_length_min", "clock_enabled", "clock_elapsed_ms", "home", "away", "team_fouls_enabled"}
+        allowed = {"period_count", "period_length_min", "clock_enabled", "clock_elapsed_ms", "home", "away", "team_fouls_enabled", "foul_mode"}
         if set(data) - allowed:
             raise RuleError("invalid_value")
+        if "foul_mode" in data:
+            if not basketball or data["foul_mode"] not in ("team", "personal", "both", "off") or "team_fouls_enabled" in data:
+                raise RuleError("invalid_value")
+            s["foul_mode"] = data["foul_mode"]
+            s["team_fouls_enabled"] = data["foul_mode"] in ("team", "both")
         if "team_fouls_enabled" in data:
             if not basketball:
                 raise RuleError("invalid_value")
             s["team_fouls_enabled"] = boolean(data["team_fouls_enabled"])
+            personal = foul_mode(s) in ("personal", "both")
+            s["foul_mode"] = ("both" if personal else "team") if s["team_fouls_enabled"] else ("personal" if personal else "off")
         if "period_count" in data:
             s["period_count"] = integer(data["period_count"], max(1, min(s["period"], s["period_count"]) if basketball else s["period"]), 12)
         if "period_length_min" in data:
@@ -231,6 +298,9 @@ def apply(state, action, data, now_ms):
         raise RuleError("unsupported_action")
     if action in ("score", "red_card", "yellow_card"):
         event["player"] = player_snapshot(s, data["team"], data.get("player_id"))
+        if basketball and action == "score" and s[data["team"]].get("squad"):
+            if not event["player"] or not event["player"].get("number"):
+                raise RuleError("player_number_required")
     normalize_clock(s, now_ms)
     # Store only changed fields: undoing a goal must never rewind a running clock.
     before = {key: deepcopy(value) for key, value in state.items() if s[key] != value}

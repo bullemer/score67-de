@@ -34,7 +34,7 @@ Release blockers requiring external information: SMTP credentials/sender and the
 
 Implemented in v0.5: basketball creation and scheduling, four format presets, countdown start/stop and remaining-time correction, +1/+2/+3 with targeted whole-basket corrections, optional team fouls, total-used timeouts and repeat five-minute overtime on ties. Preparing a period leaves the clock stopped. Expiry stops the countdown without changing phase. Team fouls carry from the last regular period through overtime; timeouts are cumulative without quota enforcement. Spectator/OBS/live directory are sport-aware. Football remains covered by regression tests.
 
-Still open for the full original stage: personal-foul modes and match-long player totals, period-result summaries, basketball score pulse, and real phone/OBS match-day acceptance. No shot clock is planned for this pilot.
+Implemented in v0.6: private personal-foul modes and match-long player totals, stopped-clock-only scoring, a prominent Play/Stop button, and numbered-player scoring matrices. Still open for the full original stage: period-result summaries, basketball score pulse, and real phone/OBS match-day acceptance. No shot clock is planned for this pilot.
 
 Acceptance: complete two-minute periods, repeated start/stop accuracy, countdown expiry without automatic period transition, format-specific foul defaults and period/overtime reset rules.
 

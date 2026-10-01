@@ -642,3 +642,145 @@ def test_basketball_foul_timeout_corrections_and_sport_isolation(system):
     assert command(client, football, 'team_foul', {'team': 'home'}).status_code == 422
     assert command(client, football, 'timeout', {'team': 'home'}).status_code == 422
     assert command(client, football, 'score', {'team': 'home', 'points': 2}).status_code == 422
+
+
+def control_state(client, slug):
+    r = client.get(f'/api/s/{slug}/control-state')
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def test_personal_fouls_both_corrections_undo_and_periods(system):
+    _, client = system
+    slug = client.post('/api/scoreboards', json={'sport': 'basketball', 'period_count': 2}).json()['slug']
+    command(client, slug, 'settings', {'foul_mode': 'both'})
+    command(client, slug, 'period_start')
+    command(client, slug, 'clock_start')
+    original = state(client, slug)
+    key = str(uuid4())
+    s = command(client, slug, 'personal_foul', {'team': 'home', 'player_number': '07'}, original, key).json()
+    player = s['home']['personal_fouls'][0]
+    assert player['number'] == '7' and player['fouls'] == 1
+    assert s['home']['counters']['team_fouls'] == 1 and s['clock']['running']
+    repeated = command(client, slug, 'personal_foul', {'team': 'home', 'player_number': '07'}, original, key).json()
+    assert repeated['home']['personal_fouls'][0]['fouls'] == 1
+    for _ in range(4):
+        s = command(client, slug, 'personal_foul', {'team': 'home', 'player_id': player['id']}).json()
+    assert s['home']['personal_fouls'][0]['fouls'] == 5 and s['home']['counters']['team_fouls'] == 5
+    target = s['events'][-1]['id']
+    s = command(client, slug, 'personal_foul_correction', {'team': 'home', 'event_id': target}).json()
+    assert s['home']['personal_fouls'][0]['fouls'] == 4 and s['home']['counters']['team_fouls'] == 4
+    assert command(client, slug, 'personal_foul_correction', {'team': 'home', 'event_id': target}).status_code == 422
+    s = command(client, slug, 'undo', {'event_id': s['events'][-1]['id']}).json()
+    assert s['home']['personal_fouls'][0]['fouls'] == 5 and s['home']['counters']['team_fouls'] == 5
+    command(client, slug, 'period_end'); command(client, slug, 'period_start')
+    s = control_state(client, slug)
+    assert s['home']['personal_fouls'][0]['fouls'] == 5 and s['home']['counters']['team_fouls'] == 0
+    command(client, slug, 'personal_foul', {'team': 'home', 'player_id': player['id']})
+    command(client, slug, 'period_end'); command(client, slug, 'overtime_start')
+    s = control_state(client, slug)
+    assert s['home']['personal_fouls'][0]['fouls'] == 6 and s['home']['counters']['team_fouls'] == 1
+    old = s['match_id']
+    command(client, slug, 'game_end'); s = command(client, slug, 'new_match').json()
+    assert s['foul_mode'] == 'both' and s['home']['personal_fouls'] == []
+    assert client.get(f'/api/s/{slug}/matches/{old}/control-state').json()['home']['personal_fouls'][0]['fouls'] == 6
+
+
+def test_personal_foul_unknown_reassignment_modes_and_privacy(system):
+    app, client = system
+    slug = client.post('/api/scoreboards', json={'sport': 'basketball', 'period_count': 8}).json()['slug']
+    assert state(client, slug)['foul_mode'] == 'personal'
+    s = command(client, slug, 'personal_foul', {'team': 'away'}).json()
+    event_id = s['events'][-1]['id']
+    assert s['away']['unassigned_fouls'] == 1 and s['away']['personal_fouls'] == []
+    assert s['away']['counters']['team_fouls'] == 0
+    s = command(client, slug, 'assign_foul_player', {'team': 'away', 'event_id': event_id, 'player_number': '23'}).json()
+    assert s['away']['unassigned_fouls'] == 0 and s['away']['personal_fouls'][0]['fouls'] == 1
+    player_id = s['away']['personal_fouls'][0]['id']
+    assert command(client, slug, 'assign_player', {'team': 'away', 'event_id': event_id, 'player_id': player_id}).status_code == 422
+    assert command(client, slug, 'assign_foul_player', {'team': 'home', 'event_id': event_id}).status_code == 422
+    s = command(client, slug, 'undo', {'event_id': s['events'][-1]['id']}).json()
+    assert s['away']['unassigned_fouls'] == 1 and s['away']['personal_fouls'] == []
+    command(client, slug, 'assign_foul_player', {'team': 'away', 'event_id': event_id, 'player_number': '23'})
+    command(client, slug, 'settings', {'foul_mode': 'both'})
+    s = command(client, slug, 'personal_foul', {'team': 'away', 'player_number': '23'}).json()
+    assert s['away']['personal_fouls'][0]['fouls'] == 2 and s['away']['counters']['team_fouls'] == 1
+    command(client, slug, 'period_start')
+    public = TestClient(app)
+    assert public.get(f'/api/s/{slug}/control-state').status_code == 401
+    assert public.get(f'/api/s/{slug}/matches/{s["match_id"]}/control-state').status_code == 401
+    def assert_private(data):
+        import json
+        text = json.dumps(data)
+        for secret in ('personal_foul', 'foul_players', 'assign_foul_player', 'unassigned_fouls', '"23"'):
+            assert secret not in text
+    assert_private(state(client, slug))  # Even the owner's public endpoint is public-only.
+    assert_private(public.get(f'/api/s/{slug}/matches/{s["match_id"]}/state').json())
+    assert_private(public.get('/api/live').json())
+    assert_private(client.get('/api/dashboard').json())
+    with public.websocket_connect(f'/ws/s/{slug}') as ws:
+        assert_private(ws.receive_json())
+    command(client, slug, 'settings', {'foul_mode': 'off'})
+    assert command(client, slug, 'personal_foul', {'team': 'away'}).status_code == 422
+    assert command(client, slug, 'team_foul', {'team': 'away'}).status_code == 422
+    # Turning counting off must not prevent correction of a recorded foul.
+    assert command(client, slug, 'personal_foul_correction', {'team': 'away', 'event_id': event_id}).status_code == 200
+    outsider_slug = create(public)['slug']
+    assert public.get(f'/api/s/{outsider_slug}/matches/{s["match_id"]}/control-state').status_code == 404
+    device = next(a for a in client.get(f'/api/s/{slug}/admins').json() if a['current'])
+    client.delete(f'/api/s/{slug}/admins/{device["id"]}')
+    assert client.get(f'/api/s/{slug}/control-state').status_code == 401
+
+
+def test_personal_foul_identity_roster_edits_and_validation(system):
+    _, client = system
+    slug = client.post('/api/scoreboards', json={'sport': 'basketball', 'period_count': 8}).json()['slug']
+    s = command(client, slug, 'personal_foul', {'team': 'home', 'player_number': '7'}).json()
+    identifier = s['home']['personal_fouls'][0]['id']
+    roster = [{'id': str(uuid4()), 'number': '07', 'name': 'Alex'}]
+    s = command(client, slug, 'squad', {'team': 'home', 'players': roster}).json()
+    assert s['home']['squad'][0]['id'] == identifier
+    assert s['home']['personal_fouls'][0]['fouls'] == 1
+    roster = [{'id': identifier, 'number': '9', 'name': 'Alex updated'}]
+    command(client, slug, 'squad', {'team': 'home', 'players': roster})
+    s = command(client, slug, 'personal_foul', {'team': 'home', 'player_number': '9'}).json()
+    assert len(s['home']['personal_fouls']) == 1 and s['home']['personal_fouls'][0]['fouls'] == 2
+    command(client, slug, 'squad', {'team': 'home', 'players': []})
+    s = command(client, slug, 'personal_foul', {'team': 'home', 'player_id': identifier}).json()
+    assert s['home']['personal_fouls'][0]['fouls'] == 3
+    for data in [{'player_number': ''}, {'player_number': '1000'}, {'player_number': 7}, {'player_id': str(uuid4())}, {'player_id': identifier, 'player_number': '9'}]:
+        assert command(client, slug, 'personal_foul', {'team': 'home', **data}).status_code == 422
+    assert command(client, slug, 'personal_foul', {'team': 'away', 'player_id': identifier}).status_code == 422
+    football = create(client)['slug']
+    assert command(client, football, 'personal_foul', {'team': 'home'}).status_code == 422
+    assert command(client, football, 'settings', {'foul_mode': 'both'}).status_code == 422
+
+
+def test_basketball_scoring_requires_stopped_clock_and_numbered_scorer(system):
+    _, client = system
+    slug = client.post('/api/scoreboards', json={'sport': 'basketball'}).json()['slug']
+    command(client, slug, 'period_start')
+    command(client, slug, 'clock_start')
+    for points in (1, 2, 3):
+        response = command(client, slug, 'score', {'team': 'home', 'points': points})
+        assert response.status_code == 422
+        assert response.json()['error'] == 'clock_running'
+    assert state(client, slug)['home']['score'] == 0
+    command(client, slug, 'clock_stop')
+    s = command(client, slug, 'score', {'team': 'home', 'points': 2}).json()
+    assert s['home']['score'] == 2 and s['events'][-1]['player'] is None
+    player = {'id': str(uuid4()), 'number': '12', 'name': 'Alex'}
+    assert command(client, slug, 'squad', {'team': 'home', 'players': [{**player, 'number': ''}]}).status_code == 422
+    assert command(client, slug, 'squad', {'team': 'home', 'players': [player]}).status_code == 200
+    for player_id in (None, str(uuid4())):
+        assert command(client, slug, 'score', {'team': 'home', 'points': 3, 'player_id': player_id}).status_code == 422
+    s = command(client, slug, 'score', {'team': 'home', 'points': 3, 'player_id': player['id']}).json()
+    assert s['home']['score'] == 5
+    assert s['events'][-1]['player'] == player
+    command(client, slug, 'clock_start')
+    assert command(client, slug, 'score', {'team': 'home', 'points': 1, 'player_id': player['id']}).status_code == 422
+    s = initial_state(sport='basketball')
+    s, _, _ = apply(s, 'period_start', {}, 0)
+    s, _, _ = apply(s, 'clock_start', {}, 0)
+    s, event, _ = apply(s, 'score', {'team': 'home', 'points': 2}, 600001)
+    assert not s['clock']['running'] and event['points'] == 2

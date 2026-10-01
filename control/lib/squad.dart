@@ -3,10 +3,12 @@ import 'package:uuid/uuid.dart';
 
 class SquadDialog extends StatefulWidget {
   final String teamName;
+  final bool requireNumber;
   final List<dynamic> players;
   final String Function(String) t;
   const SquadDialog({
     super.key,
+    this.requireNumber = false,
     required this.teamName,
     required this.players,
     required this.t,
@@ -55,6 +57,10 @@ class _SquadDialogState extends State<SquadDialog> {
     for (final row in rows) {
       var number = row.number.text.trim();
       final name = row.name.text.trim();
+      if (widget.requireNumber && number.isEmpty) {
+        setState(() => error = t('error.player_number_required'));
+        return;
+      }
       if ((number.isNotEmpty && !RegExp(r'^[0-9]{1,3}$').hasMatch(number)) ||
           name.length > 60 ||
           (number.isEmpty && name.isEmpty)) {
@@ -82,7 +88,9 @@ class _SquadDialogState extends State<SquadDialog> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(t('squad.note')),
+          Text(
+            t(widget.requireNumber ? 'basketball.squad_note' : 'squad.note'),
+          ),
           const SizedBox(height: 12),
           if (error.isNotEmpty)
             Text(error, style: const TextStyle(color: Colors.orange)),
