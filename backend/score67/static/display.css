@@ -8,3 +8,6 @@
 .venue{text-align:center;font-size:16px;padding:8px 18px;overflow-wrap:anywhere}.overlay .venue{background:#111a29f2}.venue a{color:#b5c2d4;text-decoration:none}.venue a:hover{text-decoration:underline}
 
 .yellow-card{background:#facc15;border-color:#fff08a}.match-events{width:100%;max-width:900px;padding:20px 5vw;margin:0 auto}.match-events h2{font-size:18px}.match-events ol{list-style:none;padding:0}.match-events li{padding:12px 0;border-bottom:1px solid #344154;line-height:1.5;overflow-wrap:anywhere}.match-events .cancelled{color:#778497;text-decoration:line-through}
+
+.team-label > small {font-size: 18px; font-weight: 600; color: #facc15;}
+html:has(body.overlay){background:transparent}

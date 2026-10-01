@@ -36,3 +36,17 @@ test('delay queues every revision and ignores duplicates and old responses', () 
   assert.equal(q.take(3200).revision, 1);
   assert.equal(q.take(9999), null);
 });
+
+test('basketball countdown keeps full seconds and uses five-minute repeat overtime', () => {
+  const s = {...state(), sport:'basketball', period:4, period_count:4, period_length_min:10, overtime_length_min:5};
+  s.clock.direction = 'down';
+  assert.equal(clockText(s, 1000), '10:00');
+  assert.equal(clockText(s, 1001), '10:00');
+  assert.equal(clockText(s, 2000), '09:59');
+  assert.equal(clockText(s, 601001), '00:00');
+  s.period = 5;
+  assert.equal(clockText(s, 1000), '05:00');
+  assert.equal(periodLabel(s,{}), 'OT1');
+  s.period = 6;
+  assert.equal(periodLabel(s,{}), 'OT2');
+});

@@ -14,6 +14,7 @@ export function saveLanguage(lang) {
   try { localStorage.setItem('score67-language', lang); } catch { /* Optional preference. */ }
 }
 export function periodLabel(s, t) {
+  if (s.sport === 'basketball' && s.period > s.period_count) return `OT${s.period - s.period_count}`;
   if (!s.period || s.period_count === 1) return '';
   if (s.period_count === 2) return t.half.replace('{n}', s.period);
   if (s.period_count === 4) return t.quarter.replace('{n}', s.period);
@@ -23,8 +24,8 @@ export function clockText(s, now) {
   if (!s.clock.enabled) return '';
   const c = s.clock;
   const elapsed = c.elapsed_ms + (c.running ? Math.max(0, now - c.started_at) : 0);
-  const length = s.period_length_min * 60000;
-  if (c.direction === 'down') return mmss(Math.max(0, length - elapsed));
+  const length = (s.period > s.period_count && s.sport === 'basketball' ? s.overtime_length_min || 5 : s.period_length_min) * 60000;
+  if (c.direction === 'down') return mmss(Math.ceil(Math.max(0, length - elapsed) / 1000) * 1000);
   const start = Math.max(0, s.period - 1) * length;
   if (elapsed > length) return `${Math.round((start + length) / 60000)}+${Math.ceil((elapsed - length) / 60000)}`;
   return mmss(start + elapsed);
@@ -52,4 +53,13 @@ export class DelayedStates {
     while (this.queue.length && this.queue[0].due <= now) latest = this.queue.shift().state;
     return latest;
   }
+}
+
+export function eventTime(event, state, words) {
+  if (event.clock_ms == null || !event.period) return periodLabel({...state, period: event.period}, words);
+  if (state.sport === 'basketball') {
+    const length = event.period_duration_ms ?? event.period_length_min * 60000;
+    return `${periodLabel({...state, period: event.period}, words)} ${mmss(Math.ceil(Math.max(0, length - event.clock_ms) / 1000) * 1000)}`.trim();
+  }
+  return `${Math.floor(event.clock_ms / 60000) + (event.period - 1) * event.period_length_min + 1}′`;
 }

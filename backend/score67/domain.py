@@ -9,15 +9,21 @@ from uuid import UUID
 FOOTBALL = json.loads((Path(__file__).parent / "profiles/football.json").read_text())
 
 
+BASKETBALL = json.loads((Path(__file__).parent / "profiles/basketball.json").read_text())
+
+
 class RuleError(Exception):
     pass
 
 
-def initial_state(period_count=2, period_length_min=45):
+def initial_state(period_count=None, period_length_min=None, sport="football"):
+    basketball = sport == "basketball"
+    period_count = period_count if period_count is not None else (4 if basketball else 2)
+    period_length_min = period_length_min if period_length_min is not None else (10 if basketball else 45)
     return {
-        "sport": "football", "phase": "pre_game", "period": 0,
+        "sport": sport, "team_fouls_enabled": basketball and period_count != 8, "overtime_length_min": 5, "phase": "pre_game", "period": 0,
         "period_count": period_count, "period_length_min": period_length_min,
-        "clock": {"enabled": True, "direction": "up", "running": False,
+        "clock": {"enabled": True, "direction": "down" if basketball else "up", "running": False,
                   "started_at": None, "elapsed_ms": 0},
         "home": {"name": "Home", "short": "HOME", "color": "#c8102e"},
         "away": {"name": "Guest", "short": "GUEST", "color": "#1d4ed8"},
@@ -25,9 +31,20 @@ def initial_state(period_count=2, period_length_min=45):
     }
 
 
+def period_ms(state):
+    return (state.get("overtime_length_min", 5) if state["period"] > state["period_count"] else state["period_length_min"]) * 60000
+
+
 def elapsed(state, now_ms):
     c = state["clock"]
-    return c["elapsed_ms"] + (max(0, now_ms - c["started_at"]) if c["running"] else 0)
+    value = c["elapsed_ms"] + (max(0, now_ms - c["started_at"]) if c["running"] else 0)
+    return min(period_ms(state), value) if state["sport"] == "basketball" else value
+
+
+def normalize_clock(state, now_ms):
+    c = state["clock"]
+    if state["sport"] == "basketball" and elapsed(state, now_ms) >= period_ms(state):
+        c.update(elapsed_ms=period_ms(state), running=False, started_at=None)
 
 
 def number(value, low, high):
@@ -67,20 +84,33 @@ def player_snapshot(state, team, player_id):
 def apply(state, action, data, now_ms):
     s = deepcopy(state)
     c = s["clock"]
+    normalize_clock(s, now_ms)
+    basketball = s["sport"] == "basketball"
     phase = s["phase"]
     event = {"type": action, "period": s["period"],
              "clock_ms": round(elapsed(s, now_ms)) if c["enabled"] else None,
              "period_length_min": s["period_length_min"], "period_count": s["period_count"],
-             "occurred_at": now_ms}
+             "occurred_at": now_ms, "sport": s["sport"], "period_duration_ms": period_ms(s)}
     if action in ("score", "score_correction"):
-        points = 1 if action == "score" else -1
-        if data.get("team") not in ("home", "away") or data.get("points") != points or isinstance(data.get("points"), bool):
+        points = data.get("points")
+        values = (1, 2, 3) if basketball else (1,)
+        if action == "score_correction":
+            values = tuple(-v for v in values)
+        if data.get("team") not in ("home", "away") or points not in values or isinstance(points, bool):
             raise RuleError("invalid_score")
-        event.update(team=data["team"], points=points)
+        event.update(team=data["team"], points=int(points))
     elif action in ("red_card", "red_card_correction", "yellow_card", "yellow_card_correction"):
-        if data.get("team") not in ("home", "away"):
+        if basketball or data.get("team") not in ("home", "away"):
             raise RuleError("invalid_value")
         event.update(team=data["team"], cards=-1 if action.endswith("_correction") else 1)
+    elif action in ("team_foul", "team_foul_correction", "timeout", "timeout_correction"):
+        if not basketball or data.get("team") not in ("home", "away"):
+            raise RuleError("invalid_value")
+        if action.startswith("team_foul") and not s.get("team_fouls_enabled", True):
+            raise RuleError("invalid_value")
+        event.update(team=data["team"], count=-1 if action.endswith("_correction") else 1)
+        if action == "timeout" and phase == "period_running":
+            c.update(elapsed_ms=round(elapsed(s, now_ms)), running=False, started_at=None)
     elif action == "squad":
         team, players = data.get("team"), data.get("players")
         if team not in ("home", "away") or not isinstance(players, list) or len(players) > 40:
@@ -112,32 +142,52 @@ def apply(state, action, data, now_ms):
         if data.get("team") not in ("home", "away"):
             raise RuleError("invalid_value")
         event.update(team=data["team"], player=player_snapshot(s, data["team"], data.get("player_id")), target=data.get("event_id"))
-    elif action == "period_start":
-        if phase not in ("pre_game", "break") or s["period"] >= s["period_count"]:
+    elif action in ("period_start", "overtime_start"):
+        overtime = action == "overtime_start"
+        if overtime and (not basketball or phase != "break" or s["period"] < s["period_count"]):
+            raise RuleError("invalid_transition")
+        if not overtime and (phase not in ("pre_game", "break") or s["period"] >= s["period_count"]):
             raise RuleError("invalid_transition")
         s.update(phase="period_running", period=s["period"] + 1)
-        c.update(elapsed_ms=0, running=c["enabled"], started_at=now_ms if c["enabled"] else None)
+        c.update(elapsed_ms=0, running=c["enabled"] and not basketball, started_at=now_ms if c["enabled"] and not basketball else None)
         event["period"] = s["period"]
         event["clock_ms"] = 0 if c["enabled"] else None
+        event["period_duration_ms"] = period_ms(s)
     elif action in ("period_end", "game_end"):
-        if action == "period_end" and (phase != "period_running" or s["period"] >= s["period_count"]):
+        if action == "period_end" and (phase != "period_running" or (not basketball and s["period"] >= s["period_count"])):
             raise RuleError("invalid_transition")
         if action == "game_end" and phase == "finished":
             raise RuleError("invalid_transition")
         c.update(elapsed_ms=round(elapsed(s, now_ms)), running=False, started_at=None)
         s["phase"] = "finished" if action == "game_end" else "break"
+    elif action in ("clock_start", "clock_stop", "clock_set"):
+        if not basketball or not c["enabled"] or phase == "finished":
+            raise RuleError("invalid_transition")
+        if action == "clock_set":
+            remaining = integer(data.get("remaining_ms"), 0, period_ms(s))
+            c.update(elapsed_ms=period_ms(s) - remaining, started_at=now_ms if c["running"] else None)
+        else:
+            if phase != "period_running":
+                raise RuleError("invalid_transition")
+            value = round(elapsed(s, now_ms))
+            running = action == "clock_start" and value < period_ms(s)
+            c.update(elapsed_ms=value, running=running, started_at=now_ms if running else None)
     elif action == "clock_adjust":
         if not c["enabled"]:
             raise RuleError("clock_disabled")
         seconds = number(data.get("seconds"), -3600, 3600)
-        c.update(elapsed_ms=max(0, round(elapsed(s, now_ms) + seconds * 1000)),
+        c.update(elapsed_ms=max(0, round(elapsed(s, now_ms) + seconds * 1000 * (-1 if basketball else 1))),
                  started_at=now_ms if c["running"] else None)
     elif action == "settings":
-        allowed = {"period_count", "period_length_min", "clock_enabled", "clock_elapsed_ms", "home", "away"}
+        allowed = {"period_count", "period_length_min", "clock_enabled", "clock_elapsed_ms", "home", "away", "team_fouls_enabled"}
         if set(data) - allowed:
             raise RuleError("invalid_value")
+        if "team_fouls_enabled" in data:
+            if not basketball:
+                raise RuleError("invalid_value")
+            s["team_fouls_enabled"] = boolean(data["team_fouls_enabled"])
         if "period_count" in data:
-            s["period_count"] = integer(data["period_count"], max(1, s["period"]), 12)
+            s["period_count"] = integer(data["period_count"], max(1, min(s["period"], s["period_count"]) if basketball else s["period"]), 12)
         if "period_length_min" in data:
             s["period_length_min"] = integer(data["period_length_min"], 1, 60)
         for team in ("home", "away"):
@@ -158,8 +208,8 @@ def apply(state, action, data, now_ms):
             c["elapsed_ms"] = round(elapsed(s, now_ms))
             if enabled and not c["enabled"] and phase == "period_running" and "clock_elapsed_ms" not in data:
                 raise RuleError("clock_value_required")
-            c.update(enabled=enabled, running=enabled and phase == "period_running",
-                     started_at=now_ms if enabled and phase == "period_running" else None)
+            c.update(enabled=enabled, running=enabled and phase == "period_running" and not basketball,
+                     started_at=now_ms if enabled and phase == "period_running" and not basketball else None)
         if "clock_elapsed_ms" in data:
             c.update(elapsed_ms=integer(data["clock_elapsed_ms"], 0, 86400000),
                      started_at=now_ms if c["running"] else None)
@@ -181,6 +231,7 @@ def apply(state, action, data, now_ms):
         raise RuleError("unsupported_action")
     if action in ("score", "red_card", "yellow_card"):
         event["player"] = player_snapshot(s, data["team"], data.get("player_id"))
+    normalize_clock(s, now_ms)
     # Store only changed fields: undoing a goal must never rewind a running clock.
     before = {key: deepcopy(value) for key, value in state.items() if s[key] != value}
     return s, event, before

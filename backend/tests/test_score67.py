@@ -143,7 +143,7 @@ def test_csrf_body_limits_cookie_flags_and_validation(system):
     assert client.post('/api/scoreboards', json={}, headers={'Origin': 'https://evil.example'}).status_code == 403
     assert client.post('/api/scoreboards', content='{}', headers={'Content-Type': 'text/plain'}).status_code == 415
     assert client.post('/api/scoreboards', json={'name': 'x' * 20000}).status_code == 413
-    assert client.post('/api/scoreboards', json={'sport': 'basketball'}).status_code == 422
+    assert client.post('/api/scoreboards', json={'sport': 'unsupported'}).status_code == 422
     assert client.post('/api/scoreboards', json={'recovery_email': 'not-supported@example.com'}).status_code == 422
 
 
@@ -417,7 +417,7 @@ def test_public_live_directory_only_running_active_games(system):
     assert games[running]['home']['score'] == 1
     assert games[running]['away']['counters']['red_cards'] == 1
     assert games[paused]['phase'] == 'break'
-    assert set(games[running]) == {'scoreboard', 'match_id', 'home', 'away', 'clock', 'phase', 'period', 'period_count', 'period_length_min', 'server_now', 'location'}
+    assert set(games[running]) == {'sport', 'team_fouls_enabled', 'overtime_length_min', 'scoreboard', 'match_id', 'home', 'away', 'clock', 'phase', 'period', 'period_count', 'period_length_min', 'server_now', 'location'}
     command(client, running, 'game_end')
     assert [g['scoreboard'] for g in public.get('/api/live').json()['games']] == [paused]
     command(client, paused, 'game_end')
@@ -523,3 +523,122 @@ def test_squad_validation_and_unassigned_yellow_cards(system):
     cleared = command(client, slug, 'yellow_card_correction', {'team':'home'}).json()
     assert cleared['home']['counters']['yellow_cards'] == 0
     assert command(client, slug, 'yellow_card_correction', {'team':'home'}).status_code == 422
+
+
+def test_basketball_ten_stops_expiry_and_remaining_correction():
+    s = initial_state(sport='basketball')
+    s, _, _ = apply(s, 'period_start', {}, 1000)
+    assert s['period'] == 1 and not s['clock']['running']
+    now = 1000
+    for _ in range(10):
+        s, _, _ = apply(s, 'clock_start', {}, now)
+        s, _, _ = apply(s, 'clock_stop', {}, now + 1234)
+        now += 10000
+    assert elapsed(s, now + 999999) == 12340
+    s, _, _ = apply(s, 'clock_set', {'remaining_ms': 271000}, now)
+    assert elapsed(s, now) == 329000 and not s['clock']['running']
+    s, _, _ = apply(s, 'clock_start', {}, now)
+    s, event, _ = apply(s, 'score', {'team': 'home', 'points': 3}, now + 300000)
+    assert s['phase'] == 'period_running' and not s['clock']['running']
+    assert event['clock_ms'] == 600000
+    s, _, _ = apply(s, 'clock_adjust', {'seconds': 10}, now + 301000)
+    assert elapsed(s, now + 301000) == 590000
+    assert not s['clock']['running']
+    with pytest.raises(RuleError):
+        apply(s, 'clock_set', {'remaining_ms': 600001}, now)
+    with pytest.raises(RuleError):
+        apply(initial_state(), 'clock_start', {}, now)
+
+
+@pytest.mark.parametrize('periods,minutes', [(4, 10), (4, 12), (8, 5), (2, 20)])
+def test_basketball_formats_fouls_overtime_and_new_game(system, periods, minutes):
+    _, client = system
+    response = client.post('/api/scoreboards', json={'sport': 'basketball', 'period_count': periods, 'period_length_min': minutes})
+    assert response.status_code == 201
+    slug = response.json()['slug']
+    s = state(client, slug)
+    assert s['sport'] == 'basketball' and s['clock']['direction'] == 'down'
+    assert s['team_fouls_enabled'] == (periods != 8)
+    command(client, slug, 'settings', {'team_fouls_enabled': True})
+    for period in range(1, periods + 1):
+        s = command(client, slug, 'period_start').json()
+        assert s['period'] == period and s['clock']['elapsed_ms'] == 0
+        assert s['home']['counters']['team_fouls'] == 0
+        assert not s['clock']['running']
+        command(client, slug, 'clock_start')
+        command(client, slug, 'team_foul', {'team': 'home'})
+        s = command(client, slug, 'timeout', {'team': 'home'}).json()
+        assert not s['clock']['running']
+        assert s['home']['counters']['timeouts'] == period
+        assert s['home']['counters']['team_fouls'] == 1
+        assert command(client, slug, 'period_end').json()['phase'] == 'break'
+    assert command(client, slug, 'period_start').status_code == 422
+    for overtime in (1, 2):
+        s = command(client, slug, 'overtime_start').json()
+        assert s['period'] == periods + overtime and s['clock']['elapsed_ms'] == 0
+        assert s['home']['counters']['team_fouls'] == overtime
+        assert s['events'][-1]['period_duration_ms'] == 300000
+        command(client, slug, 'team_foul', {'team': 'home'})
+        assert command(client, slug, 'clock_set', {'remaining_ms': 300001}).status_code == 422
+        command(client, slug, 'period_end')
+    command(client, slug, 'score', {'team': 'home', 'points': 2})
+    assert command(client, slug, 'overtime_start').status_code == 422
+    command(client, slug, 'game_end')
+    s = command(client, slug, 'new_match').json()
+    assert s['sport'] == 'basketball' and s['period_count'] == periods
+    assert s['period_length_min'] == minutes and s['home']['score'] == 0
+    assert s['home']['counters']['team_fouls'] == 0
+
+
+def test_basketball_score_corrections_retry_undo_and_scheduling(system):
+    _, client = system
+    slug = client.post('/api/scoreboards', json={'sport': 'basketball'}).json()['slug']
+    s = state(client, slug)
+    assert (s['period_count'], s['period_length_min']) == (4, 10)
+    for points in (1, 2, 3):
+        s = command(client, slug, 'score', {'team': 'home', 'points': points}).json()
+    assert s['home']['score'] == 6
+    target = s['events'][-1]['id']
+    key = str(uuid4())
+    original = s
+    s = command(client, slug, 'score_correction', {'team': 'home', 'event_id': target, 'points': -3}, original, key).json()
+    assert s['home']['score'] == 3
+    assert command(client, slug, 'score_correction', {'team': 'home', 'event_id': target, 'points': -3}, original, key).json()['home']['score'] == 3
+    assert command(client, slug, 'score_correction', {'team': 'home', 'event_id': target}).status_code == 422
+    s = command(client, slug, 'undo', {'event_id': s['events'][-1]['id']}).json()
+    assert s['home']['score'] == 6
+    assert command(client, slug, 'score_correction', {'team': 'home', 'event_id': target, 'points': -1}).status_code == 422
+    assert command(client, slug, 'score', {'team': 'home', 'points': 4}).status_code == 422
+    assert command(client, slug, 'red_card', {'team': 'home'}).status_code == 422
+    scheduled = client.post(f'/api/s/{slug}/matches', json={
+        'command_id': str(uuid4()), 'sport': 'basketball', 'home': 'Sunday Home', 'away': 'Sunday Guest',
+        'scheduled_at': 4102444800000, 'period_count': 4, 'period_length_min': 12})
+    assert scheduled.status_code == 201
+    game = client.get(f'/api/s/{slug}/matches/{scheduled.json()["match_id"]}/state').json()
+    assert game['sport'] == 'basketball' and game['phase'] == 'pre_game' and game['period_length_min'] == 12
+    games = client.get('/api/dashboard').json()['boards'][0]['matches']
+    assert all(g['sport'] == 'basketball' for g in games)
+    command(client, slug, 'period_start')
+    assert client.get('/api/live').json()['games'][0]['sport'] == 'basketball'
+
+
+def test_basketball_foul_timeout_corrections_and_sport_isolation(system):
+    _, client = system
+    slug = client.post('/api/scoreboards', json={'sport': 'basketball'}).json()['slug']
+    command(client, slug, 'period_start')
+    command(client, slug, 'clock_start')
+    for kind, counter in [('team_foul', 'team_fouls'), ('timeout', 'timeouts')]:
+        s = command(client, slug, kind, {'team': 'away'}).json()
+        assert s['away']['counters'][counter] == 1
+        s = command(client, slug, kind + '_correction', {'team': 'away'}).json()
+        assert s['away']['counters'][counter] == 0
+        assert command(client, slug, kind + '_correction', {'team': 'away'}).status_code == 422
+        s = command(client, slug, 'undo', {'event_id': s['events'][-1]['id']}).json()
+        assert s['away']['counters'][counter] == 1
+    assert not s['clock']['running']
+    command(client, slug, 'settings', {'team_fouls_enabled': False})
+    assert command(client, slug, 'team_foul', {'team': 'away'}).status_code == 422
+    football = create(client)['slug']
+    assert command(client, football, 'team_foul', {'team': 'home'}).status_code == 422
+    assert command(client, football, 'timeout', {'team': 'home'}).status_code == 422
+    assert command(client, football, 'score', {'team': 'home', 'points': 2}).status_code == 422

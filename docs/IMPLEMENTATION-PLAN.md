@@ -30,9 +30,11 @@ Requested usability extension implemented: device dashboard with game history/st
 
 Release blockers requiring external information: SMTP credentials/sender and the operator/legal content. These do not block local development. Server and GitHub deployment access were subsequently verified for the requested production deployment.
 
-## Increment 2 — basketball, before roster polish
+## Increment 2 — basketball pilot implemented; full stage still open
 
-Introduce the profile, countdown state transitions, start/stop and direct remaining-time corrections. Cover all four requested formats, per-period team fouls, match-long personal fouls (number-only/unknown supported), timeouts and repeat overtime. Specify overtime team-foul carry-over and ties before implementing them. Add the basketball compact overlay. Football tests remain regression checks.
+Implemented in v0.5: basketball creation and scheduling, four format presets, countdown start/stop and remaining-time correction, +1/+2/+3 with targeted whole-basket corrections, optional team fouls, total-used timeouts and repeat five-minute overtime on ties. Preparing a period leaves the clock stopped. Expiry stops the countdown without changing phase. Team fouls carry from the last regular period through overtime; timeouts are cumulative without quota enforcement. Spectator/OBS/live directory are sport-aware. Football remains covered by regression tests.
+
+Still open for the full original stage: personal-foul modes and match-long player totals, period-result summaries, basketball score pulse, and real phone/OBS match-day acceptance. No shot clock is planned for this pilot.
 
 Acceptance: complete two-minute periods, repeated start/stop accuracy, countdown expiry without automatic period transition, format-specific foul defaults and period/overtime reset rules.
 

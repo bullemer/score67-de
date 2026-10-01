@@ -16,7 +16,7 @@ function render() {
     card.className = 'live-game';
     card.href = `/s/${encodeURIComponent(game.scoreboard)}?lang=${lang}`;
     const meta = document.createElement('div'); meta.className = 'live-meta';
-    meta.append(textNode('span', words[game.phase === 'break' ? 'break' : 'live.now']));
+    meta.append(textNode('span', `${words[game.sport || 'football']} · ${words[game.phase === 'break' ? 'break' : 'live.now']}`));
     const clock = textNode('span', '', 'live-clock'); clock.dataset.match = game.match_id; meta.append(clock);
     card.append(meta);
     for (const side of ['home', 'away']) {

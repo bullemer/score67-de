@@ -1,6 +1,6 @@
 # Score67
 
-A small, self-hosted scoreboard for sports streams. This checkout contains the **first football implementation increment**, deployed directly from `main`; it is not the complete specification.
+A small, self-hosted scoreboard for sports streams. This checkout contains the **football MVP and basketball pilot**, deployed directly from `main`; it is not the complete specification.
 
 Original requirements remain unchanged in `Spezifikation Scoreboard für Sport-Livestreams.md` and `Score67-Designs-und-Vorlagen.docx`.
 
@@ -31,7 +31,7 @@ The development database is `backend/data/score67.db` when started from `backend
 ## Included
 
 - Optional venue with browser/mobile geolocation, draggable map pin, coordinate/Google Maps link import, and a private-by-default visibility switch. Edit/remove it in the controller.
-- Independent football scoreboards; automatic timestamp labels, random public links and six-digit PINs.
+- Independent football and basketball scoreboards; automatic timestamp labels, random public links and six-digit PINs.
 - Hashed device cookies, additional devices, revocation, PIN rotation and persistent rate limits.
 - Flutter phone controller; Jinja/HTML landing page, spectator page and transparent OBS overlay.
 - Home/Guest defaults, editable names and abbreviations, 1–12 periods of 1–60 minutes, optional clock.
@@ -49,11 +49,17 @@ The development database is `backend/data/score67.db` when started from `backend
 
 The five-scoreboards-per-hour creation cap is disabled during testing. `SCOREBOARD_CREATE_LIMIT=0` (default) keeps it off; a positive value enables an hourly IP limit later. PIN protection remains enabled.
 
+## Basketball pilot (v0.5)
+
+Choose Basketball when creating a scoreboard or preparing a game in the dashboard. Presets: 4 × 10 (default), 4 × 12, 8 × 5 and 2 × 20; custom lengths/counts remain editable in match settings. Games remain planned until the operator prepares the first period. Preparing a period resets its countdown and leaves it stopped; use Start clock at the referee’s signal. At zero the clock stops without ending the period automatically. Set remaining time uses MM:SS.
+
+Scoring supports +1/+2/+3 and optional player attribution. Remove event reverses the full selected basket; add a replacement if its value was wrong. Team fouls reset between regular periods and carry from the last regular period through repeated five-minute overtime. Overtime is offered after ending the final period with tied scores. Timeouts stop the clock and count total used across the game; competition-specific quotas are not enforced. Team fouls can be hidden/disabled and are off by default for 8 × 5. Personal fouls, automatic player disqualification, shot clock and period-result summaries are not included.
+
 ## Not yet included
 
-Email recovery, QR codes, basketball controls/rules, reusable team rosters/lineups, goal banners, match export, custom branding and additional templates. The initial template styling is an interpretation of the textual design document, which contains no visual mockups.
+Email recovery, QR codes, basketball personal fouls and period summaries, reusable team rosters/lineups, goal banners, match export, custom branding and additional templates. The initial template styling is an interpretation of the textual design document, which contains no visual mockups.
 
-Production uses the current football increment. Email recovery, the remaining stage-1 acceptance criteria, mobile/OBS field testing and operator/legal pages are still outstanding. Database migrations and PostgreSQL integration checks are part of every deployment.
+Production supports football and a focused basketball pilot. Email recovery, the remaining stage-1 acceptance criteria, mobile/OBS field testing and operator/legal pages are still outstanding. Database migrations and PostgreSQL integration checks are part of every deployment.
 
 ## Checks
 

@@ -174,6 +174,11 @@ class _DashboardState extends State<Dashboard> {
   Future<void> newGame(dynamic board) async {
     final home = TextEditingController(text: 'Home'),
         away = TextEditingController(text: 'Guest');
+    final games = board['matches'] as List;
+    final previous = games.isEmpty ? null : games.first;
+    String sport = previous?['sport'] ?? 'football';
+    int periods = previous?['period_count'] ?? widget.periods;
+    int minutes = previous?['period_length_min'] ?? widget.minutes;
     bool scheduled = false;
     DateTime when = DateTime.now().add(const Duration(days: 1));
     String validation = '';
@@ -188,6 +193,41 @@ class _DashboardState extends State<Dashboard> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  DropdownButtonFormField<String>(
+                    initialValue: sport,
+                    items: [
+                      for (final value in ['football', 'basketball'])
+                        DropdownMenuItem(value: value, child: Text(t(value))),
+                    ],
+                    onChanged: (value) => update(() {
+                      sport = value!;
+                      periods = sport == 'basketball' ? 4 : widget.periods;
+                      minutes = sport == 'basketball' ? 10 : widget.minutes;
+                    }),
+                  ),
+                  if (sport == 'basketball')
+                    Wrap(
+                      spacing: 8,
+                      children: [
+                        for (final format in [
+                          [4, 10],
+                          [4, 12],
+                          [8, 5],
+                          [2, 20],
+                        ])
+                          ChoiceChip(
+                            label: Text('${format[0]} × ${format[1]}'),
+                            selected:
+                                periods == format[0] && minutes == format[1],
+                            onSelected: (_) => update(() {
+                              periods = format[0];
+                              minutes = format[1];
+                            }),
+                          ),
+                      ],
+                    ),
+                  if (sport == 'basketball') Text(t('basketball.pilot')),
+                  const SizedBox(height: 12),
                   TextField(
                     controller: home,
                     maxLength: 60,
@@ -223,7 +263,7 @@ class _DashboardState extends State<Dashboard> {
                     ),
                   if (scheduled)
                     Text(t('time.local'), style: const TextStyle(fontSize: 14)),
-                  Text('${widget.periods} × ${widget.minutes} min'),
+                  Text('$periods × $minutes min'),
                   if (validation.isNotEmpty)
                     Text(
                       validation,
@@ -259,8 +299,9 @@ class _DashboardState extends State<Dashboard> {
                   'scheduled_at': scheduled
                       ? when.millisecondsSinceEpoch
                       : null,
-                  'period_count': widget.periods,
-                  'period_length_min': widget.minutes,
+                  'sport': sport,
+                  'period_count': periods,
+                  'period_length_min': minutes,
                 };
                 Navigator.pop(context);
                 write('/api/s/${board['slug']}/matches', body);
@@ -312,7 +353,7 @@ class _DashboardState extends State<Dashboard> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            t('games.$status'),
+            '${t(game['sport'] ?? 'football')} · ${t('games.$status')}',
             style: TextStyle(
               color: status == 'running'
                   ? const Color(0xffb6f36e)

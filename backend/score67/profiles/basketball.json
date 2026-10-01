@@ -1,0 +1,37 @@
+{
+  "id": "basketball",
+  "clock_direction": "down",
+  "clock_stoppable": true,
+  "score_values": [
+    1,
+    2,
+    3
+  ],
+  "default_format": {
+    "period_count": 4,
+    "period_length_min": 10
+  },
+  "formats": [
+    {
+      "period_count": 4,
+      "period_length_min": 10
+    },
+    {
+      "period_count": 4,
+      "period_length_min": 12
+    },
+    {
+      "period_count": 8,
+      "period_length_min": 5
+    },
+    {
+      "period_count": 2,
+      "period_length_min": 20
+    }
+  ],
+  "overtime_length_min": 5,
+  "counters": [
+    "team_fouls",
+    "timeouts"
+  ]
+}

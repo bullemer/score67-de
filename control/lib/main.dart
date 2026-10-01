@@ -46,6 +46,15 @@ class _Score67State extends State<Score67> {
   String lang = 'en', slug = '', pin = '', error = '';
   bool dashboardPage = false;
   int defaultPeriods = 2, defaultMinutes = 45;
+  String draftSport = 'football';
+  int draftPeriods = 4, draftMinutes = 10;
+  bool get basketball => state['sport'] == 'basketball';
+  int get periodLengthMs =>
+      ((state['period'] > state['period_count']
+              ? state['overtime_length_min'] ?? 5
+              : state['period_length_min'])
+          as int) *
+      60000;
   bool ready = false,
       admin = false,
       busy = false,
@@ -420,10 +429,14 @@ class _Score67State extends State<Score67> {
         '/api/scoreboards',
         method: 'POST',
         body: {
-          'sport': 'football',
+          'sport': draftSport,
           'language': lang,
-          'period_count': defaultPeriods,
-          'period_length_min': defaultMinutes,
+          'period_count': draftSport == 'basketball'
+              ? draftPeriods
+              : defaultPeriods,
+          'period_length_min': draftSport == 'basketball'
+              ? draftMinutes
+              : defaultMinutes,
           'location': draftLocation,
         },
       );
@@ -462,6 +475,9 @@ class _Score67State extends State<Score67> {
   String periodLabel([Map<String, dynamic>? value]) {
     final s = value ?? state;
     final period = s['period'] ?? 0, count = s['period_count'];
+    if (period > count && (s['sport'] ?? state['sport']) == 'basketball') {
+      return 'OT${period - count}';
+    }
     if (period == 0 || count == 1) return '';
     if (count == 2) return t('half').replaceAll('{n}', '$period');
     if (count == 4) return t('quarter').replaceAll('{n}', '$period');
@@ -478,7 +494,8 @@ class _Score67State extends State<Score67> {
 
   String clockText() {
     if (state['clock']['enabled'] != true) return '';
-    final length = (state['period_length_min'] as int) * 60000;
+    final length = periodLengthMs;
+    if (basketball) return mmss((length - elapsed()).clamp(0, length));
     final start = ((state['period'] as int) - 1).clamp(0, 12) * length;
     final e = elapsed();
     if (e > length) {
@@ -488,17 +505,24 @@ class _Score67State extends State<Score67> {
     return '${(seconds ~/ 60).toString().padLeft(2, '0')}:${(seconds % 60).toString().padLeft(2, '0')}';
   }
 
+  String mmss(int ms) {
+    final seconds = (ms / 1000).ceil();
+    return '${(seconds ~/ 60).toString().padLeft(2, '0')}:${(seconds % 60).toString().padLeft(2, '0')}';
+  }
+
   String eventText(dynamic e) {
     final team = e['team'];
     String stamp = periodLabel(Map<String, dynamic>.from(e));
     if (e['clock_ms'] != null && e['period'] > 0) {
       final length = e['period_length_min'] * 60000;
       final ms = e['clock_ms'];
-      stamp = ms > length
+      stamp = basketball
+          ? '$stamp ${mmss(((e['period_duration_ms'] ?? length) - ms).toInt().clamp(0, 3600000))}'
+          : ms > length
           ? '${e['period'] * e['period_length_min']}+${((ms - length) / 60000).ceil()}'
           : '${((e['period'] - 1) * length + ms) ~/ 60000 + 1}′';
     }
-    return '${t(e['type'])}${team == null ? '' : ' · ${state[team]['name']}'}${e['player'] == null ? '' : ' · ${playerLabel(e['player'])}'}${stamp.isEmpty ? '' : ' · $stamp'}';
+    return '${basketball && e['type'].toString().startsWith('score') ? '${e['points'] > 0 ? '+' : ''}${e['points']}' : t(e['type'])}${team == null ? '' : ' · ${state[team]['name']}'}${e['player'] == null ? '' : ' · ${playerLabel(e['player'])}'}${stamp.isEmpty ? '' : ' · $stamp'}';
   }
 
   Future<void> copy(String value) async {
@@ -563,6 +587,7 @@ class _Score67State extends State<Score67> {
     final delay = TextEditingController(
       text: '${state['overlay']['delay_ms']}',
     );
+    bool teamFouls = state['team_fouls_enabled'] == true;
     bool clock = state['clock']['enabled'],
         auto = state['overlay']['auto_big'],
         right = state['overlay']['position'] == 'top_right';
@@ -585,18 +610,39 @@ class _Score67State extends State<Score67> {
                   Wrap(
                     spacing: 8,
                     children: [
-                      action(t('format.halves'), () {
-                        count.text = '2';
-                        length.text = '45';
-                      }),
-                      action(t('format.mini'), () {
-                        count.text = '1';
-                        length.text = '10';
-                      }),
+                      if (basketball)
+                        for (final format in [
+                          [4, 10],
+                          [4, 12],
+                          [8, 5],
+                          [2, 20],
+                        ])
+                          action('${format[0]} × ${format[1]}', () {
+                            count.text = '${format[0]}';
+                            length.text = '${format[1]}';
+                            update(() => teamFouls = format[0] != 8);
+                          }),
+                      if (!basketball)
+                        action(t('format.halves'), () {
+                          count.text = '2';
+                          length.text = '45';
+                        }),
+                      if (!basketball)
+                        action(t('format.mini'), () {
+                          count.text = '1';
+                          length.text = '10';
+                        }),
                     ],
                   ),
                   field(t('period_count'), count, numeric: true),
                   field(t('period_length'), length, numeric: true),
+                  if (basketball)
+                    SwitchListTile(
+                      title: Text(t('team_fouls')),
+                      value: teamFouls,
+                      onChanged: (v) => update(() => teamFouls = v),
+                    ),
+                  if (basketball) Text(t('basketball.pilot')),
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
                     title: Text(t('clock_enabled')),
@@ -645,7 +691,13 @@ class _Score67State extends State<Score67> {
                     e == null ||
                     c < 1 ||
                     c > 12 ||
-                    c < state['period'] ||
+                    c <
+                        (basketball
+                            ? (state['period'] as int).clamp(
+                                0,
+                                state['period_count'] as int,
+                              )
+                            : state['period']) ||
                     l < 1 ||
                     l > 60 ||
                     d < 0 ||
@@ -665,6 +717,7 @@ class _Score67State extends State<Score67> {
                   'away': {'name': away.text, 'short': awayShort.text},
                   'period_count': c,
                   'period_length_min': l,
+                  if (basketball) 'team_fouls_enabled': teamFouls,
                 };
                 if (clock != state['clock']['enabled']) {
                   payload['clock_enabled'] = clock;
@@ -997,7 +1050,40 @@ class _Score67State extends State<Score67> {
   }
 
   Widget createView() => section(t('create'), [
-    Text(t('football')),
+    Wrap(
+      spacing: 12,
+      children: [
+        for (final sport in ['football', 'basketball'])
+          ChoiceChip(
+            label: Text(t(sport)),
+            selected: draftSport == sport,
+            onSelected: busy ? null : (_) => setState(() => draftSport = sport),
+          ),
+      ],
+    ),
+    if (draftSport == 'basketball') ...[
+      const SizedBox(height: 12),
+      Wrap(
+        spacing: 8,
+        children: [
+          for (final format in [
+            [4, 10],
+            [4, 12],
+            [8, 5],
+            [2, 20],
+          ])
+            ChoiceChip(
+              label: Text('${format[0]} × ${format[1]} min'),
+              selected: draftPeriods == format[0] && draftMinutes == format[1],
+              onSelected: (_) => setState(() {
+                draftPeriods = format[0];
+                draftMinutes = format[1];
+              }),
+            ),
+        ],
+      ),
+      Text(t('basketball.pilot')),
+    ],
     const SizedBox(height: 12),
     Text(t('create.note')),
     const SizedBox(height: 16),
@@ -1243,12 +1329,17 @@ class _Score67State extends State<Score67> {
     await command('squad', {'team': team, 'players': players});
   }
 
-  Future<void> playerAction(String action, String team, {dynamic event}) async {
+  Future<void> playerAction(
+    String action,
+    String team, {
+    dynamic event,
+    int points = 1,
+  }) async {
     if (event == null) {
       // Count immediately; selecting or dismissing a player must never delay the score.
       if (!await command(action, {
         'team': team,
-        if (action == 'score') 'points': 1,
+        if (action == 'score') 'points': points,
       })) {
         return;
       }
@@ -1317,7 +1408,8 @@ class _Score67State extends State<Score67> {
         .toList();
     final revision = state['revision'], match = state['match_id'];
     int? target;
-    if (candidates.any((e) => e['player'] != null)) {
+    if ((basketball && kind == 'score') ||
+        candidates.any((e) => e['player'] != null)) {
       target = await showDialog<int>(
         context: navigator.currentContext!,
         builder: (context) => SimpleDialog(
@@ -1346,7 +1438,13 @@ class _Score67State extends State<Score67> {
     }
     await command('${kind}_correction', {
       'team': team,
-      if (kind == 'score') 'points': -1,
+      if (kind == 'score')
+        'points':
+            -(candidates.firstWhere(
+                  (e) => e['id'] == target,
+                  orElse: () => candidates.last,
+                )['points']
+                as int),
       'event_id': target,
     });
   }
@@ -1444,42 +1542,161 @@ class _Score67State extends State<Score67> {
                 height: 1.4,
               ),
             ),
-            FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: color,
-                foregroundColor: color.computeLuminance() > .179
-                    ? Colors.black
-                    : Colors.white,
+            if (basketball)
+              for (final points in [1, 2, 3])
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: FilledButton(
+                    onPressed: canWrite
+                        ? () => playerAction('score', team, points: points)
+                        : null,
+                    child: Text('+$points'),
+                  ),
+                ),
+            if (!basketball)
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: color,
+                  foregroundColor: color.computeLuminance() > .179
+                      ? Colors.black
+                      : Colors.white,
+                ),
+                onPressed: canWrite ? () => playerAction('score', team) : null,
+                child: Text('+ ${t('score')}'),
               ),
-              onPressed: canWrite ? () => playerAction('score', team) : null,
-              child: Text('+ ${t('score')}'),
-            ),
             const SizedBox(height: 8),
             OutlinedButton(
               onPressed: canWrite && s['score'] > 0
                   ? () => correctEvent('score', team)
                   : null,
-              child: Text('− ${t('score')}'),
+              child: Text(
+                basketball ? t('basketball.correct') : '− ${t('score')}',
+              ),
             ),
             const Divider(height: 24),
-            cardControls(team, 'red'),
-            const SizedBox(height: 16),
-            cardControls(team, 'yellow'),
+            if (!basketball) ...[
+              cardControls(team, 'red'),
+              const SizedBox(height: 16),
+              cardControls(team, 'yellow'),
+            ] else ...[
+              if (state['team_fouls_enabled'] == true)
+                basketballCounter(team, 'team_foul', 'team_fouls'),
+              basketballCounter(team, 'timeout', 'timeouts'),
+            ],
           ],
         ),
       ),
     );
   }
 
+  Widget basketballCounter(String team, String kind, String counter) {
+    final count = state[team]['counters']?[counter] ?? 0;
+    return Column(
+      children: [
+        Text('${t(counter)}: $count', textAlign: TextAlign.center),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            IconButton(
+              tooltip: '− ${t(kind)}',
+              onPressed: canWrite && count > 0
+                  ? () => correctEvent(kind, team)
+                  : null,
+              icon: const Icon(Icons.remove),
+            ),
+            IconButton(
+              tooltip: '+ ${t(kind)}',
+              onPressed: canWrite ? () => command(kind, {'team': team}) : null,
+              icon: const Icon(Icons.add),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Future<void> setBasketballClock() async {
+    final input = TextEditingController(
+      text: mmss((periodLengthMs - elapsed()).clamp(0, periodLengthMs)),
+    );
+    final revision = state['revision'], match = state['match_id'];
+    await showDialog<void>(
+      context: navigator.currentContext!,
+      builder: (context) => AlertDialog(
+        title: Text(t('clock_set')),
+        content: TextField(
+          controller: input,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: 'MM:SS',
+            hintText: '04:31',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(t('cancel')),
+          ),
+          FilledButton(
+            onPressed: () {
+              final parts = RegExp(
+                r'^(\d{1,2}):([0-5]\d)$',
+              ).firstMatch(input.text.trim());
+              final ms = parts == null
+                  ? -1
+                  : (int.parse(parts[1]!) * 60 + int.parse(parts[2]!)) * 1000;
+              if (ms < 0 || ms > periodLengthMs) {
+                notify(t('error.invalid_value'));
+                return;
+              }
+              Navigator.pop(context);
+              if (revision != state['revision'] || match != state['match_id']) {
+                notify(t('error.state_changed'));
+                return;
+              }
+              command('clock_set', {'remaining_ms': ms});
+            },
+            child: Text(t('save')),
+          ),
+        ],
+      ),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    input.dispose();
+  }
+
   Widget matchView() {
     final phase = state['phase'];
     final last = events.where((e) => e['cancelled'] == false).lastOrNull;
-    final nextAction = phase == 'pre_game' || phase == 'break'
+    final nextAction =
+        basketball &&
+            phase == 'break' &&
+            state['period'] >= state['period_count']
+        ? 'game_end'
+        : phase == 'pre_game' || phase == 'break'
         ? 'period_start'
-        : state['period'] < state['period_count']
+        : basketball || state['period'] < state['period_count']
         ? 'period_end'
         : 'game_end';
-    final nextLabel = phase == 'break' ? t('resume') : t(nextAction);
+    final nextLabel = basketball
+        ? t(
+            nextAction == 'period_start'
+                ? 'basketball.period_start'
+                : nextAction,
+          )
+        : phase == 'break'
+        ? t('resume')
+        : t(nextAction);
+    final periodControl = HoldAction(
+      label: '$nextLabel · ${t('hold')}',
+      enabled: canWrite,
+      onActivate: () async {
+        if (nextAction == 'game_end' && !await confirm(t('finish.confirm'))) {
+          return;
+        }
+        await command(nextAction);
+      },
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -1520,6 +1737,8 @@ class _Score67State extends State<Score67> {
             t(
               phase == 'break' && state['period_count'] == 2
                   ? 'halftime'
+                  : basketball && phase == 'pre_game'
+                  ? 'basketball.ready'
                   : phase,
             ),
             style: const TextStyle(
@@ -1539,6 +1758,29 @@ class _Score67State extends State<Score67> {
           ),
         ),
         Center(child: Text(periodLabel())),
+        if (basketball && (phase == 'pre_game' || phase == 'break'))
+          periodControl,
+        if (basketball &&
+            state['clock']['enabled'] == true &&
+            phase == 'period_running') ...[
+          if (phase == 'period_running')
+            action(
+              t(
+                state['clock']['running'] == true && elapsed() < periodLengthMs
+                    ? 'clock_stop'
+                    : 'clock_start',
+              ),
+              canWrite && elapsed() < periodLengthMs
+                  ? () => command(
+                      state['clock']['running'] == true
+                          ? 'clock_stop'
+                          : 'clock_start',
+                    )
+                  : null,
+              primary: true,
+            ),
+          action(t('clock_set'), canWrite ? setBasketballClock : null),
+        ],
         const SizedBox(height: 18),
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1549,23 +1791,23 @@ class _Score67State extends State<Score67> {
           ],
         ),
         const SizedBox(height: 18),
-        Text(
-          t('yellow.note'),
-          style: const TextStyle(fontSize: 13, color: Color(0xffb5c2d4)),
-        ),
-        const SizedBox(height: 12),
-        if (phase != 'finished')
-          HoldAction(
-            label: '$nextLabel · ${t('hold')}',
-            enabled: canWrite,
-            onActivate: () async {
-              if (nextAction == 'game_end' &&
-                  !await confirm(t('finish.confirm'))) {
-                return;
-              }
-              await command(nextAction);
-            },
+        if (!basketball)
+          Text(
+            t('yellow.note'),
+            style: const TextStyle(fontSize: 13, color: Color(0xffb5c2d4)),
           ),
+        const SizedBox(height: 12),
+        if (basketball &&
+            phase == 'break' &&
+            state['period'] >= state['period_count'] &&
+            state['home']['score'] == state['away']['score'])
+          action(
+            t('overtime_start'),
+            canWrite ? () => command('overtime_start') : null,
+            primary: true,
+          ),
+        if (phase != 'finished' && (!basketball || phase == 'period_running'))
+          periodControl,
         if (phase == 'finished')
           action(
             t('new_match'),

@@ -1,4 +1,4 @@
-import {translations, preferredLanguage, saveLanguage, clockText, periodLabel, DelayedStates} from './common.mjs';
+import {translations, preferredLanguage, saveLanguage, clockText, periodLabel, eventTime, DelayedStates} from './common.mjs';
 const overlay = document.body.classList.contains('overlay');
 const params = new URLSearchParams(location.search);
 const slug = document.body.dataset.slug;
@@ -64,6 +64,9 @@ function render() {
   for (const team of ['home', 'away']) {
     el(`${team}-name`).textContent = state[team][small ? 'short' : 'name'];
     el(`${team}-score`).textContent = state[team].score;
+    const fouls = el(`${team}-fouls`);
+    fouls.hidden = state.sport !== 'basketball' || !state.team_fouls_enabled;
+    fouls.textContent = `${words.team_fouls}: ${state[team].counters?.team_fouls || 0}`;
     for (const color of ['red', 'yellow']) {
     const count = state[team].counters?.[`${color}_cards`] || 0;
     const cards = el(`${team}-${color === 'red' ? 'cards' : 'yellow'}`);
@@ -89,21 +92,22 @@ function render() {
   }
   if (!overlay && logSignature !== `${state.match_id}:${state.revision}:${lang}`) {
     logSignature = `${state.match_id}:${state.revision}:${lang}`;
-    const entries = (state.events || []).filter(e => ['score','red_card','yellow_card','score_correction','red_card_correction','yellow_card_correction'].includes(e.type)).slice(-30).reverse();
+    const entries = (state.events || []).filter(e => ['score','red_card','yellow_card','score_correction','red_card_correction','yellow_card_correction','team_foul','team_foul_correction','timeout','timeout_correction'].includes(e.type)).slice(-30).reverse();
     el('match-events').hidden = entries.length === 0;
     el('event-list').replaceChildren(...entries.map(event => {
       const row = document.createElement('li');
       const player = event.player;
       const who = player ? [player.number ? `#${player.number}` : '', player.name].filter(Boolean).join(' ') : '';
-      const minute = event.clock_ms != null && event.period > 0 ? `${Math.floor(event.clock_ms / 60000) + (event.period - 1) * event.period_length_min + 1}′` : '';
-      row.textContent = [minute, words[event.type], state[event.team].name, who, event.cancelled ? words.cancelled : event.corrected ? words['event.corrected'] : ''].filter(Boolean).join(' · ');
+      const minute = eventTime(event, state, words);
+      const label = state.sport === 'basketball' && event.type.startsWith('score') ? `${event.points > 0 ? '+' : ''}${event.points}` : words[event.type];
+      row.textContent = [minute, label, state[event.team].name, who, event.cancelled ? words.cancelled : event.corrected ? words['event.corrected'] : ''].filter(Boolean).join(' · ');
       if (event.cancelled || event.corrected) row.className = 'cancelled';
       return row;
     }));
   }
   el('clock').textContent = clockText(state, serverAt + performance.now() - receivedAt - delayFor(state));
   el('period').textContent = periodLabel(state, words);
-  el('phase').textContent = words[state.phase === 'break' && state.period_count === 2 ? 'halftime' : state.phase] || '';
+  el('phase').textContent = words[state.phase === 'break' && state.period_count === 2 ? 'halftime' : state.sport === 'basketball' && state.phase === 'pre_game' ? 'basketball.ready' : state.phase] || '';
   if (el('connection')) el('connection').textContent = words[online ? 'connected' : 'offline'];
 }
 setInterval(render, 100);

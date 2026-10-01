@@ -22,7 +22,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
 from .db import Admin, Board, Match, MatchEvent, RateLimit, Receipt, database
-from .domain import FOOTBALL, RuleError, apply, initial_state
+from .domain import FOOTBALL, BASKETBALL, RuleError, apply, initial_state, normalize_clock
 
 ROOT = Path(__file__).resolve().parents[2]
 RELEASE = json.loads((ROOT / "shared/release.json").read_text())
@@ -53,20 +53,21 @@ class LocationUpdate(StrictModel):
 
 
 class CreateBoard(StrictModel):
-    sport: Literal["football"] = "football"
+    sport: Literal["football", "basketball"] = "football"
     language: Literal["de", "en"] = "de"
-    period_count: int = Field(default=2, ge=1, le=12)
-    period_length_min: int = Field(default=45, ge=1, le=60)
+    period_count: int | None = Field(default=None, ge=1, le=12)
+    period_length_min: int | None = Field(default=None, ge=1, le=60)
     location: Location | None = None
 
 
 class CreateMatch(StrictModel):
+    sport: Literal["football", "basketball"] = "football"
     command_id: UUID
     home: str = Field(default="Home", min_length=1, max_length=60)
     away: str = Field(default="Guest", min_length=1, max_length=60)
     scheduled_at: int | None = Field(default=None, ge=0)
-    period_count: int = Field(default=2, ge=1, le=12)
-    period_length_min: int = Field(default=45, ge=1, le=60)
+    period_count: int | None = Field(default=None, ge=1, le=12)
+    period_length_min: int | None = Field(default=None, ge=1, le=60)
 
 
 class Claim(StrictModel):
@@ -87,9 +88,9 @@ def available_events(events):
         if event.cancelled:
             continue
         kind = event.payload["type"]
-        if kind in ("score", "red_card", "yellow_card"):
+        if kind in ("score", "red_card", "yellow_card", "team_foul", "timeout"):
             available.append(event)
-        elif kind in ("score_correction", "red_card_correction", "yellow_card_correction"):
+        elif kind in ("score_correction", "red_card_correction", "yellow_card_correction", "team_foul_correction", "timeout_correction"):
             candidates = [e for e in available if e.payload["type"] == kind.removesuffix("_correction") and e.payload.get("team") == event.payload.get("team")]
             target = next((e for e in candidates if e.id == event.payload.get("corrects")), None) if event.payload.get("corrects") else (candidates[-1] if candidates else None)
             if target:
@@ -192,6 +193,9 @@ def create_app(db_url=None, secure_cookies=None):
         if m.deleted_at:
             raise HTTPException(410, "match_deleted")
         s = deepcopy(m.state)
+        s.setdefault("team_fouls_enabled", False)
+        s.setdefault("overtime_length_min", 5)
+        normalize_clock(s, round(time.time() * 1000))
         events = db.scalars(select(MatchEvent).where(MatchEvent.match_id == m.id).order_by(MatchEvent.id)).all()
         s.update(scoreboard=b.slug, name=b.name, language=b.language, match_id=m.id,
                  revision=m.revision, server_now=round(time.time() * 1000),
@@ -205,9 +209,15 @@ def create_app(db_url=None, secure_cookies=None):
             s[team]["counters"] = {f"{color}_cards": sum(e.payload.get("cards", 0) for e in events
                 if not e.cancelled and e.payload.get("team") == team
                 and e.payload["type"] in (f"{color}_card", f"{color}_card_correction")) for color in ("red", "yellow")}
-        available_ids = {e.id for e in available_events(events)}
+        available = available_events(events)
+        for team in ("home", "away"):
+            s[team]["counters"].update(
+                team_fouls=sum(1 for e in available if e.payload["type"] == "team_foul" and e.payload.get("team") == team
+                               and min(e.payload["period"], s["period_count"]) == min(s["period"], s["period_count"])),
+                timeouts=sum(1 for e in available if e.payload["type"] == "timeout" and e.payload.get("team") == team))
+        available_ids = {e.id for e in available}
         s["events"] = [{**e.payload, "id": e.id, "cancelled": e.cancelled,
-            "corrected": e.payload["type"] in ("score", "red_card", "yellow_card") and not e.cancelled and e.id not in available_ids} for e in events]
+            "corrected": e.payload["type"] in ("score", "red_card", "yellow_card", "team_foul", "timeout") and not e.cancelled and e.id not in available_ids} for e in events]
         return s
 
     @app.get("/health")
@@ -218,7 +228,7 @@ def create_app(db_url=None, secure_cookies=None):
 
     @app.get("/api/sports")
     def sports():
-        return [FOOTBALL]
+        return [FOOTBALL, BASKETBALL]
 
     @app.get("/api/templates")
     def available_templates():
@@ -249,7 +259,7 @@ def create_app(db_url=None, secure_cookies=None):
                       active_match=match_id, created_at=now, location=body.location.model_dump() if body.location else None)
             db.add(b)
             db.flush()
-            db.add(Match(id=match_id, slug=slug, state=initial_state(body.period_count, body.period_length_min)))
+            db.add(Match(id=match_id, slug=slug, state=initial_state(body.period_count, body.period_length_min, body.sport)))
             grant(db, slug, response, "Browser")
             db.commit()
             return {"slug": slug, "pin": pin, "links": {"public": f"/s/{slug}",
@@ -343,7 +353,7 @@ def create_app(db_url=None, secure_cookies=None):
                 for m in db.scalars(select(Match).where(Match.slug == slug, Match.deleted_at.is_(None))
                                     .order_by(Match.created_at.desc())):
                     s = state(db, b, m.id)
-                    games.append({k: s[k] for k in ("match_id", "revision", "phase", "home", "away", "period_count",
+                    games.append({k: s[k] for k in ("sport", "team_fouls_enabled", "match_id", "revision", "phase", "home", "away", "period_count",
                         "period_length_min", "created_at", "scheduled_at", "archived", "active")})
                 boards.append({"slug": b.slug, "name": b.name, "active_match": b.active_match,
                                "created_at": round(b.created_at * 1000), "matches": games})
@@ -362,7 +372,7 @@ def create_app(db_url=None, secure_cookies=None):
                 .order_by(Match.created_at.desc(), Board.slug))
             for b in active:
                 s = state(db, b)
-                games.append({k: s[k] for k in ("scoreboard", "match_id", "home", "away", "clock",
+                games.append({k: s[k] for k in ("sport", "overtime_length_min", "team_fouls_enabled", "scoreboard", "match_id", "home", "away", "clock",
                     "phase", "period", "period_count", "period_length_min", "server_now", "location")})
             return {"games": games, "server_now": round(time.time() * 1000)}
 
@@ -382,7 +392,7 @@ def create_app(db_url=None, secure_cookies=None):
                 raise HTTPException(422, "schedule_future")
             if not body.home.strip() or not body.away.strip():
                 raise HTTPException(422, "invalid_value")
-            s = initial_state(body.period_count, body.period_length_min)
+            s = initial_state(body.period_count, body.period_length_min, body.sport)
             for team in ("home", "away"):
                 name = getattr(body, team).strip()
                 s[team].update(name=name, short="".join(name.split())[:5].upper())
@@ -451,7 +461,8 @@ def create_app(db_url=None, secure_cookies=None):
                 if m.state["phase"] != "finished":
                     raise HTTPException(409, "finish_first")
                 new = Match(id=str(uuid4()), slug=slug,
-                            state=initial_state(m.state["period_count"], m.state["period_length_min"]))
+                            state=initial_state(m.state["period_count"], m.state["period_length_min"], m.state["sport"]))
+                new.state["team_fouls_enabled"] = m.state.get("team_fouls_enabled", False)
                 db.add(new)
                 b.active_match = new.id
             elif body.action == "undo":
@@ -469,7 +480,7 @@ def create_app(db_url=None, secure_cookies=None):
                 last.cancelled = True
             else:
                 target = None
-                correcting = body.action in ("score_correction", "red_card_correction", "yellow_card_correction")
+                correcting = body.action in ("score_correction", "red_card_correction", "yellow_card_correction", "team_foul_correction", "timeout_correction")
                 if correcting or body.action == "assign_player":
                     match_events = db.scalars(select(MatchEvent).where(MatchEvent.match_id == m.id).order_by(MatchEvent.id)).all()
                     available = available_events(match_events)
@@ -479,13 +490,22 @@ def create_app(db_url=None, secure_cookies=None):
                         target_id = body.data.get("event_id")
                         target = next((e for e in candidates if e.id == target_id), None) if target_id is not None else (candidates[-1] if candidates else None)
                         if not target:
-                            raise HTTPException(422, "event_unavailable" if target_id is not None else {"score": "score_zero", "red_card": "red_cards_zero", "yellow_card": "yellow_cards_zero"}[kind])
+                            raise HTTPException(422, "event_unavailable" if target_id is not None else {"score": "score_zero", "red_card": "red_cards_zero", "yellow_card": "yellow_cards_zero", "team_foul": "event_unavailable", "timeout": "event_unavailable"}[kind])
                     else:
                         target = next((e for e in available if e.id == body.data.get("event_id") and e.payload.get("team") == body.data.get("team")), None)
                         if not target:
                             raise HTTPException(422, "event_unavailable")
+                if body.action == "overtime_start":
+                    current = state(db, b)
+                    if current["home"]["score"] != current["away"]["score"]:
+                        raise HTTPException(422, "invalid_transition")
+                data = dict(body.data)
+                if correcting and body.action == "score_correction":
+                    if "points" in data and (isinstance(data["points"], bool) or data["points"] != -target.payload["points"]):
+                        raise HTTPException(422, "invalid_score")
+                    data["points"] = -target.payload["points"]
                 try:
-                    updated, payload, before = apply(m.state, body.action, body.data, round(time.time() * 1000))
+                    updated, payload, before = apply(m.state, body.action, data, round(time.time() * 1000))
                 except RuleError as exc:
                     raise HTTPException(422, str(exc)) from exc
                 if correcting:
