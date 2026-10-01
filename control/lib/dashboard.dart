@@ -128,6 +128,35 @@ class _DashboardState extends State<Dashboard> {
     return 'planned';
   }
 
+  List<Map<String, dynamic>> get visibleGames {
+    final entries = <Map<String, dynamic>>[
+      for (final board in boards)
+        for (final game in board['matches'])
+          if (category(game) == filter) {'board': board, 'game': game},
+    ];
+    entries.sort((a, b) {
+      final first = a['game'], second = b['game'];
+      if (filter == 'planned') {
+        final int? firstDate = first['scheduled_at'];
+        final int? secondDate = second['scheduled_at'];
+        if (firstDate == null && secondDate != null) return 1;
+        if (firstDate != null && secondDate == null) return -1;
+        final order = (firstDate ?? first['created_at'] as int).compareTo(
+          secondDate ?? second['created_at'] as int,
+        );
+        if (order != 0) return order;
+      } else {
+        final order = (second['scheduled_at'] ?? second['created_at'] as int)
+            .compareTo(first['scheduled_at'] ?? first['created_at'] as int);
+        if (order != 0) return order;
+      }
+      return (first['match_id'] as String).compareTo(
+        second['match_id'] as String,
+      );
+    });
+    return entries;
+  }
+
   String dateLabel(int milliseconds) {
     final value = DateTime.fromMillisecondsSinceEpoch(milliseconds);
     final l = MaterialLocalizations.of(context);
@@ -370,7 +399,9 @@ class _DashboardState extends State<Dashboard> {
           ),
           const SizedBox(height: 8),
           Text(
-            dateLabel(game['scheduled_at'] ?? game['created_at']),
+            status == 'planned' && game['scheduled_at'] == null
+                ? t('game.unscheduled')
+                : dateLabel(game['scheduled_at'] ?? game['created_at']),
             style: const TextStyle(fontSize: 14, color: Color(0xffb5c2d4)),
           ),
           const SizedBox(height: 12),
@@ -533,50 +564,56 @@ class _DashboardState extends State<Dashboard> {
             padding: const EdgeInsets.only(bottom: 16),
             child: Text(t('games.filtered_empty')),
           ),
-        for (final board in boards)
-          if ((filter == 'planned' && (board['matches'] as List).isEmpty) ||
-              (board['matches'] as List).any((g) => category(g) == filter))
-            Container(
-              margin: const EdgeInsets.only(bottom: 20),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: const Color(0xff151e2a),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    dateLabel(board['created_at']),
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                    ),
+        for (final entry in visibleGames)
+          Container(
+            key: ValueKey('match:${entry['game']['match_id']}'),
+            margin: const EdgeInsets.only(bottom: 20),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xff151e2a),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  entry['board']['slug'],
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: Color(0xffb5c2d4),
                   ),
-                  Text(
-                    board['slug'],
-                    style: const TextStyle(
-                      fontSize: 14,
-                      color: Color(0xffb5c2d4),
-                    ),
+                ),
+                const SizedBox(height: 12),
+                gameCard(entry['board'], entry['game']),
+                if (!(entry['board']['matches'] as List).any(
+                  (g) => category(g) == 'running',
+                ))
+                  OutlinedButton(
+                    onPressed: enabled ? () => newGame(entry['board']) : null,
+                    child: Text(t('game.new')),
                   ),
-                  const SizedBox(height: 12),
-                  if (!(board['matches'] as List).any(
-                    (g) => category(g) == 'running',
-                  )) ...[
-                    OutlinedButton(
+              ],
+            ),
+          ),
+        if (boards.any((b) => (b['matches'] as List).isEmpty))
+          ExpansionTile(
+            title: Text(
+              '${t('dashboard.empty_boards')} (${boards.where((b) => (b['matches'] as List).isEmpty).length})',
+            ),
+            subtitle: Text(t('dashboard.empty_boards.note')),
+            children: [
+              for (final board in boards)
+                if ((board['matches'] as List).isEmpty)
+                  ListTile(
+                    title: Text(board['slug']),
+                    subtitle: Text(dateLabel(board['created_at'])),
+                    trailing: OutlinedButton(
                       onPressed: enabled ? () => newGame(board) : null,
                       child: Text(t('game.new')),
                     ),
-                    const SizedBox(height: 12),
-                  ],
-                  for (final game in board['matches'])
-                    if (category(game) == filter) gameCard(board, game),
-                  if ((board['matches'] as List).isEmpty)
-                    Text(t('games.empty')),
-                ],
-              ),
-            ),
+                  ),
+            ],
+          ),
       ],
     ],
   );

@@ -250,5 +250,8 @@
   "stats.pf.description": "Persönliche Fouls eines Spielers.",
   "stats.remove_basket": "Letzten Korb entfernen:",
   "basketball.rotate": "Drehe dein Handy ins Querformat für die vollständige Punktematrix.",
-  "game.delete.running.confirm": "Dieses laufende Spiel löschen? Es verschwindet sofort aus den Live-Anzeigen und der Übersicht. Diese Aktion lässt sich hier nicht rückgängig machen."
+  "game.delete.running.confirm": "Dieses laufende Spiel löschen? Es verschwindet sofort aus den Live-Anzeigen und der Übersicht. Diese Aktion lässt sich hier nicht rückgängig machen.",
+  "dashboard.empty_boards": "Leere Scoreboards",
+  "dashboard.empty_boards.note": "Hier sind keine Spiele vorhanden. Zum Wiederverwenden aufklappen.",
+  "game.unscheduled": "Noch kein Termin"
 }
