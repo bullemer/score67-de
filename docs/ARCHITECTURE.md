@@ -24,7 +24,7 @@ Content-Type: application/json
 }
 ```
 
-Actions: `score`, `score_correction`, `red_card`, `red_card_correction`, `period_start`, `period_end`, `game_end`, `clock_adjust`, `settings`, `overlay`, `undo`, `new_match`. Undo includes `data.event_id`. Creating a new match requires the current match to be finished. All writes authorize first, including retries; revoked devices cannot use old command IDs to regain access.
+Actions: `score`, `score_correction`, `red_card`, `red_card_correction`, `yellow_card`, `yellow_card_correction`, `squad`, `assign_player`, `period_start`, `period_end`, `game_end`, `clock_adjust`, `settings`, `overlay`, `undo`, `new_match`. Undo includes `data.event_id`. Creating a new match requires the current match to be finished. All writes authorize first, including retries; revoked devices cannot use old command IDs to regain access.
 
 A successful command returns the full active state. A repeated command with the same ID/body returns the latest state without reapplying it. A reused ID with different content returns 409. A stale revision returns `state_changed` (409); the UI refreshes and asks the operator to re-evaluate. Errors have an `error` code and no user-submitted data echo. Commands are serialized in one process and committed atomically. Run **exactly one worker** until database-level locking is added.
 
@@ -63,3 +63,9 @@ Local development can create fresh tables automatically. Production instead runs
 A scoreboard has an optional JSON location (latitude, longitude, label and visibility). It is private by default. Public state, history, WebSocket and live-directory projections return only a published location; private coordinates never enter event records. Authenticated GET/PUT `/api/s/{slug}/location` supports changing, hiding and deleting the venue. Edits use last-write-wins for the venue and bump the active match revision to notify displays.
 
 The same-origin map picker uses locally hosted Leaflet 1.9.4 and OpenStreetMap tiles, loaded only when the picker is opened. Browser geolocation runs only after a click and the browser permission prompt. No reverse-geocoding service is used. Parent/frame messages check both origin and window identity; coordinates are passed in messages, not URLs. Google Maps opens externally for search/navigation; importing supports numeric coordinate pairs and full Google Maps links containing selected-place coordinates. Short links and map-centre-only URLs require copying coordinates from Google Maps. Tile attribution, browser caching and origin referrers follow the [OSM tile policy](https://operations.osmfoundation.org/policies/tiles/). Automated browser tests stub tile requests.
+
+## Squads and attributed events
+
+Squads are optional arrays in each match’s existing team JSON, with stable UUIDs and unique optional shirt numbers. A number, a name, or both is sufficient. Squads reset for new games and remain with historical games. Existing records without squad fields project empty lists; this extension needs no schema migration. Squads and player snapshots are public match data.
+
+Goals and red/yellow cards optionally reference a player from the corresponding team. Each event snapshots that player’s number/name so later squad edits do not rewrite history. `assign_player` explicitly changes an eligible event’s attribution without changing the score or clock; its audit event supports undo. Corrections identify the original event with `corrects` and snapshot the same player. Legacy corrections without a target consume the latest eligible event for that team/type. Cancelled or already corrected events cannot be reassigned or corrected again. Two yellows never automatically create a red; the operator records the dismissal.

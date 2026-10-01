@@ -60,6 +60,8 @@ To roll back code, prefer reverting the relevant commit on `main`; the checked d
 
 ## Current product scope
 
-Production initially contains the football increment. Email recovery, basketball, rosters, goal banners, QR codes and custom design templates remain future work. The latest requested controls are included: timestamp-generated board labels, tap-to-edit team names and colors, and explicit plus/minus goals with audited, nonnegative corrections. Original source documents are retained as historical requirements; these later instructions supersede their conflicting creation/design details.
+Production initially contains the football increment. Email recovery, basketball, reusable teams/lineups, goal banners, QR codes and custom design templates remain future work. The latest requested controls are included: timestamp-generated board labels, tap-to-edit team names and colors, and explicit plus/minus goals with audited, nonnegative corrections. Original source documents are retained as historical requirements; these later instructions supersede their conflicting creation/design details.
 
 The device dashboard adds historical results, future-game preparation, archive/restore/delete, visible back navigation and browser-local global defaults. Creation throttling is disabled by default for testing (`SCOREBOARD_CREATE_LIMIT=0`). A positive hourly count can be configured when needed; PIN attempt throttling remains active.
+
+Version 0.4 adds optional per-game squads, player attribution and yellow cards using the existing match/event JSON storage. The required database revision remains `0003_board_location`.

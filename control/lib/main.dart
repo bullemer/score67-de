@@ -9,6 +9,7 @@ import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'dashboard.dart';
+import 'squad.dart';
 import 'package:web/web.dart' as web;
 import 'package:web_socket_channel/web_socket_channel.dart';
 
@@ -489,7 +490,7 @@ class _Score67State extends State<Score67> {
           ? '${e['period'] * e['period_length_min']}+${((ms - length) / 60000).ceil()}'
           : '${((e['period'] - 1) * length + ms) ~/ 60000 + 1}′';
     }
-    return '${t(e['type'])}${team == null ? '' : ' · ${state[team]['name']}'}${stamp.isEmpty ? '' : ' · $stamp'}';
+    return '${t(e['type'])}${team == null ? '' : ' · ${state[team]['name']}'}${e['player'] == null ? '' : ' · ${playerLabel(e['player'])}'}${stamp.isEmpty ? '' : ' · $stamp'}';
   }
 
   Future<void> copy(String value) async {
@@ -1211,6 +1212,163 @@ class _Score67State extends State<Score67> {
     hex.dispose();
   }
 
+  String playerLabel(dynamic player) => [
+    if ((player['number'] ?? '').isNotEmpty) '#${player['number']}',
+    if ((player['name'] ?? '').isNotEmpty) player['name'],
+  ].join(' ');
+
+  Future<void> editSquad(String team) async {
+    final revision = state['revision'], match = state['match_id'];
+    final players = await showDialog<List<Map<String, dynamic>>>(
+      context: navigator.currentContext!,
+      builder: (context) => SquadDialog(
+        teamName: state[team]['name'],
+        players: state[team]['squad'] ?? [],
+        t: t,
+      ),
+    );
+    if (players == null || !mounted) return;
+    if (state['revision'] != revision || state['match_id'] != match) {
+      notify(t('error.state_changed'));
+      return;
+    }
+    await command('squad', {'team': team, 'players': players});
+  }
+
+  Future<void> playerAction(String action, String team, {dynamic event}) async {
+    final players = state[team]['squad'] as List? ?? [];
+    final revision = state['revision'], match = state['match_id'];
+    String? selected = '';
+    if (players.isNotEmpty || event != null) {
+      selected = await showDialog<String>(
+        context: navigator.currentContext!,
+        builder: (context) => SimpleDialog(
+          title: Text(
+            '${t(event == null ? action : 'assign_player')} · ${state[team]['name']}',
+          ),
+          children: [
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, ''),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Text(t('player.none')),
+              ),
+            ),
+            for (final player in players)
+              SimpleDialogOption(
+                onPressed: () => Navigator.pop(context, player['id']),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Text(playerLabel(player)),
+                ),
+              ),
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(context),
+              child: Text(t('cancel')),
+            ),
+          ],
+        ),
+      );
+      if (selected == null || !mounted) return;
+      if (state['revision'] != revision || state['match_id'] != match) {
+        notify(t('error.state_changed'));
+        return;
+      }
+    }
+    await command(event == null ? action : 'assign_player', {
+      'team': team,
+      'player_id': selected.isEmpty ? null : selected,
+      if (action == 'score' && event == null) 'points': 1,
+      if (event != null) 'event_id': event['id'],
+    });
+  }
+
+  Future<void> correctEvent(String kind, String team) async {
+    final candidates = events
+        .where(
+          (e) =>
+              e['type'] == kind &&
+              e['team'] == team &&
+              e['cancelled'] == false &&
+              e['corrected'] != true,
+        )
+        .toList();
+    final revision = state['revision'], match = state['match_id'];
+    int? target;
+    if (candidates.any((e) => e['player'] != null)) {
+      target = await showDialog<int>(
+        context: navigator.currentContext!,
+        builder: (context) => SimpleDialog(
+          title: Text(t('event.remove')),
+          children: [
+            for (final e in candidates.reversed)
+              SimpleDialogOption(
+                onPressed: () => Navigator.pop(context, e['id']),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Text(eventText(e)),
+                ),
+              ),
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(context),
+              child: Text(t('cancel')),
+            ),
+          ],
+        ),
+      );
+      if (target == null || !mounted) return;
+      if (state['revision'] != revision || state['match_id'] != match) {
+        notify(t('error.state_changed'));
+        return;
+      }
+    }
+    await command('${kind}_correction', {
+      'team': team,
+      if (kind == 'score') 'points': -1,
+      'event_id': target,
+    });
+  }
+
+  Widget cardControls(String team, String color) {
+    final count = state[team]['counters']?['${color}_cards'] ?? 0;
+    final tint = color == 'yellow'
+        ? const Color(0xfffacc15)
+        : const Color(0xffef4444);
+    return Column(
+      children: [
+        Text(
+          '${t('${color}_cards')}: $count',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: tint, fontSize: 14),
+        ),
+        const SizedBox(height: 6),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            IconButton.filled(
+              tooltip: '+ ${t('${color}_card')}',
+              onPressed: canWrite
+                  ? () => playerAction('${color}_card', team)
+                  : null,
+              style: IconButton.styleFrom(
+                backgroundColor: tint,
+                foregroundColor: Colors.black,
+              ),
+              icon: const Icon(Icons.add),
+            ),
+            IconButton.outlined(
+              tooltip: '− ${t('${color}_card')}',
+              onPressed: canWrite && count > 0
+                  ? () => correctEvent('${color}_card', team)
+                  : null,
+              icon: const Icon(Icons.remove),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
   Widget teamPanel(String team) {
     final s = state[team];
     final color = teamColor(s['color']);
@@ -1249,6 +1407,12 @@ class _Score67State extends State<Score67> {
                 ),
               ),
             ),
+            TextButton(
+              onPressed: canWrite ? () => editSquad(team) : null,
+              child: Text(
+                '${t('squad')} (${(s['squad'] as List? ?? []).length})',
+              ),
+            ),
             Text(
               '${s['score']}',
               textAlign: TextAlign.center,
@@ -1265,45 +1429,20 @@ class _Score67State extends State<Score67> {
                     ? Colors.black
                     : Colors.white,
               ),
-              onPressed: canWrite
-                  ? () => command('score', {'team': team, 'points': 1})
-                  : null,
+              onPressed: canWrite ? () => playerAction('score', team) : null,
               child: Text('+ ${t('score')}'),
             ),
             const SizedBox(height: 8),
             OutlinedButton(
               onPressed: canWrite && s['score'] > 0
-                  ? () => command('score_correction', {
-                      'team': team,
-                      'points': -1,
-                    })
+                  ? () => correctEvent('score', team)
                   : null,
               child: Text('− ${t('score')}'),
             ),
-            const Divider(height: 28),
-            Text(
-              '${t('red_cards')}: ${s['counters']?['red_cards'] ?? 0}',
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Color(0xffffb4ab)),
-            ),
-            const SizedBox(height: 8),
-            FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xffb91c1c),
-                foregroundColor: Colors.white,
-              ),
-              onPressed: canWrite
-                  ? () => command('red_card', {'team': team})
-                  : null,
-              child: Text('+ ${t('red_card')}'),
-            ),
-            const SizedBox(height: 8),
-            OutlinedButton(
-              onPressed: canWrite && (s['counters']?['red_cards'] ?? 0) > 0
-                  ? () => command('red_card_correction', {'team': team})
-                  : null,
-              child: Text('− ${t('red_card')}'),
-            ),
+            const Divider(height: 24),
+            cardControls(team, 'red'),
+            const SizedBox(height: 16),
+            cardControls(team, 'yellow'),
           ],
         ),
       ),
@@ -1388,6 +1527,11 @@ class _Score67State extends State<Score67> {
           ],
         ),
         const SizedBox(height: 18),
+        Text(
+          t('yellow.note'),
+          style: const TextStyle(fontSize: 13, color: Color(0xffb5c2d4)),
+        ),
+        const SizedBox(height: 12),
         if (phase != 'finished')
           HoldAction(
             label: '$nextLabel · ${t('hold')}',
@@ -1496,14 +1640,36 @@ class _Score67State extends State<Score67> {
               .map(
                 (e) => Padding(
                   padding: const EdgeInsets.symmetric(vertical: 10),
-                  child: Text(
-                    '${eventText(e)}${e['cancelled'] ? ' · ${t('cancelled')}' : ''}',
-                    style: TextStyle(
-                      color: e['cancelled'] ? const Color(0xff8d9aab) : null,
-                      decoration: e['cancelled']
-                          ? TextDecoration.lineThrough
-                          : null,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${eventText(e)}${e['cancelled']
+                            ? ' · ${t('cancelled')}'
+                            : e['corrected'] == true
+                            ? ' · ${t('event.corrected')}'
+                            : ''}',
+                        style: TextStyle(
+                          color: e['cancelled'] || e['corrected'] == true
+                              ? const Color(0xff778497)
+                              : Colors.white,
+                        ),
+                      ),
+                      if ([
+                            'score',
+                            'red_card',
+                            'yellow_card',
+                          ].contains(e['type']) &&
+                          e['cancelled'] == false &&
+                          e['corrected'] != true)
+                        TextButton(
+                          onPressed: canWrite
+                              ? () =>
+                                    playerAction(e['type'], e['team'], event: e)
+                              : null,
+                          child: Text(t('assign_player')),
+                        ),
+                    ],
                   ),
                 ),
               ),

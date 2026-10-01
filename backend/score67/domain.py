@@ -4,6 +4,7 @@ import json
 import re
 from math import isfinite
 from pathlib import Path
+from uuid import UUID
 
 FOOTBALL = json.loads((Path(__file__).parent / "profiles/football.json").read_text())
 
@@ -54,6 +55,15 @@ def text(value, limit):
     return value.strip()
 
 
+def player_snapshot(state, team, player_id):
+    if player_id is None:
+        return None
+    for player in state[team].get("squad", []):
+        if player["id"] == player_id:
+            return deepcopy(player)
+    raise RuleError("player_not_found")
+
+
 def apply(state, action, data, now_ms):
     s = deepcopy(state)
     c = s["clock"]
@@ -67,10 +77,41 @@ def apply(state, action, data, now_ms):
         if data.get("team") not in ("home", "away") or data.get("points") != points or isinstance(data.get("points"), bool):
             raise RuleError("invalid_score")
         event.update(team=data["team"], points=points)
-    elif action in ("red_card", "red_card_correction"):
+    elif action in ("red_card", "red_card_correction", "yellow_card", "yellow_card_correction"):
         if data.get("team") not in ("home", "away"):
             raise RuleError("invalid_value")
-        event.update(team=data["team"], cards=1 if action == "red_card" else -1)
+        event.update(team=data["team"], cards=-1 if action.endswith("_correction") else 1)
+    elif action == "squad":
+        team, players = data.get("team"), data.get("players")
+        if team not in ("home", "away") or not isinstance(players, list) or len(players) > 40:
+            raise RuleError("invalid_squad")
+        cleaned, ids, numbers = [], set(), set()
+        for player in players:
+            if not isinstance(player, dict) or set(player) != {"id", "number", "name"}:
+                raise RuleError("invalid_squad")
+            try:
+                identifier = str(UUID(player["id"]))
+            except (ValueError, TypeError, AttributeError):
+                raise RuleError("invalid_squad")
+            jersey, name = player["number"], player["name"]
+            if not isinstance(jersey, str) or not isinstance(name, str):
+                raise RuleError("invalid_squad")
+            jersey, name = jersey.strip(), name.strip()
+            if (jersey and not re.fullmatch(r"[0-9]{1,3}", jersey)) or len(name) > 60 or not (jersey or name):
+                raise RuleError("invalid_squad")
+            jersey = str(int(jersey)) if jersey else ""
+            if identifier in ids or (jersey and jersey in numbers):
+                raise RuleError("duplicate_player")
+            ids.add(identifier)
+            if jersey:
+                numbers.add(jersey)
+            cleaned.append({"id": identifier, "number": jersey, "name": name})
+        s[team]["squad"] = cleaned
+        event.update(team=team)
+    elif action == "assign_player":
+        if data.get("team") not in ("home", "away"):
+            raise RuleError("invalid_value")
+        event.update(team=data["team"], player=player_snapshot(s, data["team"], data.get("player_id")), target=data.get("event_id"))
     elif action == "period_start":
         if phase not in ("pre_game", "break") or s["period"] >= s["period_count"]:
             raise RuleError("invalid_transition")
@@ -138,6 +179,8 @@ def apply(state, action, data, now_ms):
             o["delay_ms"] = integer(data["delay_ms"], 0, 30000)
     else:
         raise RuleError("unsupported_action")
+    if action in ("score", "red_card", "yellow_card"):
+        event["player"] = player_snapshot(s, data["team"], data.get("player_id"))
     # Store only changed fields: undoing a goal must never rewind a running clock.
     before = {key: deepcopy(value) for key, value in state.items() if s[key] != value}
     return s, event, before

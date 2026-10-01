@@ -8,7 +8,7 @@ const el = id => document.getElementById(id);
 const queue = new DelayedStates();
 let state, lang = preferredLanguage(), words = {}, socket, reconnect = 500;
 let serverAt = Date.now(), receivedAt = performance.now(), online = false, pollBusy = false, lastReceived = -1;
-let languageVersion = 0;
+let languageVersion = 0, logSignature = '';
 if (overlay && params.get('preview') === '1') document.body.classList.add('preview');
 function delayFor(s) {
   const raw = params.has('delay') ? Number(params.get('delay')) : s.overlay.delay_ms;
@@ -40,6 +40,7 @@ function render() {
   if (!state) return;
   if (!state.match_id) {
     el('scoreboard').hidden = true;
+    if (!overlay) { el('match-events').hidden = true; el('event-list').replaceChildren(); logSignature = ''; }
     if (el('connection')) el('connection').textContent = words.no_match;
     return;
   }
@@ -63,15 +64,16 @@ function render() {
   for (const team of ['home', 'away']) {
     el(`${team}-name`).textContent = state[team][small ? 'short' : 'name'];
     el(`${team}-score`).textContent = state[team].score;
-    const count = state[team].counters?.red_cards || 0;
-    const cards = el(`${team}-cards`);
+    for (const color of ['red', 'yellow']) {
+    const count = state[team].counters?.[`${color}_cards`] || 0;
+    const cards = el(`${team}-${color === 'red' ? 'cards' : 'yellow'}`);
     cards.hidden = count === 0;
-    cards.setAttribute('aria-label', `${state[team].name}: ${count} ${words.red_cards}`);
+    cards.setAttribute('aria-label', `${state[team].name}: ${count} ${words[`${color}_cards`]}`);
     if (cards.dataset.count !== String(count)) {
       cards.dataset.count = String(count);
       const icons = Array.from({length: Math.min(count, 5)}, () => {
         const icon = document.createElement('i');
-        icon.className = 'red-card';
+        icon.className = `${color}-card`;
         icon.setAttribute('aria-hidden', 'true');
         return icon;
       });
@@ -82,7 +84,22 @@ function render() {
       }
       cards.replaceChildren(...icons);
     }
+    }
     document.querySelector(`.team.${team}`).style.borderColor = state[team].color;
+  }
+  if (!overlay && logSignature !== `${state.match_id}:${state.revision}:${lang}`) {
+    logSignature = `${state.match_id}:${state.revision}:${lang}`;
+    const entries = (state.events || []).filter(e => ['score','red_card','yellow_card','score_correction','red_card_correction','yellow_card_correction'].includes(e.type)).slice(-30).reverse();
+    el('match-events').hidden = entries.length === 0;
+    el('event-list').replaceChildren(...entries.map(event => {
+      const row = document.createElement('li');
+      const player = event.player;
+      const who = player ? [player.number ? `#${player.number}` : '', player.name].filter(Boolean).join(' ') : '';
+      const minute = event.clock_ms != null && event.period > 0 ? `${Math.floor(event.clock_ms / 60000) + (event.period - 1) * event.period_length_min + 1}′` : '';
+      row.textContent = [minute, words[event.type], state[event.team].name, who, event.cancelled ? words.cancelled : event.corrected ? words['event.corrected'] : ''].filter(Boolean).join(' · ');
+      if (event.cancelled || event.corrected) row.className = 'cancelled';
+      return row;
+    }));
   }
   el('clock').textContent = clockText(state, serverAt + performance.now() - receivedAt - delayFor(state));
   el('period').textContent = periodLabel(state, words);
@@ -100,6 +117,7 @@ async function poll() {
       state = null;
       queue.queue = [];
       el('scoreboard').hidden = true;
+      if (!overlay) { el('match-events').hidden = true; el('event-list').replaceChildren(); logSignature = ''; }
       if (el('connection')) el('connection').textContent = words['error.match_deleted'];
       return;
     }

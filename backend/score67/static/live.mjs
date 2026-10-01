@@ -23,15 +23,17 @@ function render() {
       const team = game[side];
       const row = document.createElement('div'); row.className = 'live-team'; row.style.borderColor = team.color;
       row.append(textNode('span', team.name, 'live-name'), textNode('strong', team.score, 'live-score'));
-      const count = team.counters?.red_cards || 0;
+      for (const color of ['red','yellow']) {
+      const count = team.counters?.[`${color}_cards`] || 0;
       if (count) {
         const reds = document.createElement('div'); reds.className = 'live-cards'; reds.setAttribute('role', 'img');
-        reds.setAttribute('aria-label', `${count} ${words.red_cards}`);
+        reds.setAttribute('aria-label', `${count} ${words[`${color}_cards`]}`);
         for (let i = 0; i < Math.min(count, 5); i++) {
-          const icon = document.createElement('i'); icon.className = 'red-card'; icon.setAttribute('aria-hidden', 'true'); reds.append(icon);
+          const icon = document.createElement('i'); icon.className = `${color}-card`; icon.setAttribute('aria-hidden', 'true'); reds.append(icon);
         }
         if (count > 5) reds.append(textNode('b', `+${count - 5}`));
         row.append(reds);
+      }
       }
       card.append(row);
     }

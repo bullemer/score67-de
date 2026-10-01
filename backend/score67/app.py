@@ -81,6 +81,22 @@ class Command(StrictModel):
     data: dict = Field(default_factory=dict)
 
 
+def available_events(events):
+    available = []
+    for event in events:
+        if event.cancelled:
+            continue
+        kind = event.payload["type"]
+        if kind in ("score", "red_card", "yellow_card"):
+            available.append(event)
+        elif kind in ("score_correction", "red_card_correction", "yellow_card_correction"):
+            candidates = [e for e in available if e.payload["type"] == kind.removesuffix("_correction") and e.payload.get("team") == event.payload.get("team")]
+            target = next((e for e in candidates if e.id == event.payload.get("corrects")), None) if event.payload.get("corrects") else (candidates[-1] if candidates else None)
+            if target:
+                available.remove(target)
+    return available
+
+
 def create_app(db_url=None, secure_cookies=None):
     secure = secure_cookies if secure_cookies is not None else os.getenv("COOKIE_SECURE", "true").lower() == "true"
     lock = threading.RLock()
@@ -168,7 +184,7 @@ def create_app(db_url=None, secure_cookies=None):
                      revision=0, server_now=round(time.time() * 1000), phase="no_match", events=[], location=public_location)
             s["overlay"]["view"] = "hidden"
             for team in ("home", "away"):
-                s[team].update(score=0, counters={"red_cards": 0})
+                s[team].update(score=0, squad=[], counters={"red_cards": 0, "yellow_cards": 0})
             return s
         m = db.get(Match, target)
         if not m or m.slug != b.slug:
@@ -185,10 +201,13 @@ def create_app(db_url=None, secure_cookies=None):
         for team in ("home", "away"):
             s[team]["score"] = sum(e.payload.get("points", 0) for e in events
                                    if not e.cancelled and e.payload.get("team") == team and e.payload["type"] in ("score", "score_correction"))
-            s[team]["counters"] = {"red_cards": sum(e.payload.get("cards", 0) for e in events
+            s[team].setdefault("squad", [])
+            s[team]["counters"] = {f"{color}_cards": sum(e.payload.get("cards", 0) for e in events
                 if not e.cancelled and e.payload.get("team") == team
-                and e.payload["type"] in ("red_card", "red_card_correction"))}
-        s["events"] = [{**e.payload, "id": e.id, "cancelled": e.cancelled} for e in events]
+                and e.payload["type"] in (f"{color}_card", f"{color}_card_correction")) for color in ("red", "yellow")}
+        available_ids = {e.id for e in available_events(events)}
+        s["events"] = [{**e.payload, "id": e.id, "cancelled": e.cancelled,
+            "corrected": e.payload["type"] in ("score", "red_card", "yellow_card") and not e.cancelled and e.id not in available_ids} for e in events]
         return s
 
     @app.get("/health")
@@ -440,21 +459,40 @@ def create_app(db_url=None, secure_cookies=None):
                                  .order_by(MatchEvent.id.desc()).limit(1))
                 if not last or body.data.get("event_id") != last.id:
                     raise HTTPException(409, "undo_changed")
-                updated = deepcopy(m.state)
-                updated.update(last.before)
-                m.state = updated
+                if last.payload["type"] == "assign_player":
+                    target = db.get(MatchEvent, last.payload["target"])
+                    target.payload = {**target.payload, "player": last.before.get("player")}
+                else:
+                    updated = deepcopy(m.state)
+                    updated.update(last.before)
+                    m.state = updated
                 last.cancelled = True
             else:
-                if body.action == "red_card_correction" and body.data.get("team") in ("home", "away"):
-                    if state(db, b)[body.data["team"]]["counters"]["red_cards"] <= 0:
-                        raise HTTPException(422, "red_cards_zero")
-                if body.action == "score_correction" and body.data.get("team") in ("home", "away"):
-                    if state(db, b)[body.data["team"]]["score"] <= 0:
-                        raise HTTPException(422, "score_zero")
+                target = None
+                correcting = body.action in ("score_correction", "red_card_correction", "yellow_card_correction")
+                if correcting or body.action == "assign_player":
+                    match_events = db.scalars(select(MatchEvent).where(MatchEvent.match_id == m.id).order_by(MatchEvent.id)).all()
+                    available = available_events(match_events)
+                    if correcting:
+                        kind = body.action.removesuffix("_correction")
+                        candidates = [e for e in available if e.payload["type"] == kind and e.payload.get("team") == body.data.get("team")]
+                        target_id = body.data.get("event_id")
+                        target = next((e for e in candidates if e.id == target_id), None) if target_id is not None else (candidates[-1] if candidates else None)
+                        if not target:
+                            raise HTTPException(422, "event_unavailable" if target_id is not None else {"score": "score_zero", "red_card": "red_cards_zero", "yellow_card": "yellow_cards_zero"}[kind])
+                    else:
+                        target = next((e for e in available if e.id == body.data.get("event_id") and e.payload.get("team") == body.data.get("team")), None)
+                        if not target:
+                            raise HTTPException(422, "event_unavailable")
                 try:
                     updated, payload, before = apply(m.state, body.action, body.data, round(time.time() * 1000))
                 except RuleError as exc:
                     raise HTTPException(422, str(exc)) from exc
+                if correcting:
+                    payload.update(corrects=target.id, player=target.payload.get("player"))
+                elif body.action == "assign_player":
+                    before = {"player": target.payload.get("player")}
+                    target.payload = {**target.payload, "player": payload["player"]}
                 m.state = updated
                 db.add(MatchEvent(match_id=m.id, admin_id=admin.id, payload=payload, before=before))
             m.revision += 1

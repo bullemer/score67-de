@@ -35,7 +35,8 @@ The development database is `backend/data/score67.db` when started from `backend
 - Hashed device cookies, additional devices, revocation, PIN rotation and persistent rate limits.
 - Flutter phone controller; Jinja/HTML landing page, spectator page and transparent OBS overlay.
 - Home/Guest defaults, editable names and abbreviations, 1–12 periods of 1–60 minutes, optional clock.
-- Red cards per team with plus/minus correction, undo and live card icons in spectator/OBS views.
+- Red and yellow cards per team with plus/minus correction, undo and live card icons in spectator/OBS views.
+- Optional per-game squads (up to 40 players per team): shirt number, name or both; goal/card attribution, later reassignment and a public event log. Second-yellow dismissals are recorded manually as a red card.
 - Plus/minus goals, tap-to-edit team names and colors, period transitions, clock correction, final whistle, undo and new games. Archived match state remains available by ID.
 - Revision checks, idempotent command retries, persistent event records and reconnecting live state.
 - Small, large, hidden, left/right and automatic break/final views; configurable broadcast delay.
@@ -50,7 +51,7 @@ The five-scoreboards-per-hour creation cap is disabled during testing. `SCOREBOA
 
 ## Not yet included
 
-Email recovery, QR codes, basketball controls/rules, rosters, goal banners, match export, custom branding and additional templates. The initial template styling is an interpretation of the textual design document, which contains no visual mockups.
+Email recovery, QR codes, basketball controls/rules, reusable team rosters/lineups, goal banners, match export, custom branding and additional templates. The initial template styling is an interpretation of the textual design document, which contains no visual mockups.
 
 Production uses the current football increment. Email recovery, the remaining stage-1 acceptance criteria, mobile/OBS field testing and operator/legal pages are still outstanding. Database migrations and PostgreSQL integration checks are part of every deployment.
 

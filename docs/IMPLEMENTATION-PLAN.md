@@ -38,6 +38,8 @@ Acceptance: complete two-minute periods, repeated start/stop accuracy, countdown
 
 ## Increment 3 — teams, rosters and lineups
 
+Implemented early on request: optional per-game squads with number/name, goal and card attribution, yellow cards, reassignment and targeted corrections. Reusable teams and lineup presentation remain outstanding.
+
 Add team/player/lineup tables with scoped ownership, minimal number-or-name validation and explicit public-name projection. Support starters/bench and large lineup display. Test 11+7 and 5+7 readability at 720p; hide personal fouls from public state.
 
 ## Increment 4 — goals and post-match output

@@ -458,3 +458,66 @@ def test_optional_location_privacy_update_and_removal(system):
     for invalid in [{**private,'lat':91}, {**private,'lng':181}, {**private,'label':'x'*121}, {'lat':12}]:
         assert client.post('/api/scoreboards', json={'location':invalid}).status_code == 422
         assert client.put(f'/api/s/{slug}/location', json={'location':invalid}).status_code == 422
+
+
+def test_squad_attribution_corrections_and_undo(system):
+    app, client = system
+    slug = create(client)['slug']
+    alice = {'id': str(uuid4()), 'number': '7', 'name': 'Alice'}
+    bob = {'id': str(uuid4()), 'number': '10', 'name': 'Bob'}
+    assert command(client, slug, 'squad', {'team': 'home', 'players': [alice, bob]}).status_code == 200
+    assert command(TestClient(app), slug, 'squad', {'team': 'home', 'players': []}).status_code == 401
+    assert command(client, slug, 'score', {'team': 'away', 'points': 1, 'player_id': alice['id']}).status_code == 422
+    started = command(client, slug, 'period_start').json()
+    before = state(client, slug)
+    key = str(uuid4())
+    s = command(client, slug, 'score', {'team': 'home', 'points': 1, 'player_id': alice['id']}, before, key).json()
+    goal = s['events'][-1]
+    assert goal['player'] == alice and s['home']['score'] == 1
+    repeated = command(client, slug, 'score', {'team': 'home', 'points': 1, 'player_id': alice['id']}, before, key).json()
+    assert repeated['home']['score'] == 1
+    changed = command(client, slug, 'assign_player', {'team': 'home', 'event_id': goal['id'], 'player_id': bob['id']}).json()
+    assert next(e for e in changed['events'] if e['id'] == goal['id'])['player'] == bob
+    assert changed['home']['score'] == 1 and changed['clock'] == started['clock']
+    restored = command(client, slug, 'undo', {'event_id': changed['events'][-1]['id']}).json()
+    assert next(e for e in restored['events'] if e['id'] == goal['id'])['player'] == alice
+    card = command(client, slug, 'yellow_card', {'team': 'home', 'player_id': alice['id']}).json()['events'][-1]
+    command(client, slug, 'yellow_card', {'team': 'home', 'player_id': bob['id']})
+    corrected = command(client, slug, 'yellow_card_correction', {'team': 'home', 'event_id': card['id']}).json()
+    assert corrected['home']['counters']['yellow_cards'] == 1 and corrected['home']['counters']['red_cards'] == 0
+    assert corrected['events'][-1]['player'] == alice and corrected['events'][-1]['corrects'] == card['id']
+    assert next(e for e in corrected['events'] if e['id'] == card['id'])['corrected']
+    assert command(client, slug, 'yellow_card_correction', {'team': 'home', 'event_id': card['id']}).status_code == 422
+    assert command(client, slug, 'assign_player', {'team': 'home', 'event_id': card['id'], 'player_id': bob['id']}).status_code == 422
+    undone = command(client, slug, 'undo', {'event_id': corrected['events'][-1]['id']}).json()
+    assert undone['home']['counters']['yellow_cards'] == 2
+    command(client, slug, 'yellow_card', {'team': 'home', 'player_id': alice['id']})
+    assert state(client, slug)['home']['counters']['red_cards'] == 0
+    assert command(client, slug, 'red_card', {'team': 'home', 'player_id': alice['id']}).json()['events'][-1]['player'] == alice
+    command(client, slug, 'squad', {'team': 'home', 'players': [{**bob, 'name': 'Renamed'}]})
+    assert next(e for e in state(client, slug)['events'] if e['id'] == goal['id'])['player']['name'] == 'Alice'
+    removed = command(client, slug, 'score_correction', {'team': 'home', 'points': -1, 'event_id': goal['id']}).json()
+    assert removed['home']['score'] == 0 and removed['events'][-1]['player'] == alice
+    old = removed['match_id']
+    command(client, slug, 'game_end')
+    fresh = command(client, slug, 'new_match').json()
+    assert fresh['home']['squad'] == [] and fresh['home']['counters']['yellow_cards'] == 0
+    assert client.get(f'/api/s/{slug}/matches/{old}/state').json()['home']['squad'][0]['name'] == 'Renamed'
+
+
+def test_squad_validation_and_unassigned_yellow_cards(system):
+    _, client = system
+    slug = create(client)['slug']
+    a = {'id': str(uuid4()), 'number': '07', 'name': ''}
+    b = {'id': str(uuid4()), 'number': '', 'name': 'Name only'}
+    accepted = command(client, slug, 'squad', {'team': 'home', 'players': [a,b]}).json()
+    assert accepted['home']['squad'][0]['number'] == '7'
+    for players in [[a,{**b,'number':'7'}], [a,a], [{**a,'id':'invalid'}], [{**a,'number':'-1'}], [{**b,'name':''}], [{**b,'name':'x'*61}], [b]*41]:
+        assert command(client, slug, 'squad', {'team':'home','players':players}).status_code == 422
+    assert command(client, slug, 'yellow_card_correction', {'team':'home'}).status_code == 422
+    yellow = command(client, slug, 'yellow_card', {'team':'home'}).json()
+    assert yellow['events'][-1]['player'] is None and yellow['home']['counters']['yellow_cards'] == 1
+    assert command(client, slug, 'assign_player', {'team':'away','event_id':yellow['events'][-1]['id'],'player_id':None}).status_code == 422
+    cleared = command(client, slug, 'yellow_card_correction', {'team':'home'}).json()
+    assert cleared['home']['counters']['yellow_cards'] == 0
+    assert command(client, slug, 'yellow_card_correction', {'team':'home'}).status_code == 422
