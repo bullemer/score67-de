@@ -170,7 +170,8 @@ def create_app(db_url=None, secure_cookies=None):
             now = time.time()
             key = "create:" + digest(request.client.host if request.client else "unknown")
             limit = db.get(RateLimit, key)
-            if limit and limit.reset_at > now and limit.count >= 5:
+            create_limit = int(os.getenv("SCOREBOARD_CREATE_LIMIT", "0"))
+            if create_limit > 0 and limit and limit.reset_at > now and limit.count >= create_limit:
                 raise HTTPException(429, "rate_limited")
             if not limit:
                 limit = RateLimit(key=key, count=0, reset_at=now + 3600)

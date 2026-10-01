@@ -121,7 +121,8 @@ def test_auth_scope_revoke_rotation_and_no_secrets(system):
         assert len(db.scalar(select(Admin)).token_hash) == 64
 
 
-def test_pin_lockout_and_creation_rate_limit_persist(system):
+def test_pin_lockout_and_creation_rate_limit_persist(system, monkeypatch):
+    monkeypatch.setenv("SCOREBOARD_CREATE_LIMIT", "5")
     app, client = system
     b = create(client)
     wrong = '000000' if b['pin'] != '000000' else '111111'
@@ -233,3 +234,9 @@ def test_minus_goal_is_audited_idempotent_and_cannot_be_negative(system):
     assert command(client, slug, 'score_correction', {'team': 'home', 'points': -1}).status_code == 422
     undone = command(client, slug, 'undo', {'event_id': corrected['events'][-1]['id']}).json()
     assert undone['home']['score'] == 1 and undone['events'][-1]['cancelled']
+
+
+def test_creation_is_unlimited_by_default(system):
+    _, client = system
+    for _ in range(6):
+        create(client)
