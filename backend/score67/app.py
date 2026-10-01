@@ -478,7 +478,7 @@ def create_app(db_url=None, secure_cookies=None):
                         raise HTTPException(409, "restore_first")
                     b.active_match = m.id
                 elif body.action in ("archive", "delete"):
-                    if m.state["phase"] in ("period_running", "break"):
+                    if body.action == "archive" and m.state["phase"] in ("period_running", "break"):
                         raise HTTPException(409, "finish_first")
                     if body.action == "archive":
                         m.archived_at = time.time()

@@ -284,7 +284,6 @@ def test_archive_restore_delete_and_empty_live_state(system):
     slug = create(client)['slug']
     command(client, slug, 'period_start')
     assert command(client, slug, 'archive').status_code == 409
-    assert command(client, slug, 'delete').status_code == 409
     old = command(client, slug, 'game_end').json()
     empty = command(client, slug, 'archive').json()
     assert empty['match_id'] is None and empty['overlay']['view'] == 'hidden'
@@ -858,3 +857,27 @@ def test_live_basketball_player_statistics_corrections_and_history(system):
     football = create(client)['slug']
     for kind in kinds:
         assert command(client, football, kind, {'team': 'home'}).status_code == 422
+
+
+@pytest.mark.parametrize('phase', ['pre_game', 'period_running', 'break'])
+def test_delete_planned_and_running_games(system, phase):
+    app, client = system
+    slug = create(client)['slug']
+    if phase != 'pre_game':
+        command(client, slug, 'period_start')
+    if phase == 'break':
+        command(client, slug, 'period_end')
+    before = state(client, slug)
+    outsider = TestClient(app)
+    assert command(outsider, slug, 'delete', current=before).status_code == 401
+    key = str(uuid4())
+    deleted = command(client, slug, 'delete', current=before, command_id=key)
+    assert deleted.status_code == 200
+    assert deleted.json()['match_id'] is None
+    assert command(client, slug, 'delete', current=before, command_id=key).status_code == 200
+    assert client.get('/api/dashboard').json()['boards'][0]['matches'] == []
+    assert not any(g['scoreboard'] == slug for g in client.get('/api/live').json()['games'])
+    assert client.get(f'/api/s/{slug}/matches/{before["match_id"]}/state').status_code == 410
+    assert command(client, slug, 'score', {'team': 'home', 'points': 1}, current=before).status_code == 410
+    with client.websocket_connect(f'/ws/s/{slug}') as ws:
+        assert ws.receive_json()['match_id'] is None

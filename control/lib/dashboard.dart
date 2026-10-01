@@ -325,7 +325,9 @@ class _DashboardState extends State<Dashboard> {
   }) async {
     if (!enabled) return;
     if (['archive', 'delete'].contains(action) &&
-        !await confirm(t('game.$action.confirm'))) {
+        !await confirm(
+          '${game['home']['name']} – ${game['away']['name']}\n\n${t(action == 'delete' && category(game) == 'running' ? 'game.delete.running.confirm' : 'game.$action.confirm')}',
+        )) {
       return;
     }
     await write(
@@ -446,16 +448,13 @@ class _DashboardState extends State<Dashboard> {
                       : null,
                   child: Text(t('game.restore')),
                 ),
-              if (status != 'running')
-                TextButton(
-                  onPressed: enabled
-                      ? () => manage(board, game, 'delete')
-                      : null,
-                  child: Text(
-                    t('game.delete'),
-                    style: const TextStyle(color: Color(0xffffb4ab)),
-                  ),
+              TextButton(
+                onPressed: enabled ? () => manage(board, game, 'delete') : null,
+                child: Text(
+                  t('game.delete'),
+                  style: const TextStyle(color: Color(0xffffb4ab)),
                 ),
+              ),
             ],
           ),
         ],
@@ -562,11 +561,15 @@ class _DashboardState extends State<Dashboard> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  OutlinedButton(
-                    onPressed: enabled ? () => newGame(board) : null,
-                    child: Text(t('game.new')),
-                  ),
-                  const SizedBox(height: 12),
+                  if (!(board['matches'] as List).any(
+                    (g) => category(g) == 'running',
+                  )) ...[
+                    OutlinedButton(
+                      onPressed: enabled ? () => newGame(board) : null,
+                      child: Text(t('game.new')),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
                   for (final game in board['matches'])
                     if (category(game) == filter) gameCard(board, game),
                   if ((board['matches'] as List).isEmpty)

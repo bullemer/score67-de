@@ -249,5 +249,6 @@
   "stats.to.description": "Losing possession through a mistake or violation.",
   "stats.pf.description": "Personal fouls committed by a player.",
   "stats.remove_basket": "Remove latest basket:",
-  "basketball.rotate": "Rotate your phone to landscape for the full scoring matrix."
+  "basketball.rotate": "Rotate your phone to landscape for the full scoring matrix.",
+  "game.delete.running.confirm": "Delete this running game? It will immediately disappear from live displays and the dashboard. This cannot be undone here."
 }

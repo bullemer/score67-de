@@ -249,5 +249,6 @@
   "stats.to.description": "Ballverlust durch einen Fehler oder eine Regelübertretung.",
   "stats.pf.description": "Persönliche Fouls eines Spielers.",
   "stats.remove_basket": "Letzten Korb entfernen:",
-  "basketball.rotate": "Drehe dein Handy ins Querformat für die vollständige Punktematrix."
+  "basketball.rotate": "Drehe dein Handy ins Querformat für die vollständige Punktematrix.",
+  "game.delete.running.confirm": "Dieses laufende Spiel löschen? Es verschwindet sofort aus den Live-Anzeigen und der Übersicht. Diese Aktion lässt sich hier nicht rückgängig machen."
 }
