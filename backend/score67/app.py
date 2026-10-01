@@ -25,6 +25,7 @@ from .db import Admin, Board, Match, MatchEvent, RateLimit, Receipt, database
 from .domain import FOOTBALL, RuleError, apply, initial_state
 
 ROOT = Path(__file__).resolve().parents[2]
+RELEASE = json.loads((ROOT / "shared/release.json").read_text())
 
 
 def digest(token):
@@ -79,8 +80,9 @@ def create_app(db_url=None, secure_cookies=None):
         yield
         engine.dispose()
 
-    app = FastAPI(title="Score67", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="Score67", version=RELEASE["version"], lifespan=lifespan)
     templates = Jinja2Templates(directory=ROOT / "backend/score67/templates")
+    templates.env.globals["release_label"] = RELEASE["label"]
     app.mount("/static", StaticFiles(directory=ROOT / "backend/score67/static"), name="static")
     app.mount("/i18n", StaticFiles(directory=ROOT / "shared/i18n"), name="i18n")
     build = ROOT / "control/build/web"

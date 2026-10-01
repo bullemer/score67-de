@@ -35,6 +35,8 @@ jobs:
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e
         with:
           version: '0.6.2'
+      - name: Stamp version and UTC build timestamp
+        run: python scripts/stamp_release.py
       - name: Install locked backend dependencies
         working-directory: backend
         run: uv sync --locked

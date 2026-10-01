@@ -14,7 +14,9 @@ Original requirements remain unchanged in `Spezifikation Scoreboard für Sport-L
 Requires Python 3.11+, uv, and Flutter (built with Flutter 3.38.9 / Dart 3.10.8). Node 22 is used only for display unit tests.
 
 ```bash
-cd /home/carsten/DEVPROJECTS/score67-de/control
+cd /home/carsten/DEVPROJECTS/score67-de
+python scripts/stamp_release.py
+cd control
 flutter pub get
 flutter build web --release --base-href /app/ --no-web-resources-cdn
 cd ../backend
@@ -68,3 +70,7 @@ node --test tests/display.test.mjs
 Repository: https://github.com/bullemer/score67-de · Application: https://score67.de
 
 Pushes to `main` run the checked production workflow. There is no staging application. Nginx provides HTTPS with a renewing Let's Encrypt certificate for both domain names. See [production operations](docs/PRODUCTION.md) for the release layout, backups, rollback and remaining limitations.
+
+## Release identity
+
+The app and public page footers show the version and UTC build date/time. The OBS overlay remains free of app UI. `scripts/stamp_release.py` reads the version from `backend/pyproject.toml` and creates matching metadata for server templates and the compiled Flutter app. CI runs it for every production build. When releasing a new version, also align `control/pubspec.yaml` and refresh the backend lockfile with `uv lock --project backend`.

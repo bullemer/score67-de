@@ -12,10 +12,14 @@ import 'dashboard.dart';
 import 'package:web/web.dart' as web;
 import 'package:web_socket_channel/web_socket_channel.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final release = jsonDecode(
+    await rootBundle.loadString('assets/release.json'),
+  );
   // FastAPI owns the public routes; /app/ is only the static asset prefix.
   setUrlStrategy(null);
-  runApp(const Score67());
+  runApp(Score67(releaseLabel: release['label']));
 }
 
 class ApiError implements Exception {
@@ -26,7 +30,8 @@ class ApiError implements Exception {
 }
 
 class Score67 extends StatefulWidget {
-  const Score67({super.key});
+  final String releaseLabel;
+  const Score67({super.key, required this.releaseLabel});
   @override
   State<Score67> createState() => _Score67State();
 }
@@ -1408,6 +1413,17 @@ class _Score67State extends State<Score67> {
       ),
     ),
     home: Scaffold(
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Text(
+            widget.releaseLabel,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 12, color: Color(0xffb5c2d4)),
+          ),
+        ),
+      ),
       appBar: AppBar(
         leading: IconButton(
           tooltip: t('back'),
