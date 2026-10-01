@@ -53,6 +53,7 @@ class _Score67State extends State<Score67> {
       polling = false;
   int serverAt = 0, anchorAt = 0, reconnectMs = 500, ticks = 0;
   Map<String, dynamic>? pending;
+  Map<String, dynamic>? lastAppliedEvent;
   String? pendingMatch;
   Timer? refreshTimer, renderTimer, reconnectTimer;
   WebSocketChannel? channel;
@@ -363,6 +364,7 @@ class _Score67State extends State<Score67> {
 
   Future<bool> command(String action, [Map<String, dynamic>? data]) async {
     if (!canWrite) return false;
+    lastAppliedEvent = null;
     pending = {
       'command_id': const Uuid().v4(),
       'expected_revision': state['revision'],
@@ -386,6 +388,12 @@ class _Score67State extends State<Score67> {
         method: 'POST',
         body: pending,
       );
+      final applied = (result['events'] as List? ?? [])
+          .where((e) => e['command_id'] == pending?['command_id'])
+          .firstOrNull;
+      lastAppliedEvent = applied == null
+          ? null
+          : Map<String, dynamic>.from(applied);
       pending = null;
       accept(Map<String, dynamic>.from(result));
       notify(t('saved'));
@@ -1236,50 +1244,64 @@ class _Score67State extends State<Score67> {
   }
 
   Future<void> playerAction(String action, String team, {dynamic event}) async {
-    final players = state[team]['squad'] as List? ?? [];
-    final revision = state['revision'], match = state['match_id'];
-    String? selected = '';
-    if (players.isNotEmpty || event != null) {
-      selected = await showDialog<String>(
-        context: navigator.currentContext!,
-        builder: (context) => SimpleDialog(
-          title: Text(
-            '${t(event == null ? action : 'assign_player')} · ${state[team]['name']}',
-          ),
-          children: [
-            SimpleDialogOption(
-              onPressed: () => Navigator.pop(context, ''),
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Text(t('player.none')),
-              ),
-            ),
-            for (final player in players)
-              SimpleDialogOption(
-                onPressed: () => Navigator.pop(context, player['id']),
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Text(playerLabel(player)),
-                ),
-              ),
-            SimpleDialogOption(
-              onPressed: () => Navigator.pop(context),
-              child: Text(t('cancel')),
-            ),
-          ],
-        ),
-      );
-      if (selected == null || !mounted) return;
-      if (state['revision'] != revision || state['match_id'] != match) {
-        notify(t('error.state_changed'));
+    if (event == null) {
+      // Count immediately; selecting or dismissing a player must never delay the score.
+      if (!await command(action, {
+        'team': team,
+        if (action == 'score') 'points': 1,
+      })) {
         return;
       }
+      final recorded = lastAppliedEvent;
+      if (recorded != null &&
+          (state[team]['squad'] as List? ?? []).isNotEmpty) {
+        await playerAction(action, team, event: recorded);
+      }
+      return;
     }
-    await command(event == null ? action : 'assign_player', {
+    final players = state[team]['squad'] as List? ?? [];
+    final revision = state['revision'], match = state['match_id'];
+    final selected = await showDialog<String>(
+      context: navigator.currentContext!,
+      builder: (context) => SimpleDialog(
+        title: Text('${t('assign_player')} · ${state[team]['name']}'),
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+            child: Text(t('player.recorded')),
+          ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(context, ''),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Text(t('player.none')),
+            ),
+          ),
+          for (final player in players)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, player['id']),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Text(playerLabel(player)),
+              ),
+            ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(context),
+            child: Text(t('close')),
+          ),
+        ],
+      ),
+    );
+    if (selected == null || !mounted) return;
+    if (state['revision'] != revision || state['match_id'] != match) {
+      notify(t('error.state_changed'));
+      return;
+    }
+    if (selected.isEmpty && event['player'] == null) return;
+    await command('assign_player', {
       'team': team,
       'player_id': selected.isEmpty ? null : selected,
-      if (action == 'score' && event == null) 'points': 1,
-      if (event != null) 'event_id': event['id'],
+      'event_id': event['id'],
     });
   }
 

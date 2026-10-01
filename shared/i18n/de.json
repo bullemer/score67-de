@@ -185,5 +185,6 @@
   "error.duplicate_player": "Jede Rückennummer darf im Team nur einmal vorkommen.",
   "error.player_not_found": "Dieser Spieler ist nicht mehr im Kader des Teams. Bitte erneut auswählen.",
   "error.event_unavailable": "Dieses Ereignis wurde geändert oder korrigiert. Bitte aktualisieren.",
-  "error.yellow_cards_zero": "Es gibt keine gelbe Karte zum Entfernen."
+  "error.yellow_cards_zero": "Es gibt keine gelbe Karte zum Entfernen.",
+  "player.recorded": "Bereits erfasst. Die Spielerwahl ist freiwillig; Schließen lässt das Ereignis unverändert."
 }

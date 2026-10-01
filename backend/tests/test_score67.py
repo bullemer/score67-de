@@ -474,10 +474,12 @@ def test_squad_attribution_corrections_and_undo(system):
     s = command(client, slug, 'score', {'team': 'home', 'points': 1, 'player_id': alice['id']}, before, key).json()
     goal = s['events'][-1]
     assert goal['player'] == alice and s['home']['score'] == 1
+    assert goal['command_id'] == key
     repeated = command(client, slug, 'score', {'team': 'home', 'points': 1, 'player_id': alice['id']}, before, key).json()
     assert repeated['home']['score'] == 1
     changed = command(client, slug, 'assign_player', {'team': 'home', 'event_id': goal['id'], 'player_id': bob['id']}).json()
     assert next(e for e in changed['events'] if e['id'] == goal['id'])['player'] == bob
+    assert next(e for e in changed['events'] if e.get('command_id') == key)['id'] == goal['id']
     assert changed['home']['score'] == 1 and changed['clock'] == started['clock']
     restored = command(client, slug, 'undo', {'event_id': changed['events'][-1]['id']}).json()
     assert next(e for e in restored['events'] if e['id'] == goal['id'])['player'] == alice

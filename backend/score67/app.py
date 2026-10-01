@@ -494,6 +494,7 @@ def create_app(db_url=None, secure_cookies=None):
                     before = {"player": target.payload.get("player")}
                     target.payload = {**target.payload, "player": payload["player"]}
                 m.state = updated
+                payload["command_id"] = str(body.command_id)
                 db.add(MatchEvent(match_id=m.id, admin_id=admin.id, payload=payload, before=before))
             m.revision += 1
             db.add(Receipt(id=key, fingerprint=fingerprint))

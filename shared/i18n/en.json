@@ -185,5 +185,6 @@
   "error.duplicate_player": "Each shirt number must be unique within the team.",
   "error.player_not_found": "This player is no longer in this team’s squad. Please choose again.",
   "error.event_unavailable": "This event was changed or corrected. Please refresh.",
-  "error.yellow_cards_zero": "There are no yellow cards to remove."
+  "error.yellow_cards_zero": "There are no yellow cards to remove.",
+  "player.recorded": "Already recorded. Player selection is optional; closing leaves the event unchanged."
 }
