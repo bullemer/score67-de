@@ -227,10 +227,10 @@
   "basketball.play": "Start",
   "basketball.stop": "Stopp",
   "stats.title": "Live-Spielerstatistik",
-  "stats.help": "Statistik antippen, um eins hinzuzufügen. PTS folgt den Punktebuttons. Seitlich wischen für alle Spalten.",
+  "stats.help": "Statistiken direkt mit +/− ändern. Bei Punkten entfernt −1/−2/−3 den letzten passenden Korb dieses Spielers. Seitlich wischen für alle Spalten.",
   "stats.correct": "Korrekturmodus: eins abziehen",
   "stats.total": "Teamsumme",
-  "stats.enable_pf": "Persönliche Fouls aktivieren, um PF zu erfassen",
+  "stats.enable_pf": "Oben im Foulmodus Persönlich oder Beides wählen, um PF hinzuzufügen.",
   "rebound": "Rebound",
   "assist": "Assist",
   "steal": "Ballgewinn",
@@ -247,5 +247,6 @@
   "stats.stl.description": "Dem Gegner in der Verteidigung den Ball abnehmen.",
   "stats.blk.description": "Einen gegnerischen Wurf in der Verteidigung abwehren.",
   "stats.to.description": "Ballverlust durch einen Fehler oder eine Regelübertretung.",
-  "stats.pf.description": "Persönliche Fouls eines Spielers."
+  "stats.pf.description": "Persönliche Fouls eines Spielers.",
+  "stats.remove_basket": "Letzten Korb entfernen:"
 }

@@ -10,7 +10,6 @@ import 'package:uuid/uuid.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'dashboard.dart';
 import 'squad.dart';
-import 'personal_fouls.dart';
 import 'basketball_statistics.dart';
 import 'package:web/web.dart' as web;
 import 'package:web_socket_channel/web_socket_channel.dart';
@@ -1580,68 +1579,37 @@ class _Score67State extends State<Score67> {
     );
   }
 
-  Widget basketballScoringMatrix(String team) {
-    final squad = state[team]['squad'] as List? ?? [];
-    final players = [null, ...squad];
-    final active = canWrite && !basketballClockRunning;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Table(
-          columnWidths: const {
-            0: FlexColumnWidth(2),
-            1: FlexColumnWidth(),
-            2: FlexColumnWidth(),
-            3: FlexColumnWidth(),
-          },
-          defaultVerticalAlignment: TableCellVerticalAlignment.middle,
-          children: [
-            TableRow(
-              children: [
-                Text(t('basketball.scorer')),
-                for (final points in [1, 2, 3]) Center(child: Text('+$points')),
-              ],
-            ),
-            for (final player in players)
-              TableRow(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: Text(
-                      player == null ? t('foul.unknown') : playerLabel(player),
-                    ),
-                  ),
-                  for (final points in [1, 2, 3])
-                    Padding(
-                      padding: const EdgeInsets.all(2),
-                      child: FilledButton(
-                        style: FilledButton.styleFrom(
-                          padding: EdgeInsets.zero,
-                          minimumSize: const Size(44, 48),
-                        ),
-                        onPressed:
-                            active &&
-                                (player == null ||
-                                    (player['number'] ?? '').isNotEmpty)
-                            ? () => command('score', {
-                                'team': team,
-                                'points': points,
-                                'player_id': player?['id'],
-                              })
-                            : null,
-                        child: Semantics(
-                          label:
-                              '${player == null ? t('foul.unknown') : playerLabel(player)} +$points',
-                          child: Text('+$points'),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-          ],
-        ),
-      ],
-    );
+  dynamic matchingBasket(String team, String? playerId, int points) => events
+      .where(
+        (e) =>
+            e['type'] == 'score' &&
+            e['team'] == team &&
+            e['player']?['id'] == playerId &&
+            e['points'] == points &&
+            e['cancelled'] == false &&
+            e['corrected'] != true,
+      )
+      .lastOrNull;
+
+  Future<bool> adjustBasket(
+    String team,
+    String? playerId,
+    int points,
+    bool subtract,
+  ) async {
+    if (subtract) {
+      final target = matchingBasket(team, playerId, points);
+      if (target == null) return false;
+      return command('score_correction', {
+        'team': team,
+        'event_id': target['id'],
+      });
+    }
+    return command('score', {
+      'team': team,
+      'player_id': playerId,
+      'points': points,
+    });
   }
 
   Future<bool> recordStatistic(
@@ -1724,7 +1692,6 @@ class _Score67State extends State<Score67> {
                 height: 1.4,
               ),
             ),
-            if (basketball) basketballScoringMatrix(team),
             if (basketball && s['statistics'] != null) ...[
               const Divider(height: 24),
               BasketballStatistics(
@@ -1736,7 +1703,11 @@ class _Score67State extends State<Score67> {
                   'personal',
                   'both',
                 ].contains(state['foul_mode']),
-                configureFouls: chooseFoulMode,
+                scoringEnabled: !basketballClockRunning,
+                score: (playerId, points, subtract) =>
+                    adjustBasket(team, playerId, points, subtract),
+                canRemoveScore: (playerId, points) =>
+                    matchingBasket(team, playerId, points) != null,
                 record: (kind, playerId, correcting) =>
                     recordStatistic(team, kind, playerId, correcting),
               ),
@@ -1753,14 +1724,15 @@ class _Score67State extends State<Score67> {
                 child: Text('+ ${t('score')}'),
               ),
             const SizedBox(height: 8),
-            OutlinedButton(
-              onPressed: canWrite && s['score'] > 0
-                  ? () => correctEvent('score', team)
-                  : null,
-              child: Text(
-                basketball ? t('basketball.correct') : '− ${t('score')}',
+            if (!basketball)
+              OutlinedButton(
+                onPressed: canWrite && s['score'] > 0
+                    ? () => correctEvent('score', team)
+                    : null,
+                child: Text(
+                  basketball ? t('basketball.correct') : '− ${t('score')}',
+                ),
               ),
-            ),
             const Divider(height: 24),
             if (!basketball) ...[
               cardControls(team, 'red'),
@@ -1774,71 +1746,12 @@ class _Score67State extends State<Score67> {
                   '${t('team_fouls')}: ${s['counters']['team_fouls']}',
                   textAlign: TextAlign.center,
                 ),
-              if (['personal', 'both'].contains(state['foul_mode']))
-                PersonalFouls(
-                  key: ValueKey('${state['match_id']}:$team'),
-                  players: s['personal_fouls'] ?? [],
-                  unassigned: s['unassigned_fouls'] ?? 0,
-                  enabled: canWrite,
-                  t: t,
-                  add: (data) =>
-                      command('personal_foul', {'team': team, ...data}),
-                  remove: (id) => correctPersonalFoul(team, id),
-                ),
               basketballCounter(team, 'timeout', 'timeouts'),
             ],
           ],
         ),
       ),
     );
-  }
-
-  Future<void> correctPersonalFoul(String team, String? playerId) async {
-    final target = events
-        .where(
-          (e) =>
-              e['type'] == 'personal_foul' &&
-              e['team'] == team &&
-              e['cancelled'] == false &&
-              e['corrected'] != true &&
-              e['player']?['id'] == playerId,
-        )
-        .lastOrNull;
-    if (target == null) return;
-    await command('personal_foul_correction', {
-      'team': team,
-      'event_id': target['id'],
-    });
-  }
-
-  Future<void> chooseFoulMode() async {
-    final match = state['match_id'], revision = state['revision'];
-    final mode = await showDialog<String>(
-      context: navigator.currentContext!,
-      builder: (context) => SimpleDialog(
-        title: Text(t('foul.mode')),
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(24),
-            child: Text(t('foul.note')),
-          ),
-          for (final mode in ['team', 'personal', 'both', 'off'])
-            SimpleDialogOption(
-              onPressed: () => Navigator.pop(context, mode),
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Text(t('foul.mode.$mode')),
-              ),
-            ),
-        ],
-      ),
-    );
-    if (mode == null || !mounted) return;
-    if (match != state['match_id'] || revision != state['revision']) {
-      notify(t('error.state_changed'));
-      return;
-    }
-    await command('settings', {'foul_mode': mode});
   }
 
   Widget basketballCounter(String team, String kind, String counter) {
@@ -2021,16 +1934,27 @@ class _Score67State extends State<Score67> {
         if (basketball)
           Text(t('basketball.scoring_note'), textAlign: TextAlign.center),
         const SizedBox(height: 18),
-        if (basketball)
-          action(
-            '${t('foul.mode')}: ${t('foul.mode.${state['foul_mode'] ?? 'team'}')}',
-            canWrite ? chooseFoulMode : null,
+        if (basketball) ...[
+          Text(t('foul.mode')),
+          Wrap(
+            spacing: 8,
+            children: [
+              for (final mode in ['team', 'personal', 'both', 'off'])
+                ChoiceChip(
+                  label: Text(t('foul.mode.$mode')),
+                  selected: state['foul_mode'] == mode,
+                  onSelected: canWrite
+                      ? (_) => command('settings', {'foul_mode': mode})
+                      : null,
+                ),
+            ],
           ),
+        ],
         if (basketball && ['personal', 'both'].contains(state['foul_mode']))
           Text(t('foul.note')),
         LayoutBuilder(
           builder: (context, constraints) {
-            if (basketball && constraints.maxWidth < 650) {
+            if (basketball) {
               return Column(
                 children: [
                   Row(children: [teamPanel('home')]),

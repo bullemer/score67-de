@@ -227,10 +227,10 @@
   "basketball.play": "Play",
   "basketball.stop": "Stop",
   "stats.title": "Live player statistics",
-  "stats.help": "Tap a stat to add one. PTS follows the scoring buttons. Swipe sideways for all columns.",
+  "stats.help": "Adjust stats directly with +/−. For points, −1/−2/−3 removes the latest matching basket for that player. Swipe sideways for all columns.",
   "stats.correct": "Correction mode: subtract one",
   "stats.total": "Team total",
-  "stats.enable_pf": "Enable personal fouls to record PF",
+  "stats.enable_pf": "Select Personal or Both in the foul mode above to add PF.",
   "rebound": "Rebound",
   "assist": "Assist",
   "steal": "Steal",
@@ -247,5 +247,6 @@
   "stats.stl.description": "Defensively taking the ball away from an opposing player.",
   "stats.blk.description": "Defensively deflecting an opponent’s shot attempt.",
   "stats.to.description": "Losing possession through a mistake or violation.",
-  "stats.pf.description": "Personal fouls committed by a player."
+  "stats.pf.description": "Personal fouls committed by a player.",
+  "stats.remove_basket": "Remove latest basket:"
 }

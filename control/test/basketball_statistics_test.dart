@@ -28,7 +28,10 @@ void main() {
       'players': [row(null), row('alex')],
       'totals': {'pts': 6, 'reb': 2},
     };
-    Future<void> render({bool enabled = true}) async {
+    Future<void> render({
+      bool enabled = true,
+      bool scoringEnabled = true,
+    }) async {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -37,7 +40,12 @@ void main() {
               t: (key) => key,
               enabled: enabled,
               personalFoulsEnabled: true,
-              configureFouls: () {},
+              scoringEnabled: scoringEnabled,
+              canRemoveScore: (id, points) => id == 'alex' && points == 3,
+              score: (id, points, subtract) async {
+                calls.add(['score', id, points, subtract]);
+                return true;
+              },
               record: (kind, id, correcting) async {
                 calls.add([kind, id, correcting]);
                 return true;
@@ -60,15 +68,24 @@ void main() {
       ['rebound', null, false],
       ['assist', 'alex', false],
     ]);
-    await tester.tap(find.byType(Switch));
-    await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('− rebound · #7'));
     expect(calls.last, ['rebound', 'alex', true]);
     await tester.tap(find.byTooltip('− assist · #7'));
     expect(calls.length, 3);
+    await tester.tap(find.byTooltip('+3 · #7'));
+    expect(calls.last, ['score', 'alex', 3, false]);
+    await tester.tap(find.byTooltip('stats.remove_basket 3 · #7'));
+    expect(calls.last, ['score', 'alex', 3, true]);
+    await tester.tap(find.byTooltip('stats.remove_basket 2 · #7'));
+    expect(calls.length, 5);
+    await tester.tap(find.byTooltip('+ personal_foul · #7'));
+    expect(calls.last, ['personal_foul', 'alex', false]);
+    await render(scoringEnabled: false);
+    await tester.tap(find.byTooltip('+3 · #7'));
+    expect(calls.length, 6);
     await render(enabled: false);
     await tester.tap(find.byTooltip('− rebound · #7'));
-    expect(calls.length, 3);
+    expect(calls.length, 6);
     expect(tester.takeException(), isNull);
     tester.view.physicalSize = const Size(360, 900);
     await tester.pumpAndSettle();
