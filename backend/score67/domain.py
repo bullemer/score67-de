@@ -298,8 +298,8 @@ def apply(state, action, data, now_ms):
         raise RuleError("unsupported_action")
     if action in ("score", "red_card", "yellow_card"):
         event["player"] = player_snapshot(s, data["team"], data.get("player_id"))
-        if basketball and action == "score" and s[data["team"]].get("squad"):
-            if not event["player"] or not event["player"].get("number"):
+        if basketball and action == "score" and event["player"]:
+            if not event["player"].get("number"):
                 raise RuleError("player_number_required")
     normalize_clock(s, now_ms)
     # Store only changed fields: undoing a goal must never rewind a running clock.

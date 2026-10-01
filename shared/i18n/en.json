@@ -223,7 +223,7 @@
   "error.player_number_required": "Select a squad player with a shirt number.",
   "basketball.scorer": "Select scorer",
   "basketball.scoring_note": "Stop the clock, then tap +1, +2 or +3 in the scorer’s row.",
-  "basketball.squad_note": "Add shirt numbers and optional names. A scorer must be selected for each basket when a squad is added.",
+  "basketball.squad_note": "Add shirt numbers and optional names. Points can always be assigned to the unknown player or a squad player.",
   "basketball.play": "Play",
   "basketball.stop": "Stop"
 }

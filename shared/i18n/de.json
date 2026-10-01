@@ -223,7 +223,7 @@
   "error.player_number_required": "Einen Kaderspieler mit Trikotnummer auswählen.",
   "basketball.scorer": "Wer hat gepunktet?",
   "basketball.scoring_note": "Uhr stoppen, dann +1, +2 oder +3 in der Zeile des Spielers antippen.",
-  "basketball.squad_note": "Trikotnummern und optional Namen hinzufügen. Mit Kader muss für jeden Korb ein Spieler ausgewählt werden.",
+  "basketball.squad_note": "Trikotnummern und optional Namen hinzufügen. Punkte können jederzeit dem unbekannten Spieler oder einem Kaderspieler zugeordnet werden.",
   "basketball.play": "Start",
   "basketball.stop": "Stopp"
 }

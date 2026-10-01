@@ -1581,7 +1581,7 @@ class _Score67State extends State<Score67> {
 
   Widget basketballScoringMatrix(String team) {
     final squad = state[team]['squad'] as List? ?? [];
-    final players = squad.isEmpty ? [null] : squad;
+    final players = [null, ...squad];
     final active = canWrite && !basketballClockRunning;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,

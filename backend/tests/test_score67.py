@@ -772,10 +772,13 @@ def test_basketball_scoring_requires_stopped_clock_and_numbered_scorer(system):
     player = {'id': str(uuid4()), 'number': '12', 'name': 'Alex'}
     assert command(client, slug, 'squad', {'team': 'home', 'players': [{**player, 'number': ''}]}).status_code == 422
     assert command(client, slug, 'squad', {'team': 'home', 'players': [player]}).status_code == 200
-    for player_id in (None, str(uuid4())):
-        assert command(client, slug, 'score', {'team': 'home', 'points': 3, 'player_id': player_id}).status_code == 422
+    assert command(client, slug, 'score', {'team': 'home', 'points': 3, 'player_id': str(uuid4())}).status_code == 422
+    for extra in ({}, {'player_id': None}):
+        s = command(client, slug, 'score', {'team': 'home', 'points': 1, **extra}).json()
+        assert s['events'][-1]['player'] is None
+    assert s['home']['score'] == 4
     s = command(client, slug, 'score', {'team': 'home', 'points': 3, 'player_id': player['id']}).json()
-    assert s['home']['score'] == 5
+    assert s['home']['score'] == 7
     assert s['events'][-1]['player'] == player
     command(client, slug, 'clock_start')
     assert command(client, slug, 'score', {'team': 'home', 'points': 1, 'player_id': player['id']}).status_code == 422
