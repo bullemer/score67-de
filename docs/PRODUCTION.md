@@ -71,3 +71,5 @@ Version 0.5 adds basketball in existing match/event JSON; no database migration 
 Version 0.6 adds private personal fouls, numbered basketball squads, player scoring matrices and a prominent Play/Stop control. Basketball points require a stopped clock, enforced by the API. No database migration is required; the schema remains `0003_board_location`.
 
 Version 0.7 adds private live per-player PTS/REB/AST/STL/BLK/TO/PF tables and event recording/correction for rebounds, assists, steals, blocks and turnovers. Statistics are derived from existing match events. No schema migration is required.
+
+Version 0.8 adds the quick-scoring basketball controller (both teams side by side in landscape, team-foul penalty and fouled-out markers, quarter scores in `period_scores`) and a client tap queue: tallies are shown immediately, sent in order and kept across offline periods and reloads with their original command IDs. Basketball points may now be scored while the clock runs; the 0.6 stopped-clock rule is removed. No schema migration is required.

@@ -755,19 +755,19 @@ def test_personal_foul_identity_roster_edits_and_validation(system):
     assert command(client, football, 'settings', {'foul_mode': 'both'}).status_code == 422
 
 
-def test_basketball_scoring_requires_stopped_clock_and_numbered_scorer(system):
+def test_basketball_scoring_while_clock_runs_and_numbered_scorer(system):
     _, client = system
     slug = client.post('/api/scoreboards', json={'sport': 'basketball'}).json()['slug']
     command(client, slug, 'period_start')
     command(client, slug, 'clock_start')
+    # Made field goals do not stop the game clock (FIBA), so scoring never requires a stop.
     for points in (1, 2, 3):
-        response = command(client, slug, 'score', {'team': 'home', 'points': points})
-        assert response.status_code == 422
-        assert response.json()['error'] == 'clock_running'
-    assert state(client, slug)['home']['score'] == 0
+        s = command(client, slug, 'score', {'team': 'home', 'points': points}).json()
+        assert s['clock']['running']
+    assert s['home']['score'] == 6
     command(client, slug, 'clock_stop')
     s = command(client, slug, 'score', {'team': 'home', 'points': 2}).json()
-    assert s['home']['score'] == 2 and s['events'][-1]['player'] is None
+    assert s['home']['score'] == 8 and s['events'][-1]['player'] is None
     player = {'id': str(uuid4()), 'number': '12', 'name': 'Alex'}
     assert command(client, slug, 'squad', {'team': 'home', 'players': [{**player, 'number': ''}]}).status_code == 422
     assert command(client, slug, 'squad', {'team': 'home', 'players': [player]}).status_code == 200
@@ -775,12 +775,13 @@ def test_basketball_scoring_requires_stopped_clock_and_numbered_scorer(system):
     for extra in ({}, {'player_id': None}):
         s = command(client, slug, 'score', {'team': 'home', 'points': 1, **extra}).json()
         assert s['events'][-1]['player'] is None
-    assert s['home']['score'] == 4
+    assert s['home']['score'] == 10
     s = command(client, slug, 'score', {'team': 'home', 'points': 3, 'player_id': player['id']}).json()
-    assert s['home']['score'] == 7
+    assert s['home']['score'] == 13
     assert s['events'][-1]['player'] == player
     command(client, slug, 'clock_start')
-    assert command(client, slug, 'score', {'team': 'home', 'points': 1, 'player_id': player['id']}).status_code == 422
+    s = command(client, slug, 'score', {'team': 'home', 'points': 1, 'player_id': player['id']}).json()
+    assert s['home']['score'] == 14 and s['clock']['running']
     s = initial_state(sport='basketball')
     s, _, _ = apply(s, 'period_start', {}, 0)
     s, _, _ = apply(s, 'clock_start', {}, 0)
@@ -881,3 +882,25 @@ def test_delete_planned_and_running_games(system, phase):
     assert command(client, slug, 'score', {'team': 'home', 'points': 1}, current=before).status_code == 410
     with client.websocket_connect(f'/ws/s/{slug}') as ws:
         assert ws.receive_json()['match_id'] is None
+
+
+def test_basketball_period_scores_follow_corrections_and_overtime(system):
+    _, client = system
+    slug = client.post('/api/scoreboards', json={'sport': 'basketball', 'period_count': 2, 'period_length_min': 20}).json()['slug']
+    s = command(client, slug, 'score', {'team': 'home', 'points': 1}).json()
+    assert s['home']['period_scores'] == [1, 0] and s['away']['period_scores'] == [0, 0]
+    command(client, slug, 'period_start')
+    s = command(client, slug, 'score', {'team': 'home', 'points': 2}).json()
+    command(client, slug, 'period_end')
+    command(client, slug, 'period_start')
+    q2 = command(client, slug, 'score', {'team': 'away', 'points': 3}).json()
+    # Removing the first-period basket during the second period changes the first period only.
+    s = command(client, slug, 'score_correction', {'team': 'home', 'event_id': s['events'][-1]['id']}).json()
+    assert s['home']['period_scores'] == [1, 0] and s['away']['period_scores'] == [0, 3]
+    command(client, slug, 'score', {'team': 'home', 'points': 2})
+    command(client, slug, 'period_end')
+    command(client, slug, 'overtime_start')
+    s = command(client, slug, 'score', {'team': 'away', 'points': 2}).json()
+    assert s['home']['period_scores'] == [1, 2, 0] and s['away']['period_scores'] == [0, 3, 2]
+    assert state(client, slug)['away']['period_scores'] == [0, 3, 2]
+    assert q2['away']['period_scores'] == [0, 3]

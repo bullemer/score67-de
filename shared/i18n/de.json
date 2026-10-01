@@ -18,7 +18,7 @@
   "copied": "Kopiert",
   "continue": "Zur Steuerung",
   "connected": "Verbunden",
-  "offline": "Keine Verbindung · Eingaben gesperrt",
+  "offline": "Offline · Punkte und Fouls werden gespeichert und automatisch nachgesendet",
   "connecting": "Verbindung wird hergestellt …",
   "retry": "Erneut versuchen",
   "uncertain": "Antwort fehlt. Erneut prüfen zählt die Aktion nicht doppelt.",
@@ -222,7 +222,7 @@
   "error.clock_running": "Vor dem Hinzufügen von Punkten die Uhr stoppen.",
   "error.player_number_required": "Einen Kaderspieler mit Trikotnummer auswählen.",
   "basketball.scorer": "Wer hat gepunktet?",
-  "basketball.scoring_note": "Uhr stoppen, dann +1, +2 oder +3 in der Zeile des Spielers antippen.",
+  "basketball.scoring_note": "+1, +2 oder +3 in der Zeile des Spielers antippen. Die Uhr läuft weiter.",
   "basketball.squad_note": "Trikotnummern und optional Namen hinzufügen. Punkte können jederzeit dem unbekannten Spieler oder einem Kaderspieler zugeordnet werden.",
   "basketball.play": "Start",
   "basketball.stop": "Stopp",
@@ -258,5 +258,13 @@
   "squad.paste": "Spielerliste einfügen",
   "squad.import": "Spieler aus Liste hinzufügen",
   "squad.paste_error": "Ein Spieler pro Zeile: Nummer und optional Name (z. B. 7 Alex).",
-  "squad.limit": "Maximal 40 Spieler pro Team."
+  "squad.limit": "Maximal 40 Spieler pro Team.",
+  "stats.enable_pf_short": "PF aktivieren",
+  "sync.pending": "Eingaben werden übertragen",
+  "sync.offline": "Offline: Eingaben bleiben auf diesem Gerät und werden automatisch gesendet, sobald die Verbindung zurück ist",
+  "sync.offline_short": "Offline",
+  "stats.tf": "TF",
+  "stats.timeouts": "Auszeit",
+  "stats.team_row": "Team",
+  "stats.total_short": "Summe"
 }

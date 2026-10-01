@@ -23,8 +23,10 @@ def player_statistics(team_state, events):
         return {**(player or {"id": None, "number": "", "name": ""}),
                 **dict.fromkeys(STAT_COLUMNS.values(), 0)}
     rows = {None: row()}
-    for player in team_state.get("foul_players", []) + team_state.get("squad", []):
-        rows[player["id"]] = row(player)
+    # Squad by shirt number for fast scanning, then number-only foul entries.
+    squad = sorted(team_state.get("squad", []), key=lambda p: (not p["number"], int(p["number"] or 0), p["name"]))
+    for player in squad + team_state.get("foul_players", []):
+        rows.setdefault(player["id"], row(player))
     for event in events:
         column = STAT_COLUMNS.get(event["type"])
         if column is None:
@@ -153,8 +155,6 @@ def apply(state, action, data, now_ms):
              "period_length_min": s["period_length_min"], "period_count": s["period_count"],
              "occurred_at": now_ms, "sport": s["sport"], "period_duration_ms": period_ms(s)}
     if action in ("score", "score_correction"):
-        if basketball and action == "score" and c["running"]:
-            raise RuleError("clock_running")
         points = data.get("points")
         values = (1, 2, 3) if basketball else (1,)
         if action == "score_correction":

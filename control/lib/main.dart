@@ -11,6 +11,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'dashboard.dart';
 import 'squad.dart';
 import 'basketball_statistics.dart';
+import 'command_queue.dart';
 import 'package:web/web.dart' as web;
 import 'package:web_socket_channel/web_socket_channel.dart';
 
@@ -46,6 +47,16 @@ class _Score67State extends State<Score67> {
   Map<String, dynamic>? draftLocation;
   String lang = 'en', slug = '', pin = '', error = '';
   bool dashboardPage = false;
+  String basketballTeam = 'home';
+  bool basketballCorrecting = false;
+  bool get liveBasketball =>
+      ready &&
+      admin &&
+      basketball &&
+      !dashboardPage &&
+      slug.isNotEmpty &&
+      pin.isEmpty &&
+      state['match_id'] != null;
   int defaultPeriods = 2, defaultMinutes = 45;
   String draftSport = 'football';
   int draftPeriods = 4, draftMinutes = 10;
@@ -63,10 +74,14 @@ class _Score67State extends State<Score67> {
       polling = false,
       refreshQueued = false;
   int serverAt = 0, anchorAt = 0, reconnectMs = 500, ticks = 0;
-  Map<String, dynamic>? pending;
-  Map<String, dynamic>? lastAppliedEvent;
-  String? pendingMatch;
-  Timer? refreshTimer, renderTimer, reconnectTimer;
+  // `state` is what the UI shows: the last server state plus queued taps.
+  Map<String, dynamic> serverState = {};
+  final List<Map<String, dynamic>> queue = [];
+  final completers = <String, Completer<Map<String, dynamic>?>>{};
+  bool sending = false;
+  int retryMs = 500;
+  web.WakeLockSentinel? wakeLock;
+  Timer? refreshTimer, renderTimer, reconnectTimer, retryTimer;
   WebSocketChannel? channel;
   StreamSubscription? subscription;
   final pinInput = TextEditingController();
@@ -75,7 +90,8 @@ class _Score67State extends State<Score67> {
   String t(String key) =>
       (words[key] ?? words['error.generic'] ?? key).toString();
   Uri uri(String path) => Uri.parse('${web.window.location.origin}$path');
-  bool get canWrite => admin && connected && !busy && pending == null;
+  bool get canWrite => admin && connected && !busy && queue.isEmpty;
+  bool get canTap => admin && !busy && state['match_id'] != null;
   int get now => serverAt + stopwatch.elapsedMilliseconds - anchorAt;
   List<dynamic> get events => state['events'] ?? [];
 
@@ -141,10 +157,14 @@ class _Score67State extends State<Score67> {
       if (slug.isNotEmpty) {
         await refresh();
         await checkAdmin();
-        if (admin) await refresh();
+        if (admin) {
+          restoreQueue();
+          await refresh();
+        }
         connect();
         refreshTimer = Timer.periodic(const Duration(seconds: 2), (_) async {
           ticks++;
+          unawaited(keepAwake());
           if (!connected || ticks % 7 == 0) {
             await refresh();
             if (admin) await checkAdmin();
@@ -287,17 +307,61 @@ class _Score67State extends State<Score67> {
   }
 
   void accept(Map<String, dynamic> data, [int latency = 0]) {
-    if (state.isNotEmpty && data['server_now'] < state['server_now']) return;
-    if (state.isNotEmpty &&
-        data['match_id'] == state['match_id'] &&
-        data['revision'] < state['revision']) {
+    final previous = serverState;
+    if (previous.isNotEmpty && data['server_now'] < previous['server_now']) {
       return;
     }
-    state = data;
+    if (previous.isNotEmpty &&
+        data['match_id'] == previous['match_id'] &&
+        data['revision'] < previous['revision']) {
+      return;
+    }
+    serverState = data;
+    state = optimisticState(serverState, queue);
     serverAt = data['server_now'] + latency;
     anchorAt = stopwatch.elapsedMilliseconds;
     connected = true;
     if (mounted) setState(() {});
+    if (queue.isNotEmpty && !sending) unawaited(pump());
+  }
+
+  String get queueKey => 'score67-queue:$slug';
+
+  void queueChanged() {
+    try {
+      web.window.localStorage.setItem(queueKey, jsonEncode(queue));
+    } catch (_) {}
+    if (serverState.isNotEmpty) state = optimisticState(serverState, queue);
+    if (mounted) setState(() {});
+  }
+
+  /// Taps recorded before a reload or crash are replayed with their original
+  /// command IDs, so the server never counts them twice.
+  void restoreQueue() {
+    try {
+      final saved = jsonDecode(
+        web.window.localStorage.getItem(queueKey) ?? '[]',
+      );
+      queue
+        ..clear()
+        ..addAll([
+          for (final item in saved as List)
+            if (item is Map && queueable('${item['action']}'))
+              Map<String, dynamic>.from(item),
+        ]);
+    } catch (_) {}
+  }
+
+  Future<void> keepAwake() async {
+    if (!admin || slug.isEmpty || web.document.visibilityState != 'visible') {
+      return;
+    }
+    if (wakeLock != null && !wakeLock!.released) return;
+    try {
+      wakeLock = await web.window.navigator.wakeLock.request('screen').toDart;
+    } catch (_) {
+      // Unsupported browsers and denied requests keep the normal screen timeout.
+    }
   }
 
   Future<void> refresh() async {
@@ -388,52 +452,115 @@ class _Score67State extends State<Score67> {
       ) ??
       false;
 
-  Future<bool> command(String action, [Map<String, dynamic>? data]) async {
-    if (!canWrite) return false;
-    lastAppliedEvent = null;
-    pending = {
-      'command_id': const Uuid().v4(),
-      'expected_revision': state['revision'],
+  Future<bool> command(String action, [Map<String, dynamic>? data]) async =>
+      await commandEvent(action, data) != null;
+
+  /// Queues a command and completes with its recorded event once the server
+  /// confirms it, or null when it was rejected. Taps never wait for each other.
+  Future<Map<String, dynamic>?> commandEvent(
+    String action, [
+    Map<String, dynamic>? data,
+  ]) {
+    if (!(queueable(action) ? canTap : canWrite)) return Future.value(null);
+    final id = const Uuid().v4();
+    final completer = Completer<Map<String, dynamic>?>();
+    completers[id] = completer;
+    queue.add({
+      'command_id': id,
+      'match_id': state['match_id'],
       'action': action,
       'data': data ?? {},
-    };
-    pendingMatch = state['match_id'];
-    return sendPending();
+    });
+    error = '';
+    queueChanged();
+    unawaited(pump());
+    return completer.future;
   }
 
-  Future<bool> sendPending() async {
-    if (pending == null || busy) return false;
-    setState(() {
-      busy = true;
-      error = '';
-    });
-    bool success = false;
-    try {
-      final result = await api(
-        '/api/s/$slug/matches/$pendingMatch/commands',
-        method: 'POST',
-        body: pending,
-      );
-      final applied = (result['events'] as List? ?? [])
-          .where((e) => e['command_id'] == pending?['command_id'])
-          .firstOrNull;
-      lastAppliedEvent = applied == null
-          ? null
-          : Map<String, dynamic>.from(applied);
-      pending = null;
-      accept(Map<String, dynamic>.from(result));
-      notify(t('saved'));
-      success = true;
-    } on ApiError catch (e) {
-      pending = null;
-      error = e.code;
-      if (e.code == 'admin_required') admin = false;
-      await refresh();
-    } catch (_) {
-      connected = false;
+  Future<void> pump() async {
+    if (sending || !mounted) return;
+    sending = true;
+    retryTimer?.cancel();
+    while (queue.isNotEmpty && mounted) {
+      final item = queue.first;
+      // The revision is fixed when a command is first sent and kept for
+      // retries: the server recognises a retry by its identical fingerprint.
+      if (item['expected_revision'] == null) {
+        item['expected_revision'] = serverState['revision'];
+        queueChanged();
+      }
+      try {
+        final result = await api(
+          '/api/s/$slug/matches/${item['match_id']}/commands',
+          method: 'POST',
+          body: {
+            for (final key in [
+              'command_id',
+              'expected_revision',
+              'action',
+              'data',
+            ])
+              key: item[key],
+          },
+        );
+        final applied = (result['events'] as List? ?? [])
+            .where((e) => e['command_id'] == item['command_id'])
+            .firstOrNull;
+        queue.removeAt(0);
+        retryMs = 500;
+        accept(Map<String, dynamic>.from(result));
+        queueChanged();
+        completers
+            .remove(item['command_id'])
+            ?.complete(
+              applied == null
+                  ? <String, dynamic>{}
+                  : Map<String, dynamic>.from(applied),
+            );
+        if (!queueable(item['action'])) notify(t('saved'));
+      } on ApiError catch (e) {
+        queue.removeAt(0);
+        queueChanged();
+        completers.remove(item['command_id'])?.complete(null);
+        error = e.code;
+        notify(t('error.${e.code}'));
+        if (e.code == 'admin_required') admin = false;
+        sending = false;
+        await refresh();
+        sending = true;
+      } catch (_) {
+        // Unknown outcome: keep the command and retry it unchanged.
+        if (mounted) setState(() => connected = false);
+        retryTimer = Timer(Duration(milliseconds: retryMs), pump);
+        retryMs = (retryMs * 2).clamp(500, 5000);
+        break;
+      }
     }
-    if (mounted) setState(() => busy = false);
-    return success;
+    sending = false;
+    if (mounted) setState(() {});
+  }
+
+  Widget syncBadge() {
+    final waiting = queue.length;
+    if (connected && waiting == 0) return const SizedBox.shrink();
+    return Tooltip(
+      message: t(connected ? 'sync.pending' : 'sync.offline'),
+      child: Chip(
+        visualDensity: VisualDensity.compact,
+        backgroundColor: connected
+            ? const Color(0xff3a3216)
+            : const Color(0xff4a1d1d),
+        avatar: Icon(
+          connected ? Icons.sync : Icons.cloud_off,
+          size: 16,
+          color: Colors.orange,
+        ),
+        label: Text(
+          waiting == 0 ? t('sync.offline_short') : '$waiting',
+          style: const TextStyle(fontSize: 13),
+        ),
+      ),
+    );
   }
 
   Future<void> create() async {
@@ -1368,14 +1495,12 @@ class _Score67State extends State<Score67> {
   }) async {
     if (event == null) {
       // Count immediately; selecting or dismissing a player must never delay the score.
-      if (!await command(action, {
+      final recorded = await commandEvent(action, {
         'team': team,
         if (action == 'score') 'points': points,
-      })) {
-        return;
-      }
-      final recorded = lastAppliedEvent;
+      });
       if (recorded != null &&
+          recorded['id'] != null &&
           (state[team]['squad'] as List? ?? []).isNotEmpty) {
         await playerAction(action, team, event: recorded);
       }
@@ -1703,7 +1828,7 @@ class _Score67State extends State<Score67> {
                   'personal',
                   'both',
                 ].contains(state['foul_mode']),
-                scoringEnabled: !basketballClockRunning,
+                scoringEnabled: true,
                 score: (playerId, points, subtract) =>
                     adjustBasket(team, playerId, points, subtract),
                 canRemoveScore: (playerId, points) =>
@@ -1830,7 +1955,500 @@ class _Score67State extends State<Score67> {
     input.dispose();
   }
 
+  Widget basketballHeader() {
+    final running = basketballClockRunning;
+    final canToggle =
+        canWrite &&
+        state['phase'] == 'period_running' &&
+        state['clock']['enabled'] == true &&
+        elapsed() < periodLengthMs;
+    return Row(
+      children: [
+        Icon(
+          connected ? Icons.wifi : Icons.wifi_off,
+          size: 18,
+          color: connected ? const Color(0xffb6f36e) : Colors.orange,
+        ),
+        const SizedBox(width: 8),
+        Text(
+          periodLabel(),
+          style: const TextStyle(fontSize: 15, color: Color(0xffb6f36e)),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: GestureDetector(
+            onTap: canWrite && state['phase'] == 'period_running'
+                ? setBasketballClock
+                : null,
+            child: Text(
+              clockText(),
+              style: const TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.w800,
+                fontFeatures: [FontFeature.tabularFigures()],
+              ),
+            ),
+          ),
+        ),
+        syncBadge(),
+        IconButton(
+          tooltip: t('stats.correct'),
+          color: basketballCorrecting ? Colors.orange : null,
+          isSelected: basketballCorrecting,
+          icon: Icon(
+            basketballCorrecting ? Icons.remove_circle : Icons.edit_outlined,
+          ),
+          onPressed: () =>
+              setState(() => basketballCorrecting = !basketballCorrecting),
+        ),
+        const SizedBox(width: 4),
+        SizedBox(
+          width: 116,
+          child: FilledButton.icon(
+            style: FilledButton.styleFrom(
+              minimumSize: const Size(100, 48),
+              backgroundColor: running
+                  ? const Color(0xffdc2626)
+                  : const Color(0xffb6f36e),
+              foregroundColor: running ? Colors.white : Colors.black,
+            ),
+            onPressed: canToggle
+                ? () => command(running ? 'clock_stop' : 'clock_start')
+                : null,
+            icon: Icon(running ? Icons.stop : Icons.play_arrow),
+            label: Text(t(running ? 'basketball.stop' : 'basketball.play')),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget basketballTeamBar() => Row(
+    children: [
+      for (final team in ['home', 'away'])
+        Expanded(
+          child: TextButton(
+            style: TextButton.styleFrom(
+              backgroundColor: basketballTeam == team
+                  ? const Color(0xff34452b)
+                  : null,
+              minimumSize: const Size(48, 48),
+            ),
+            onPressed: () => setState(() => basketballTeam = team),
+            child: Text(
+              '${state[team]['short']}  ${state[team]['score']}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+            ),
+          ),
+        ),
+    ],
+  );
+
+  /// Tap adds; in correction mode the same chip subtracts.
+  Widget counterChip(
+    String team,
+    String kind,
+    String counter, {
+    String? short,
+    IconData? icon,
+    bool tappable = true,
+    Color? tint,
+  }) {
+    final count = (state[team]['counters']?[counter] ?? 0) as int;
+    final active = tappable && canTap && (!basketballCorrecting || count > 0);
+    final label = Text(
+      '${short == null ? '' : '$short '}$count',
+      style: TextStyle(
+        fontWeight: FontWeight.w700,
+        color: basketballCorrecting && active ? Colors.orange : tint,
+      ),
+    );
+    final side = BorderSide(color: tint ?? const Color(0xff3b4a5c));
+    final avatar = icon == null ? null : Icon(icon, size: 16, color: tint);
+    return Tooltip(
+      message: tappable
+          ? '${basketballCorrecting ? '−' : '+'} ${t(kind)}'
+          : t(counter),
+      child: tappable
+          ? ActionChip(
+              visualDensity: VisualDensity.compact,
+              backgroundColor: tint?.withValues(alpha: .18),
+              side: side,
+              avatar: avatar,
+              label: label,
+              onPressed: active
+                  ? () => basketballCorrecting
+                        ? correctEvent(kind, team)
+                        : command(kind, {'team': team})
+                  : null,
+            )
+          : Chip(
+              visualDensity: VisualDensity.compact,
+              backgroundColor: tint?.withValues(alpha: .18),
+              side: side,
+              avatar: avatar,
+              label: label,
+            ),
+    );
+  }
+
+  Widget basketballTeamPanel(String team) {
+    final s = state[team];
+    final mode = state['foul_mode'];
+    final teamFouls = (s['counters']?['team_fouls'] ?? 0) as int;
+    // FIBA: from the fifth team foul in a period the opponent shoots free throws.
+    final penalty = teamFouls >= 5
+        ? BasketballStatistics.fouledOut
+        : teamFouls == 4
+        ? BasketballStatistics.foulTrouble
+        : null;
+    return SizedBox(
+      width: BasketballStatistics.width,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            padding: const EdgeInsets.only(left: 8),
+            decoration: BoxDecoration(
+              border: Border(
+                left: BorderSide(color: teamColor(s['color']), width: 6),
+              ),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Tooltip(
+                    message: s['name'],
+                    child: Text(
+                      s['short'],
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
+                if (mode == 'team' || mode == 'both')
+                  counterChip(
+                    team,
+                    'team_foul',
+                    'team_fouls',
+                    short: t('stats.tf'),
+                    tappable: mode == 'team',
+                    tint: penalty,
+                  ),
+                const SizedBox(width: 4),
+                counterChip(
+                  team,
+                  'timeout',
+                  'timeouts',
+                  icon: Icons.timer_outlined,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  '${s['score']}',
+                  style: const TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w900,
+                    fontFeatures: [FontFeature.tabularFigures()],
+                  ),
+                ),
+                IconButton(
+                  tooltip:
+                      '${t('squad')} (${(s['squad'] as List? ?? []).length})',
+                  icon: const Icon(Icons.groups),
+                  onPressed: canWrite ? () => editSquad(team) : null,
+                ),
+              ],
+            ),
+          ),
+          if (s['statistics'] != null)
+            BasketballStatistics(
+              key: ValueKey('fast:${state['match_id']}:$team'),
+              statistics: Map<String, dynamic>.from(s['statistics']),
+              t: t,
+              enabled: canTap,
+              scoringEnabled: true,
+              correcting: basketballCorrecting,
+              personalFoulsEnabled: ['personal', 'both'].contains(mode),
+              record: (kind, id, subtract) =>
+                  recordStatistic(team, kind, id, subtract),
+              score: (id, points, subtract) =>
+                  adjustBasket(team, id, points, subtract),
+              canRemoveScore: (id, points) =>
+                  matchingBasket(team, id, points) != null,
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget periodScores() {
+    final home = state['home']['period_scores'] as List? ?? [];
+    final away = state['away']['period_scores'] as List? ?? [];
+    if (home.isEmpty) return const SizedBox.shrink();
+    final count = state['period_count'] as int;
+    String heading(int index) => index >= count
+        ? 'OT${index - count + 1}'
+        : count == 4
+        ? 'Q${index + 1}'
+        : '${index + 1}';
+    TableRow line(String label, List values, {bool bold = false}) => TableRow(
+      children: [
+        Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+        for (final value in values)
+          Text(
+            '$value',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: bold ? FontWeight.w700 : null,
+            ),
+          ),
+      ],
+    );
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Table(
+        defaultColumnWidth: const FixedColumnWidth(40),
+        columnWidths: const {0: FixedColumnWidth(64)},
+        children: [
+          line('', [for (var i = 0; i < home.length; i++) heading(i)]),
+          line(state['home']['short'], home, bold: true),
+          line(state['away']['short'], away, bold: true),
+        ],
+      ),
+    );
+  }
+
+  Widget basketballFastView() {
+    final last = events.where((e) => e['cancelled'] == false).lastOrNull;
+    final phase = state['phase'];
+    final finalBreak =
+        phase == 'break' && state['period'] >= state['period_count'];
+    final tied = state['home']['score'] == state['away']['score'];
+    final expired =
+        phase == 'period_running' &&
+        state['clock']['enabled'] == true &&
+        elapsed() >= periodLengthMs;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final wide =
+            constraints.maxWidth >= 2 * BasketballStatistics.width + 24;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (phase == 'pre_game' || (phase == 'break' && !finalBreak))
+              action(
+                t('basketball.period_start'),
+                canWrite ? () => command('period_start') : null,
+                primary: true,
+              ),
+            if (finalBreak && tied)
+              action(
+                t('overtime_start'),
+                canWrite ? () => command('overtime_start') : null,
+                primary: true,
+              ),
+            if (finalBreak)
+              action(
+                t('game_end'),
+                canWrite
+                    ? () async {
+                        if (await confirm(t('finish.confirm'))) {
+                          await command('game_end');
+                        }
+                      }
+                    : null,
+                primary: !tied,
+              ),
+            if (expired)
+              HoldAction(
+                label: '${t('period_end')} · ${t('hold')}',
+                enabled: canWrite,
+                onActivate: () => command('period_end'),
+              ),
+            if (phase == 'finished')
+              action(
+                t('new_match'),
+                canWrite
+                    ? () async {
+                        if (await confirm(t('new.confirm'))) {
+                          await command('new_match');
+                        }
+                      }
+                    : null,
+                primary: true,
+              ),
+            if (basketballCorrecting)
+              Text(
+                t('stats.correct'),
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.orange),
+              ),
+            if (!['personal', 'both'].contains(state['foul_mode']))
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton(
+                  onPressed: canWrite
+                      ? () => command('settings', {
+                          'foul_mode': state['foul_mode'] == 'team'
+                              ? 'both'
+                              : 'personal',
+                        })
+                      : null,
+                  child: Text(t('stats.enable_pf_short')),
+                ),
+              ),
+            if (wide)
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  basketballTeamPanel('home'),
+                  basketballTeamPanel('away'),
+                ],
+              )
+            else
+              Center(child: basketballTeamPanel(basketballTeam)),
+            if (last != null)
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      eventText(last),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: canWrite
+                        ? () => command('undo', {'event_id': last['id']})
+                        : null,
+                    icon: const Icon(Icons.undo),
+                    label: Text(t('undo')),
+                  ),
+                ],
+              ),
+            Center(child: periodScores()),
+            basketballAdvanced(phase),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget basketballAdvanced(String phase) => ExpansionTile(
+    title: Text(t('advanced')),
+    children: [
+      Wrap(
+        spacing: 8,
+        children: [
+          action(t('settings'), canWrite ? editSettings : null),
+          action(t('clock_set'), canWrite ? setBasketballClock : null),
+          for (final team in ['home', 'away'])
+            action(
+              '${t('team.edit')} · ${state[team]['short']}',
+              canWrite ? () => editTeam(team) : null,
+            ),
+          action(t('links'), manageAccess),
+          action(t('share.spectator'), showSharing),
+          action(t('location.title'), editLocation),
+        ],
+      ),
+      Wrap(
+        spacing: 8,
+        children: [
+          for (final mode in ['team', 'personal', 'both', 'off'])
+            ChoiceChip(
+              label: Text(t('foul.mode.$mode')),
+              selected: state['foul_mode'] == mode,
+              onSelected: canWrite
+                  ? (_) => command('settings', {'foul_mode': mode})
+                  : null,
+            ),
+        ],
+      ),
+      if (phase == 'period_running')
+        HoldAction(
+          label: '${t('period_end')} · ${t('hold')}',
+          enabled: canWrite,
+          onActivate: () => command('period_end'),
+        ),
+      if (phase != 'finished')
+        action(
+          t('game_end'),
+          canWrite
+              ? () async {
+                  if (await confirm(t('finish.confirm'))) {
+                    await command('game_end');
+                  }
+                }
+              : null,
+        ),
+      Wrap(
+        spacing: 8,
+        children: [
+          for (final entry in {
+            'small': 'scoreboard',
+            'big': 'score_big',
+            'hidden': 'hidden',
+          }.entries)
+            action(
+              t(entry.key),
+              canWrite
+                  ? () => command('overlay', {
+                      'view': entry.value,
+                      'auto_big': false,
+                    })
+                  : null,
+              primary: state['overlay']['view'] == entry.value,
+            ),
+        ],
+      ),
+      ExpansionTile(
+        title: Text(t('log')),
+        children: [
+          for (final e in events.reversed.take(30))
+            ListTile(
+              title: Text(
+                eventText(e),
+                style: TextStyle(
+                  color: e['cancelled'] == true || e['corrected'] == true
+                      ? Colors.grey
+                      : null,
+                ),
+              ),
+              trailing:
+                  ['score', 'personal_foul'].contains(e['type']) &&
+                      e['cancelled'] == false &&
+                      e['corrected'] != true
+                  ? IconButton(
+                      tooltip: t('assign_player'),
+                      icon: const Icon(Icons.person),
+                      onPressed: canTap
+                          ? () => playerAction(e['type'], e['team'], event: e)
+                          : null,
+                    )
+                  : null,
+            ),
+        ],
+      ),
+      TextButton(
+        onPressed: switchLanguage,
+        child: Text(lang == 'de' ? 'EN' : 'DE'),
+      ),
+      Text(widget.releaseLabel, style: const TextStyle(fontSize: 12)),
+    ],
+  );
+
   Widget matchView() {
+    if (basketball) return basketballFastView();
     final phase = state['phase'];
     final last = events.where((e) => e['cancelled'] == false).lastOrNull;
     final nextAction =
@@ -2181,98 +2799,119 @@ class _Score67State extends State<Score67> {
         surfaceTintColor: Colors.transparent,
       ),
     ),
-    home: Scaffold(
-      bottomNavigationBar: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          child: Text(
-            widget.releaseLabel,
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 12, color: Color(0xffb5c2d4)),
-          ),
-        ),
-      ),
-      appBar: AppBar(
-        leading: IconButton(
-          tooltip: t('back'),
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => navigate(dashboardPage ? '/' : '/dashboard'),
-        ),
-        title: const Text(
-          'SCORE67',
-          style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: -1),
-        ),
-        actions: [
-          IconButton(
-            tooltip: t('app.settings'),
-            icon: const Icon(Icons.settings_outlined),
-            onPressed: ready ? appSettings : null,
-          ),
-          TextButton(
-            onPressed: ready ? switchLanguage : null,
-            child: Text(lang == 'de' ? 'EN' : 'DE'),
-          ),
-          const SizedBox(width: 12),
-        ],
-      ),
-      body: SafeArea(
-        child: Align(
-          alignment: Alignment.topCenter,
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth: basketball && admin ? 1400 : 760,
-            ),
-            child: !ready
-                ? const Center(child: CircularProgressIndicator())
-                : ListView(
-                    padding: EdgeInsets.all(basketball && admin ? 8 : 20),
-                    children: [
-                      if (error.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 18),
-                          child: Text(
-                            t('error.$error'),
-                            style: const TextStyle(color: Color(0xffffb4ab)),
-                          ),
-                        ),
-                      if (pending != null)
-                        section(t('uncertain'), [
-                          action(
-                            t('check'),
-                            busy ? null : sendPending,
-                            primary: true,
-                          ),
-                        ]),
-                      if (dashboardPage)
-                        Dashboard(
-                          api: (path, method, body) =>
-                              api(path, method: method, body: body),
-                          t: t,
-                          navigate: navigate,
-                          periods: defaultPeriods,
-                          minutes: defaultMinutes,
-                        )
-                      else if (pin.isNotEmpty)
-                        pinView()
-                      else if (slug.isEmpty)
-                        createView()
-                      else if (state.isEmpty)
-                        section(t('connecting'), [action(t('retry'), refresh)])
-                      else if (!admin)
-                        claimView()
-                      else if (state['match_id'] == null)
-                        section(t('no_match'), [
-                          action(
-                            t('dashboard'),
-                            () => navigate('/dashboard'),
-                            primary: true,
-                          ),
-                        ])
-                      else
-                        matchView(),
-                    ],
+    home: Builder(
+      builder: (context) => Scaffold(
+        bottomNavigationBar: liveBasketball
+            ? null
+            : SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
                   ),
+                  child: Text(
+                    widget.releaseLabel,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Color(0xffb5c2d4),
+                    ),
+                  ),
+                ),
+              ),
+        appBar: AppBar(
+          leading: IconButton(
+            tooltip: t('back'),
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => navigate(dashboardPage ? '/' : '/dashboard'),
+          ),
+          title: liveBasketball
+              ? basketballHeader()
+              : const Text(
+                  'SCORE67',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -1,
+                  ),
+                ),
+          bottom:
+              liveBasketball &&
+                  MediaQuery.sizeOf(context).width <
+                      2 * BasketballStatistics.width + 40
+              ? PreferredSize(
+                  preferredSize: const Size.fromHeight(48),
+                  child: basketballTeamBar(),
+                )
+              : null,
+          actions: liveBasketball
+              ? []
+              : [
+                  if (admin && slug.isNotEmpty) syncBadge(),
+                  IconButton(
+                    tooltip: t('app.settings'),
+                    icon: const Icon(Icons.settings_outlined),
+                    onPressed: ready ? appSettings : null,
+                  ),
+                  TextButton(
+                    onPressed: ready ? switchLanguage : null,
+                    child: Text(lang == 'de' ? 'EN' : 'DE'),
+                  ),
+                  const SizedBox(width: 12),
+                ],
+        ),
+        body: SafeArea(
+          child: Align(
+            alignment: Alignment.topCenter,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: basketball && admin ? 1400 : 760,
+              ),
+              child: !ready
+                  ? const Center(child: CircularProgressIndicator())
+                  : ListView(
+                      padding: EdgeInsets.all(basketball && admin ? 8 : 20),
+                      children: [
+                        if (error.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 18),
+                            child: Text(
+                              t('error.$error'),
+                              style: const TextStyle(color: Color(0xffffb4ab)),
+                            ),
+                          ),
+                        if (dashboardPage)
+                          Dashboard(
+                            api: (path, method, body) =>
+                                api(path, method: method, body: body),
+                            t: t,
+                            navigate: navigate,
+                            periods: defaultPeriods,
+                            minutes: defaultMinutes,
+                          )
+                        else if (pin.isNotEmpty)
+                          pinView()
+                        else if (slug.isEmpty)
+                          createView()
+                        else if (state.isEmpty)
+                          section(t('connecting'), [
+                            action(t('retry'), refresh),
+                          ])
+                        else if (!admin)
+                          claimView()
+                        else if (state['match_id'] == null)
+                          section(t('no_match'), [
+                            action(
+                              t('dashboard'),
+                              () => navigate('/dashboard'),
+                              primary: true,
+                            ),
+                          ])
+                        else
+                          matchView(),
+                      ],
+                    ),
+            ),
           ),
         ),
       ),
@@ -2284,6 +2923,8 @@ class _Score67State extends State<Score67> {
     refreshTimer?.cancel();
     renderTimer?.cancel();
     reconnectTimer?.cancel();
+    retryTimer?.cancel();
+    unawaited(wakeLock?.release().toDart);
     subscription?.cancel();
     channel?.sink.close();
     pinInput.dispose();

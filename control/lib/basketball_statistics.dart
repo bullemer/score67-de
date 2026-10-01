@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 
-/// Live totals and direct event controls share one matrix.
+/// One team's scoring matrix: fixed 52 px rows, Unknown player first.
+/// Tap +1/+2/+3, PF or REB to add; in correction mode the same cells subtract.
 class BasketballStatistics extends StatelessWidget {
   final Map<String, dynamic> statistics;
   final String Function(String) t;
-  final bool enabled, personalFoulsEnabled, scoringEnabled;
+  final bool enabled, personalFoulsEnabled, scoringEnabled, correcting;
   final Future<bool> Function(String, String?, bool) record;
   final Future<bool> Function(String?, int, bool) score;
   final bool Function(String?, int) canRemoveScore;
@@ -15,123 +16,129 @@ class BasketballStatistics extends StatelessWidget {
     required this.enabled,
     required this.personalFoulsEnabled,
     required this.scoringEnabled,
+    this.correcting = false,
     required this.record,
     required this.score,
     required this.canRemoveScore,
   });
 
-  static const columns = {
-    'pts': 'score',
-    'pf': 'personal_foul',
-    'reb': 'rebound',
-    'ast': 'assist',
-    'stl': 'steal',
-    'blk': 'block',
-    'to': 'turnover',
-  };
+  static const rowHeight = 52.0, cell = 44.0, labelWidth = 60.0, points = 28.0;
+  static const width = labelWidth + points + 3 * cell + 2 * cell;
+  static const foulTrouble = Color(0xffffb020), fouledOut = Color(0xffff6b6b);
 
   String label(dynamic player) => player['id'] == null
-      ? t('foul.unknown')
-      : [
-          if ((player['number'] ?? '').isNotEmpty) '#${player['number']}',
-          if ((player['name'] ?? '').isNotEmpty) player['name'],
-        ].join(' ');
+      ? t('stats.team_row')
+      : (player['number'] ?? '').isNotEmpty
+      ? '#${player['number']}'
+      : player['name'];
 
-  Widget pointCell(dynamic player) {
-    final known = player['id'] == null || player['in_squad'] == true;
+  Widget button(
+    String text,
+    String tooltip,
+    VoidCallback? onPressed, {
+    Color? color,
+    Color? background,
+  }) => SizedBox(
+    width: cell,
+    height: cell,
+    child: Tooltip(
+      message: tooltip,
+      child: TextButton(
+        style: TextButton.styleFrom(
+          padding: EdgeInsets.zero,
+          minimumSize: const Size(cell, cell),
+          foregroundColor: correcting ? Colors.orange : color,
+          backgroundColor: background,
+          textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+        onPressed: onPressed,
+        child: Text(text),
+      ),
+    ),
+  );
+
+  Widget row(dynamic player) {
+    final id = player['id'] as String?;
+    final active = id == null || player['in_squad'] == true;
+    final fouls = (player['pf'] ?? 0) as int;
+    final warning = fouls >= 5
+        ? fouledOut
+        : fouls == 4
+        ? foulTrouble
+        : null;
+    final name = id == null ? '' : (player['name'] ?? '') as String;
     return SizedBox(
-      width: 144,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+      height: rowHeight,
+      child: Row(
         children: [
-          Text(
-            '${player['pts'] ?? 0}',
-            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-          ),
-          for (final subtract in [false, true])
-            Row(
+          SizedBox(
+            width: labelWidth,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                for (final points in [1, 2, 3])
-                  Expanded(
-                    child: Tooltip(
-                      message: subtract
-                          ? '${t('stats.remove_basket')} $points · ${label(player)}'
-                          : '+$points · ${label(player)}',
-                      child: TextButton(
-                        style: TextButton.styleFrom(
-                          padding: EdgeInsets.zero,
-                          minimumSize: const Size(48, 44),
-                          foregroundColor: subtract ? Colors.orange : null,
-                        ),
-                        onPressed:
-                            enabled &&
-                                (subtract
-                                    ? canRemoveScore(player['id'], points)
-                                    : scoringEnabled && known)
-                            ? () => score(player['id'], points, subtract)
-                            : null,
-                        child: Text('${subtract ? '−' : '+'}$points'),
-                      ),
-                    ),
+                Text(
+                  label(player),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: id == null ? 13 : 16,
+                    fontWeight: FontWeight.w700,
+                    color: warning ?? (active ? null : Colors.grey),
+                    decoration: fouls >= 5 ? TextDecoration.lineThrough : null,
+                  ),
+                ),
+                if (name.isNotEmpty && (player['number'] ?? '').isNotEmpty)
+                  Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 11, color: Colors.grey),
                   ),
               ],
             ),
-        ],
-      ),
-    );
-  }
-
-  Widget statCell(dynamic player, String key, String kind, bool compact) {
-    final count = player[key] ?? 0;
-    final canAdd =
-        enabled &&
-        (player['id'] == null ||
-            player['in_squad'] == true ||
-            (key == 'pf' && player['foul_player'] == true)) &&
-        (key != 'pf' || personalFoulsEnabled);
-    return SizedBox(
-      width: compact ? 48 : 96,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(
-            '$count',
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-              color: key == 'pf' && count >= 5
-                  ? const Color(0xffff8b8b)
-                  : key == 'pf' && count == 4
-                  ? const Color(0xfffacc15)
-                  : null,
+          ),
+          SizedBox(
+            width: points,
+            child: Text(
+              '${player['pts'] ?? 0}',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
             ),
           ),
-          Flex(
-            direction: compact ? Axis.vertical : Axis.horizontal,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              for (final subtract in [true, false])
-                SizedBox(
-                  width: 48,
-                  height: 44,
-                  child: IconButton(
-                    tooltip:
-                        '${subtract ? '−' : '+'} ${t(kind)} · ${label(player)}',
-                    constraints: const BoxConstraints(
-                      minWidth: 48,
-                      minHeight: 44,
-                    ),
-                    onPressed: subtract
-                        ? enabled && count > 0
-                              ? () => record(kind, player['id'], true)
-                              : null
-                        : canAdd
-                        ? () => record(kind, player['id'], false)
-                        : null,
-                    icon: Icon(subtract ? Icons.remove : Icons.add),
-                  ),
-                ),
-            ],
+          for (final points in [1, 2, 3])
+            button(
+              '${correcting ? '−' : '+'}$points',
+              correcting
+                  ? '${t('stats.remove_basket')} $points · ${label(player)}'
+                  : '+$points · ${label(player)}',
+              enabled &&
+                      (correcting
+                          ? canRemoveScore(id, points)
+                          : scoringEnabled && active)
+                  ? () => score(id, points, correcting)
+                  : null,
+            ),
+          button(
+            '$fouls',
+            '${correcting ? '−' : '+'} ${t('personal_foul')} · ${label(player)}',
+            enabled &&
+                    (correcting
+                        ? fouls > 0
+                        : personalFoulsEnabled &&
+                              (active || player['foul_player'] == true))
+                ? () => record('personal_foul', id, correcting)
+                : null,
+            color: warning,
+            background: warning?.withValues(alpha: .16),
+          ),
+          button(
+            '${player['reb'] ?? 0}',
+            '${correcting ? '−' : '+'} ${t('rebound')} · ${label(player)}',
+            enabled && (correcting ? (player['reb'] ?? 0) > 0 : active)
+                ? () => record('rebound', id, correcting)
+                : null,
           ),
         ],
       ),
@@ -139,82 +146,63 @@ class BasketballStatistics extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, constraints) {
-      final compact = constraints.maxWidth < 1000;
-      final players = statistics['players'] as List? ?? [];
-      final totals = statistics['totals'] as Map? ?? {};
-      return Column(
+  Widget build(BuildContext context) {
+    final players = statistics['players'] as List? ?? [];
+    final totals = statistics['totals'] as Map? ?? {};
+    const header = TextStyle(fontSize: 12, color: Colors.grey);
+    Widget heading(String text, double width, [String? tip]) => SizedBox(
+      width: width,
+      child: Tooltip(
+        message: tip ?? '',
+        child: Text(text, textAlign: TextAlign.center, style: header),
+      ),
+    );
+    return SizedBox(
+      width: width,
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            t('stats.title'),
-            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          Row(
+            children: [
+              SizedBox(width: labelWidth),
+              heading('PTS', points + 3 * cell, t('stats.pts.description')),
+              heading('PF', cell, t('stats.pf.description')),
+              heading('REB', cell, t('stats.reb.description')),
+            ],
           ),
-          Text(t('stats.help')),
-          if (!personalFoulsEnabled) Text(t('stats.enable_pf')),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: DataTable(
-              horizontalMargin: 4,
-              columnSpacing: 8,
-              dataRowMinHeight: 128,
-              dataRowMaxHeight: 128,
-              columns: [
-                DataColumn(
-                  label: SizedBox(
-                    width: 80,
-                    child: Text(t('basketball.scorer')),
+          for (final player in players) row(player),
+          const Divider(height: 1),
+          SizedBox(
+            height: 32,
+            child: Row(
+              children: [
+                SizedBox(
+                  width: labelWidth,
+                  child: Text(t('stats.total_short'), style: header),
+                ),
+                SizedBox(
+                  width: points,
+                  child: Text(
+                    '${totals['pts'] ?? 0}',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
                 ),
-                for (final key in columns.keys)
-                  DataColumn(
-                    label: Tooltip(
-                      message: t('stats.$key.description'),
-                      child: Text(key.toUpperCase()),
+                const SizedBox(width: 3 * cell),
+                for (final key in ['pf', 'reb'])
+                  SizedBox(
+                    width: cell,
+                    child: Text(
+                      '${totals[key] ?? 0}',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
                   ),
-              ],
-              rows: [
-                for (final player in players)
-                  DataRow(
-                    cells: [
-                      DataCell(SizedBox(width: 80, child: Text(label(player)))),
-                      for (final entry in columns.entries)
-                        DataCell(
-                          entry.key == 'pts'
-                              ? pointCell(player)
-                              : statCell(
-                                  player,
-                                  entry.key,
-                                  entry.value,
-                                  compact,
-                                ),
-                        ),
-                    ],
-                  ),
-                DataRow(
-                  cells: [
-                    DataCell(
-                      Text(
-                        t('stats.total'),
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                    for (final key in columns.keys)
-                      DataCell(
-                        Text(
-                          '${totals[key] ?? 0}',
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                  ],
-                ),
               ],
             ),
           ),
         ],
-      );
-    },
-  );
+      ),
+    );
+  }
 }

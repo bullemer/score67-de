@@ -220,6 +220,13 @@ def create_app(db_url=None, secure_cookies=None):
                 team_fouls=sum(1 for e in available if (e.payload["type"] == "team_foul" or (e.payload["type"] == "personal_foul" and e.payload.get("counts_team"))) and e.payload.get("team") == team
                                and min(e.payload["period"], s["period_count"]) == min(s["period"], s["period_count"])),
                 timeouts=sum(1 for e in available if e.payload["type"] == "timeout" and e.payload.get("team") == team))
+            # Points by the period they were scored in; corrections remove their target basket.
+            periods = [0] * max(s["period"], s["period_count"], 1)
+            for e in available:
+                if e.payload["type"] == "score" and e.payload.get("team") == team:
+                    index = min(max(e.payload.get("period", 0), 1), len(periods)) - 1
+                    periods[index] += e.payload.get("points", 0)
+            s[team]["period_scores"] = periods
         available_ids = {e.id for e in available}
         s["events"] = [{**e.payload, "id": e.id, "cancelled": e.cancelled,
             "corrected": e.payload["type"] in COUNTED_EVENTS and not e.cancelled and e.id not in available_ids} for e in events]

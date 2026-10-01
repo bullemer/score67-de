@@ -18,7 +18,7 @@
   "copied": "Copied",
   "continue": "Open controls",
   "connected": "Connected",
-  "offline": "Disconnected · controls disabled",
+  "offline": "Offline · points and fouls are saved and sent automatically",
   "connecting": "Connecting …",
   "retry": "Retry",
   "uncertain": "No response received. Checking again will not count the action twice.",
@@ -222,7 +222,7 @@
   "error.clock_running": "Stop the clock before adding points.",
   "error.player_number_required": "Select a squad player with a shirt number.",
   "basketball.scorer": "Select scorer",
-  "basketball.scoring_note": "Stop the clock, then tap +1, +2 or +3 in the scorer’s row.",
+  "basketball.scoring_note": "Tap +1, +2 or +3 in the scorer’s row. The clock keeps running.",
   "basketball.squad_note": "Add shirt numbers and optional names. Points can always be assigned to the unknown player or a squad player.",
   "basketball.play": "Play",
   "basketball.stop": "Stop",
@@ -258,5 +258,13 @@
   "squad.paste": "Paste player list",
   "squad.import": "Add players from list",
   "squad.paste_error": "Use one player per line: number, then optional name (e.g. 7 Alex).",
-  "squad.limit": "Maximum 40 players per team."
+  "squad.limit": "Maximum 40 players per team.",
+  "stats.enable_pf_short": "Enable PF",
+  "sync.pending": "Sending taps to the server",
+  "sync.offline": "Offline: taps are kept on this device and sent automatically when the connection returns",
+  "sync.offline_short": "Offline",
+  "stats.tf": "TF",
+  "stats.timeouts": "TO",
+  "stats.team_row": "Team",
+  "stats.total_short": "Total"
 }
