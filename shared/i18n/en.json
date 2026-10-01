@@ -248,5 +248,6 @@
   "stats.blk.description": "Defensively deflecting an opponent’s shot attempt.",
   "stats.to.description": "Losing possession through a mistake or violation.",
   "stats.pf.description": "Personal fouls committed by a player.",
-  "stats.remove_basket": "Remove latest basket:"
+  "stats.remove_basket": "Remove latest basket:",
+  "basketball.rotate": "Rotate your phone to landscape for the full scoring matrix."
 }

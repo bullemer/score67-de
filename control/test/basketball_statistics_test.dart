@@ -87,6 +87,18 @@ void main() {
     await tester.tap(find.byTooltip('− rebound · #7'));
     expect(calls.length, 6);
     expect(tester.takeException(), isNull);
+    tester.view.physicalSize = const Size(700, 900);
+    await tester.pumpAndSettle();
+    final horizontal = tester.state<ScrollableState>(
+      find
+          .descendant(
+            of: find.byType(SingleChildScrollView),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    expect(horizontal.position.maxScrollExtent, 0);
+    expect(tester.takeException(), isNull);
     tester.view.physicalSize = const Size(360, 900);
     await tester.pumpAndSettle();
     await tester.drag(

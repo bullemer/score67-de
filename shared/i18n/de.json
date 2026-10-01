@@ -248,5 +248,6 @@
   "stats.blk.description": "Einen gegnerischen Wurf in der Verteidigung abwehren.",
   "stats.to.description": "Ballverlust durch einen Fehler oder eine Regelübertretung.",
   "stats.pf.description": "Persönliche Fouls eines Spielers.",
-  "stats.remove_basket": "Letzten Korb entfernen:"
+  "stats.remove_basket": "Letzten Korb entfernen:",
+  "basketball.rotate": "Drehe dein Handy ins Querformat für die vollständige Punktematrix."
 }

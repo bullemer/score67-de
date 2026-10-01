@@ -1865,6 +1865,19 @@ class _Score67State extends State<Score67> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (basketball &&
+            MediaQuery.orientationOf(navigator.currentContext!) ==
+                Orientation.portrait)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Row(
+              children: [
+                const Icon(Icons.screen_rotation),
+                const SizedBox(width: 12),
+                Expanded(child: Text(t('basketball.rotate'))),
+              ],
+            ),
+          ),
         Row(
           children: [
             Icon(
@@ -2207,11 +2220,13 @@ class _Score67State extends State<Score67> {
         child: Align(
           alignment: Alignment.topCenter,
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 760),
+            constraints: BoxConstraints(
+              maxWidth: basketball && admin ? 1400 : 760,
+            ),
             child: !ready
                 ? const Center(child: CircularProgressIndicator())
                 : ListView(
-                    padding: const EdgeInsets.all(20),
+                    padding: EdgeInsets.all(basketball && admin ? 8 : 20),
                     children: [
                       if (error.isNotEmpty)
                         Padding(

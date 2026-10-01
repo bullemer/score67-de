@@ -57,6 +57,8 @@ Scoring supports +1/+2/+3 only while the basketball clock is stopped. Use the la
 
 ### Live player statistics
 
+Landscape is recommended for phone scoring; portrait shows a rotation hint. The basketball controller uses the available screen width, with compact matrix controls on narrower screens.
+
 Each team's controller shows PTS, REB, AST, STL, BLK, TO and PF, with Unknown player first and team totals below. PTS comes from scoring events; PF comes from personal-foul events. Enable personal or combined foul mode to record PF. Use the inline +/− controls to add or correct each statistic. Points have +1/+2/+3 and −1/−2/−3 controls; minus removes the latest matching basket for that player. Personal foul totals and controls are in the same matrix, and foul modes are selected directly on the page. Rebounds, assists, steals, blocks and turnovers can be recorded while the clock runs; points still require a stopped clock.
 
 Statistics update across connected controllers, remain available in game history, and reset for a new game. Corrections, undo and scorer reassignment update the totals. Historical players remain listed after removal from the squad. The table and new statistical events are private to authorized controllers; public spectator and OBS views remain unchanged.
