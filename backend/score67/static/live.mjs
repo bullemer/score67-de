@@ -35,6 +35,7 @@ function render() {
       }
       card.append(row);
     }
+    if (game.location) card.append(textNode('p', game.location.label || `${game.location.lat.toFixed(5)}, ${game.location.lng.toFixed(5)}`, 'live-venue'));
     card.append(textNode('span', `${words['live.open']} →`, 'live-open'));
     return card;
   });

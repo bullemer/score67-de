@@ -417,7 +417,7 @@ def test_public_live_directory_only_running_active_games(system):
     assert games[running]['home']['score'] == 1
     assert games[running]['away']['counters']['red_cards'] == 1
     assert games[paused]['phase'] == 'break'
-    assert set(games[running]) == {'scoreboard', 'match_id', 'home', 'away', 'clock', 'phase', 'period', 'period_count', 'period_length_min', 'server_now'}
+    assert set(games[running]) == {'scoreboard', 'match_id', 'home', 'away', 'clock', 'phase', 'period', 'period_count', 'period_length_min', 'server_now', 'location'}
     command(client, running, 'game_end')
     assert [g['scoreboard'] for g in public.get('/api/live').json()['games']] == [paused]
     command(client, paused, 'game_end')
@@ -425,3 +425,36 @@ def test_public_live_directory_only_running_active_games(system):
     assert public.get('/live').status_code == 200
     assert '/static/share.mjs' in public.get(f'/s/{ready}').text
     assert '/static/share.mjs' not in public.get(f'/s/{ready}/overlay').text
+
+
+def test_optional_location_privacy_update_and_removal(system):
+    app, client = system
+    public = TestClient(app)
+    private = {'lat': 53.551, 'lng': 9.994, 'label': 'Private venue', 'visible': False}
+    r = client.post('/api/scoreboards', json={'location': private})
+    assert r.status_code == 201
+    slug = r.json()['slug']
+    assert client.get(f'/api/s/{slug}/location').json()['location'] == private
+    assert public.get(f'/api/s/{slug}/location').status_code == 401
+    assert public.put(f'/api/s/{slug}/location', json={'location': private}).status_code == 401
+    assert state(public, slug)['location'] is None
+    command(client, slug, 'period_start')
+    assert public.get('/api/live').json()['games'][0]['location'] is None
+    for endpoint in [f'/api/s/{slug}/state', '/api/live']:
+        assert 'Private venue' not in public.get(endpoint).text
+        assert '53.551' not in public.get(endpoint).text
+    with public.websocket_connect(f'/ws/s/{slug}') as ws:
+        assert ws.receive_json()['location'] is None
+        shown = {**private, 'visible': True}
+        assert client.put(f'/api/s/{slug}/location', json={'location': shown}).status_code == 200
+        assert ws.receive_json()['location'] == {k: shown[k] for k in ('lat','lng','label')}
+        assert client.put(f'/api/s/{slug}/location', json={'location': private}).status_code == 200
+        assert ws.receive_json()['location'] is None
+    assert 'Private venue' not in public.get('/api/live').text
+    assert client.put(f'/api/s/{slug}/location', json={'location': None}).status_code == 200
+    assert client.get(f'/api/s/{slug}/location').json()['location'] is None
+    assert state(public, slug)['location'] is None
+    assert state(public, create(client)['slug'])['location'] is None
+    for invalid in [{**private,'lat':91}, {**private,'lng':181}, {**private,'label':'x'*121}, {'lat':12}]:
+        assert client.post('/api/scoreboards', json={'location':invalid}).status_code == 422
+        assert client.put(f'/api/s/{slug}/location', json={'location':invalid}).status_code == 422

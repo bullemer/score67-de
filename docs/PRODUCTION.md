@@ -39,7 +39,7 @@ Reference: [Certbot webroot and renewal hooks](https://github.com/certbot/certbo
 
 ## Database safety and rollback
 
-Alembic migration `0001_initial` provides the production baseline; `0002_game_management` adds game lifecycle dates and allows a board to have no active game. An upgrade test verifies existing boards, credentials, scores and events survive. Production refuses automatic table creation and checks the schema revision at startup. The old release requires revision 0001, so after this migration an old-image restart alone cannot roll back; prefer a forward fix or a compatible code revert retaining the new schema support. Update the startup schema check when adding a new revision.
+Alembic migration `0001_initial` provides the production baseline; `0002_game_management` adds game lifecycle dates and allows a board to have no active game. An upgrade test verifies existing boards, credentials, scores and events survive. Production refuses automatic table creation and checks the schema revision at startup. `0003_board_location` adds a nullable venue field; existing boards remain without a location. The previous release requires revision 0002, so after this migration an old-image restart alone cannot roll back; prefer a forward fix or a compatible code revert retaining the new schema support. Update the startup schema check when adding a new revision.
 
 Every deployment takes a PostgreSQL custom-format dump before applying migrations. A daily systemd timer also backs up the database; completed dumps are retained for 14 days. Backups currently live on the same server: they support application/database recovery, but do not protect against total server loss. Off-server backup storage remains to be configured.
 

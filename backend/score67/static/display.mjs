@@ -43,6 +43,13 @@ function render() {
     if (el('connection')) el('connection').textContent = words.no_match;
     return;
   }
+  const venue = state.location;
+  el('venue').hidden = !venue;
+  el('venue-link').textContent = venue ? (venue.label || `${venue.lat.toFixed(5)}, ${venue.lng.toFixed(5)}`) : '';
+  if (venue) {
+    el('venue-link').href = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${venue.lat},${venue.lng}`)}`;
+    el('venue-link').title = words['location.open'];
+  } else el('venue-link').removeAttribute('href');
   const o = state.overlay;
   let view = o.view;
   if (view !== 'hidden' && o.auto_big && ['break', 'finished'].includes(state.phase)) view = 'score_big';

@@ -41,11 +41,23 @@ class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class Location(StrictModel):
+    lat: float = Field(ge=-85, le=85, allow_inf_nan=False)
+    lng: float = Field(ge=-180, le=180, allow_inf_nan=False)
+    label: str = Field(default="", max_length=120)
+    visible: bool = False
+
+
+class LocationUpdate(StrictModel):
+    location: Location | None = None
+
+
 class CreateBoard(StrictModel):
     sport: Literal["football"] = "football"
     language: Literal["de", "en"] = "de"
     period_count: int = Field(default=2, ge=1, le=12)
     period_length_min: int = Field(default=45, ge=1, le=60)
+    location: Location | None = None
 
 
 class CreateMatch(StrictModel):
@@ -114,7 +126,7 @@ def create_app(db_url=None, secure_cookies=None):
             request._body = b"".join(chunks)
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin" if request.url.path == "/location-picker" else "no-referrer"
         if request.url.path.startswith("/api/") or request.url.path.endswith("/control") or request.url.path in ("/new", "/dashboard"):
             response.headers["Cache-Control"] = "no-store"
         return response
@@ -148,11 +160,12 @@ def create_app(db_url=None, secure_cookies=None):
                             samesite="lax", max_age=180 * 86400, path="/")
 
     def state(db, b, match_id=None):
+        public_location = {k: b.location[k] for k in ("lat", "lng", "label")} if b.location and b.location.get("visible") else None
         target = match_id or b.active_match
         if not target:
             s = initial_state()
             s.update(scoreboard=b.slug, name=b.name, language=b.language, match_id=None,
-                     revision=0, server_now=round(time.time() * 1000), phase="no_match", events=[])
+                     revision=0, server_now=round(time.time() * 1000), phase="no_match", events=[], location=public_location)
             s["overlay"]["view"] = "hidden"
             for team in ("home", "away"):
                 s[team].update(score=0, counters={"red_cards": 0})
@@ -168,7 +181,7 @@ def create_app(db_url=None, secure_cookies=None):
                  revision=m.revision, server_now=round(time.time() * 1000),
                  created_at=round(m.created_at * 1000),
                  scheduled_at=round(m.scheduled_at * 1000) if m.scheduled_at else None,
-                 archived=bool(m.archived_at), active=m.id == b.active_match)
+                 archived=bool(m.archived_at), active=m.id == b.active_match, location=public_location)
         for team in ("home", "away"):
             s[team]["score"] = sum(e.payload.get("points", 0) for e in events
                                    if not e.cancelled and e.payload.get("team") == team and e.payload["type"] in ("score", "score_correction"))
@@ -214,7 +227,7 @@ def create_app(db_url=None, secure_cookies=None):
             pin, match_id = f"{secrets.randbelow(1000000):06d}", str(uuid4())
             label = datetime.fromtimestamp(now, timezone.utc).isoformat(sep=" ", timespec="milliseconds").replace("+00:00", " UTC")
             b = Board(slug=slug, name=label, language=body.language, pin_hash=hash_pin(pin),
-                      active_match=match_id, created_at=now)
+                      active_match=match_id, created_at=now, location=body.location.model_dump() if body.location else None)
             db.add(b)
             db.flush()
             db.add(Match(id=match_id, slug=slug, state=initial_state(body.period_count, body.period_length_min)))
@@ -222,6 +235,23 @@ def create_app(db_url=None, secure_cookies=None):
             db.commit()
             return {"slug": slug, "pin": pin, "links": {"public": f"/s/{slug}",
                     "overlay": f"/s/{slug}/overlay", "control": f"/s/{slug}/control"}}
+
+    @app.get("/api/s/{slug}/location")
+    def get_location(slug: str, request: Request):
+        with lock, app.state.sessions() as db:
+            authorize(db, slug, request)
+            return {"location": board(db, slug).location}
+
+    @app.put("/api/s/{slug}/location")
+    def update_location(slug: str, body: LocationUpdate, request: Request):
+        with lock, app.state.sessions() as db:
+            authorize(db, slug, request)
+            b = board(db, slug)
+            b.location = body.location.model_dump() if body.location else None
+            if b.active_match:
+                db.get(Match, b.active_match).revision += 1
+            db.commit()
+            return {"location": b.location}
 
     @app.post("/api/s/{slug}/admin/claim")
     def claim(slug: str, body: Claim, response: Response):
@@ -314,7 +344,7 @@ def create_app(db_url=None, secure_cookies=None):
             for b in active:
                 s = state(db, b)
                 games.append({k: s[k] for k in ("scoreboard", "match_id", "home", "away", "clock",
-                    "phase", "period", "period_count", "period_length_min", "server_now")})
+                    "phase", "period", "period_count", "period_length_min", "server_now", "location")})
             return {"games": games, "server_now": round(time.time() * 1000)}
 
     @app.post("/api/s/{slug}/matches", status_code=201)
@@ -469,6 +499,10 @@ def create_app(db_url=None, secure_cookies=None):
     @app.get("/live", response_class=HTMLResponse)
     def live_page(request: Request):
         return templates.TemplateResponse(request=request, name="live.html")
+
+    @app.get("/location-picker", response_class=HTMLResponse)
+    def location_picker(request: Request):
+        return templates.TemplateResponse(request=request, name="location-picker.html")
 
     @app.get("/s/{slug}", response_class=HTMLResponse)
     @app.get("/s/{slug}/overlay", response_class=HTMLResponse)

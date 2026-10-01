@@ -30,6 +30,7 @@ The development database is `backend/data/score67.db` when started from `backend
 
 ## Included
 
+- Optional venue with browser/mobile geolocation, draggable map pin, coordinate/Google Maps link import, and a private-by-default visibility switch. Edit/remove it in the controller.
 - Independent football scoreboards; automatic timestamp labels, random public links and six-digit PINs.
 - Hashed device cookies, additional devices, revocation, PIN rotation and persistent rate limits.
 - Flutter phone controller; Jinja/HTML landing page, spectator page and transparent OBS overlay.

@@ -41,6 +41,7 @@ class _Score67State extends State<Score67> {
   final messenger = GlobalKey<ScaffoldMessengerState>();
   final stopwatch = Stopwatch()..start();
   Map<String, dynamic> words = {}, state = {};
+  Map<String, dynamic>? draftLocation;
   String lang = 'en', slug = '', pin = '', error = '';
   bool dashboardPage = false;
   int defaultPeriods = 2, defaultMinutes = 45;
@@ -414,6 +415,7 @@ class _Score67State extends State<Score67> {
           'language': lang,
           'period_count': defaultPeriods,
           'period_length_min': defaultMinutes,
+          'location': draftLocation,
         },
       );
       slug = result['slug'];
@@ -865,10 +867,145 @@ class _Score67State extends State<Score67> {
     Text(t('obs.note'), style: const TextStyle(color: Color(0xffb1bfd0))),
   ];
 
+  Future<void> editLocation() async {
+    Map<String, dynamic>? current = draftLocation;
+    if (slug.isNotEmpty) {
+      try {
+        final result = await api('/api/s/$slug/location');
+        current = result['location'] == null
+            ? null
+            : Map<String, dynamic>.from(result['location']);
+      } catch (_) {
+        notify(t('error.network'));
+        return;
+      }
+    }
+    if (!mounted) return;
+    web.HTMLIFrameElement? frame;
+    BuildContext? dialogContext;
+    bool saving = false;
+    Future<void> handleMessage(web.MessageEvent event) async {
+      if (event.origin != web.window.location.origin ||
+          frame == null ||
+          event.source != frame!.contentWindow) {
+        return;
+      }
+      final data = event.data.dartify();
+      if (data is! Map) return;
+      if (data['type'] == 'score67-location-ready') {
+        frame!.contentWindow!.postMessage(
+          {'type': 'score67-location-init', 'location': current}.jsify(),
+          web.window.location.origin.toJS,
+        );
+      } else if (data['type'] == 'score67-location-save' && !saving) {
+        saving = true;
+        final chosen = data['location'] == null
+            ? null
+            : Map<String, dynamic>.from(data['location']);
+        try {
+          if (slug.isEmpty) {
+            setState(() => draftLocation = chosen);
+          } else {
+            await api(
+              '/api/s/$slug/location',
+              method: 'PUT',
+              body: {'location': chosen},
+            );
+            await refresh();
+          }
+          if (dialogContext != null && dialogContext!.mounted) {
+            Navigator.pop(dialogContext!);
+          }
+          notify(t('saved'));
+        } catch (_) {
+          notify(t('error.network'));
+        } finally {
+          saving = false;
+        }
+      }
+    }
+
+    final listener = ((web.MessageEvent event) {
+      unawaited(handleMessage(event));
+    }).toJS;
+    web.window.addEventListener('message', listener);
+    try {
+      await showDialog<void>(
+        context: navigator.currentContext!,
+        builder: (context) {
+          dialogContext = context;
+          return Dialog(
+            insetPadding: const EdgeInsets.all(12),
+            child: SizedBox(
+              width: 650,
+              height: 760,
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 6,
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            t('location.title'),
+                            style: const TextStyle(fontSize: 20),
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: t('close'),
+                          onPressed: () => Navigator.pop(context),
+                          icon: const Icon(Icons.close),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: HtmlElementView.fromTagName(
+                      tagName: 'iframe',
+                      onElementCreated: (element) {
+                        frame = element as web.HTMLIFrameElement;
+                        frame!.title = t('location.title');
+                        frame!.allow = 'geolocation';
+                        frame!.style.border = '0';
+                        frame!.style.width = '100%';
+                        frame!.style.height = '100%';
+                        frame!.src = '/location-picker?lang=$lang';
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+    } finally {
+      web.window.removeEventListener('message', listener);
+    }
+  }
+
   Widget createView() => section(t('create'), [
     Text(t('football')),
     const SizedBox(height: 12),
     Text(t('create.note')),
+    const SizedBox(height: 16),
+    Text(t('location.optional')),
+    if (draftLocation != null)
+      Text(
+        '${draftLocation!['label']} · ${draftLocation!['lat']}, ${draftLocation!['lng']}',
+      ),
+    if (draftLocation != null)
+      Text(
+        t(
+          draftLocation!['visible'] == true
+              ? 'location.visible'
+              : 'location.private',
+        ),
+      ),
+    action(t('location.choose'), busy ? null : editLocation),
     action(t('create'), busy ? null : create, primary: true),
   ]);
 
@@ -1208,6 +1345,11 @@ class _Score67State extends State<Score67> {
               tooltip: t('share.spectator'),
               onPressed: showSharing,
               icon: const Icon(Icons.share_outlined),
+            ),
+            IconButton(
+              tooltip: t('location.title'),
+              onPressed: admin ? editLocation : null,
+              icon: const Icon(Icons.place_outlined),
             ),
           ],
         ),
