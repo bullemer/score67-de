@@ -13,6 +13,7 @@ import 'squad.dart';
 import 'match_console.dart';
 import 'team_editor.dart';
 import 'displays.dart';
+import 'led_display.dart';
 import 'command_queue.dart';
 import 'package:web/web.dart' as web;
 import 'package:web_socket_channel/web_socket_channel.dart';
@@ -88,6 +89,10 @@ class _Score67State extends State<Score67> {
   int retryMs = 500;
   web.WakeLockSentinel? wakeLock;
   bool landscapeRequested = false;
+  // Bluetooth LED displays driven directly by this phone (Android Chrome).
+  List<LedConfig> ledConfigs = loadLedConfigs();
+  final ledSent = <int, String>{};
+  int ledTicks = 0;
   final consoleKey = GlobalKey<MatchConsoleState>();
   Timer? refreshTimer, renderTimer, reconnectTimer, retryTimer;
   WebSocketChannel? channel;
@@ -182,6 +187,7 @@ class _Score67State extends State<Score67> {
         });
         renderTimer = Timer.periodic(const Duration(milliseconds: 200), (_) {
           if (mounted) setState(() {});
+          sendLed();
         });
       }
     } catch (_) {
@@ -303,14 +309,82 @@ class _Score67State extends State<Score67> {
     minutes.dispose();
   }
 
+  /// Sends the current frame to each connected Bluetooth display when it
+  /// changes (clock: once per second) and every 5 s as a heartbeat.
+  void sendLed() {
+    if (++ledTicks % 10 == 0) ledConfigs = loadLedConfigs();
+    if (ledConfigs.isEmpty || !Ble.supported || state['match_id'] == null) {
+      return;
+    }
+    for (var slot = 0; slot < ledConfigs.length; slot++) {
+      if (Ble.status(slot) != 'connected') continue;
+      final frame = ledFrame(
+        ledConfigs[slot],
+        state,
+        clockText(),
+        periodLabel(),
+      );
+      if (frame != ledSent[slot] || ledTicks % 25 == 0) {
+        ledSent[slot] = frame;
+        unawaited(Ble.write(slot, frame));
+      }
+    }
+  }
+
+  /// Header icon: connected LED displays; a tap connects the next one.
+  Widget bleIndicator() {
+    if (ledConfigs.isEmpty || !Ble.supported) return const SizedBox.shrink();
+    final connected = [
+      for (var slot = 0; slot < ledConfigs.length; slot++)
+        Ble.status(slot) == 'connected',
+    ];
+    final count = connected.where((c) => c).length;
+    final all = count == ledConfigs.length;
+    return IconButton(
+      tooltip: t('ble.title'),
+      onPressed: all
+          ? openDisplays
+          : () async {
+              final slot = connected.indexOf(false);
+              try {
+                await Ble.connect(slot);
+                ledSent.remove(slot);
+              } catch (_) {}
+              if (mounted) setState(() {});
+            },
+      icon: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            all ? Icons.bluetooth_connected : Icons.bluetooth,
+            color: all
+                ? const Color(0xff22c55e)
+                : count > 0
+                ? Colors.orange
+                : Colors.white54,
+          ),
+          Text(
+            '$count/${ledConfigs.length}',
+            style: const TextStyle(fontSize: 13),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// Global settings → Anzeigetafeln: pair devices and choose their board.
-  Future<void> openDisplays() => showDialog<void>(
-    context: navigator.currentContext!,
-    builder: (context) => DisplaysDialog(
-      api: (path, method, body) => api(path, method: method, body: body),
-      t: t,
-    ),
-  );
+  Future<void> openDisplays() async {
+    await showDialog<void>(
+      context: navigator.currentContext!,
+      builder: (context) => DisplaysDialog(
+        api: (path, method, body) => api(path, method: method, body: body),
+        t: t,
+      ),
+    );
+    ledConfigs = loadLedConfigs();
+    ledSent.clear();
+    if (mounted) setState(() {});
+  }
 
   Future<void> switchLanguage() async {
     final next = lang == 'de' ? 'en' : 'de';
@@ -2086,7 +2160,10 @@ class _Score67State extends State<Score67> {
       canTap: canTap,
       canWrite: canWrite,
       connected: connected,
-      sync: syncBadge(),
+      sync: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [bleIndicator(), syncBadge()],
+      ),
       onMenu: openMenu,
       onToggleClock: periodOver
           ? () => command('period_end')

@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'led_display.dart';
+
 typedef Api =
     Future<dynamic> Function(
       String path,
@@ -327,6 +329,8 @@ class _DisplaysDialogState extends State<DisplaysDialog> {
                     ),
                   ],
                 ),
+                const Divider(height: 32),
+                BleDisplaysSection(t: widget.t),
               ],
             ),
     ),

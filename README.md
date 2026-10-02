@@ -90,6 +90,10 @@ When the basketball clock reaches 0:00 the Play button turns into ⏭: one tap e
 
 Settings → Anzeigetafeln (also in the console menu) connects physical scoreboard drivers such as a Raspberry Pi next to an LED board. "Connect display" creates a 6-character pairing code (valid 10 minutes) that is entered on the device's setup page; afterwards choose which of your scoreboards it shows and switch at any time. The list shows online/offline/waiting status, rename, new code and remove. A paired display follows the assigned board's current game, including private games. Device protocol: [docs/DISPLAY-API.md](docs/DISPLAY-API.md).
 
+### Bluetooth LED displays (Android)
+
+In Settings → Anzeigetafeln, up to two LED displays can be driven directly by the phone via Web Bluetooth (Chrome on Android or desktop; not iPhone). Per display: name, LED size in pixels (presets or free width × height; 6 × 8 px per character), content (score and time / score / time), time updates (whole minutes – default, every second, none) and protocol, with a live preview. The console header shows connected displays (tap to connect the next one) and sends a frame on every change plus a 5-second heartbeat. Implemented protocols: plain text over common serial BLE modules (Nordic UART, HM-10/BT05 FFE0, FFF0) and a `S67;…` data line for custom firmware. Vendor drivers (e.g. CoolLED1248 / iPixel Color panels) are added per device model.
+
 ### Console menu
 
 The ☰ menu starts with Edit teams (opens the Team tab), Pause game (stops a running basketball clock and returns to the start page; the game stays open and can be resumed from My scoreboards) and Close game (confirms, ends the game, returns to the start page), followed by My scoreboards, links, sharing, venue, description and language.
