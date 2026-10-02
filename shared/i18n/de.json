@@ -289,7 +289,7 @@
   "console.pick_player": "Spieler oder Team antippen",
   "console.pick_action": "Erst rechts die Aktion wählen, dann den Spieler.",
   "console.flow": "Spielverlauf",
-  "console.period": "Abschnitt",
+  "console.period": "Periods",
   "console.settings": "Einstellungen",
   "console.lineup": "Auf dem Feld (max. 5)",
   "console.remove": "Eintrag entfernen",
@@ -326,5 +326,7 @@
   "trash.retention": "wird nach 30 Tagen automatisch gelöscht",
   "trash.reason.abandoned": "Nicht beendet, 24 Std. ohne Aktivität",
   "trash.reason.not_started": "Geplant, aber nie gestartet",
-  "trash.reason.manual": "In den Papierkorb gelegt"
+  "trash.reason.manual": "In den Papierkorb gelegt",
+  "console.team": "Team",
+  "team.on_court": "Auf dem Feld"
 }

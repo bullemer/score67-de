@@ -289,7 +289,7 @@
   "console.pick_player": "tap a player or the team",
   "console.pick_action": "Pick an action first (right), then the player.",
   "console.flow": "Game flow",
-  "console.period": "Period",
+  "console.period": "Periods",
   "console.settings": "Game settings",
   "console.lineup": "On court (max. 5)",
   "console.remove": "Remove entry",
@@ -326,5 +326,7 @@
   "trash.retention": "deleted automatically after 30 days",
   "trash.reason.abandoned": "Not ended, no activity for 24 h",
   "trash.reason.not_started": "Planned but never started",
-  "trash.reason.manual": "Moved to trash"
+  "trash.reason.manual": "Moved to trash",
+  "console.team": "Team",
+  "team.on_court": "On court"
 }

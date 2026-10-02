@@ -62,6 +62,10 @@ Scoring supports +1/+2/+3 whether the clock runs or not; made baskets do not sto
 
 Football uses the same landscape console. Header: menu, short name, yellow/red card and foul counts, scores, half, running clock and a Play button that kicks off each half (the football clock is not stopped). Team columns show the team tile plus the players on the pitch (lineup of up to 11, otherwise the squad) and scroll vertically; tiles show goals and yellow/red cards. Actions: GOAL, YELLOW, RED, PENALTY, FOUL, FREE KICK, Undo, SUBSTITUTIONS — action first, then player or team tile. PENALTY records the awarded penalty and offers an inline Goal/Missed bar; Goal records a goal marked "penalty". The Period tab has kick-off/half-time/final whistle and clock corrections. Fouls, free kicks, penalties awarded and lineups stay private to controllers.
 
+### Team tab
+
+The console's middle panel has the tabs Spielverlauf (game flow), Team, Periods, Einstellungen and Teilen. Team edits both rosters inline: shirt number, optional name (basketball requires numbers) and an on-court checkbox (max. 5 in basketball, 11 in football). A new empty row appears automatically; a pasted list ("7 Alex" per line) can be imported. Save sends the squad, then the lineup; ticked players appear in the left columns and can be selected for actions. Unsaved edits are kept per team while switching teams or tabs (marked with •).
+
 ### Sharing tab and creation
 
 Creating a scoreboard opens the console directly. The console's Sharing tab shows the admin PIN (kept only in the creating or renewing browser, because the server stores it hashed), PIN renewal, device management, social sharing and the spectator, OBS and control links.

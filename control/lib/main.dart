@@ -11,6 +11,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'dashboard.dart';
 import 'squad.dart';
 import 'match_console.dart';
+import 'team_editor.dart';
 import 'command_queue.dart';
 import 'package:web/web.dart' as web;
 import 'package:web_socket_channel/web_socket_channel.dart';
@@ -1936,6 +1937,7 @@ class _Score67State extends State<Score67> {
       onPossession: (team) => command('possession', {'team': team}),
       tabs: [
         (t('console.flow'), gameFlow()),
+        (t('console.team'), teamTab()),
         (t('console.period'), periodPanel()),
         (t('console.settings'), settingsPanel()),
         (t('console.sharing'), sharingPanel()),
@@ -2027,6 +2029,19 @@ class _Score67State extends State<Score67> {
         return t(e['type']);
     }
   }
+
+  Widget teamTab() => TeamEditor(
+    state: state,
+    t: t,
+    enabled: canWrite,
+    onSave: (team, players, onCourt) async {
+      // Squad first: the lineup may only name players in the saved squad.
+      if (!await command('squad', {'team': team, 'players': players})) {
+        return false;
+      }
+      return command('lineup', {'team': team, 'player_ids': onCourt});
+    },
+  );
 
   Widget gameFlow() {
     final list = events.reversed.toList();

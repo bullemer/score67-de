@@ -874,7 +874,14 @@ class MatchConsoleState extends State<MatchConsole> {
               ),
             ),
           const Divider(height: 1),
-          Expanded(child: widget.tabs[tab.clamp(0, widget.tabs.length - 1)].$2),
+          // IndexedStack keeps every tab alive, so unsaved Team edits survive
+          // switching tabs.
+          Expanded(
+            child: IndexedStack(
+              index: tab.clamp(0, widget.tabs.length - 1),
+              children: [for (final entry in widget.tabs) entry.$2],
+            ),
+          ),
         ],
       ),
     );
