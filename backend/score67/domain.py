@@ -14,7 +14,8 @@ BASKETBALL = json.loads((Path(__file__).parent / "profiles/basketball.json").rea
 
 BASKETBALL_STATS = ("rebound", "assist", "steal", "block", "turnover")
 STAT_COLUMNS = {"score": "pts", "rebound": "reb", "assist": "ast",
-                "steal": "stl", "block": "blk", "turnover": "to", "personal_foul": "pf"}
+                "steal": "stl", "block": "blk", "turnover": "to", "personal_foul": "pf", "technical_foul": "pf"}
+SHORT_MAX = 3
 
 
 def player_statistics(team_state, events):
@@ -32,6 +33,8 @@ def player_statistics(team_state, events):
         if column is None:
             continue
         player = event.get("player")
+        if event["type"] == "technical_foul" and not player:
+            continue  # Coach/bench technicals belong to no player.
         identifier = player["id"] if player else None
         rows.setdefault(identifier, row(player))[column] += event.get("points", 0) if column == "pts" else 1
     active_ids = {p["id"] for p in team_state.get("squad", [])}
@@ -56,8 +59,8 @@ def initial_state(period_count=None, period_length_min=None, sport="football"):
         "period_count": period_count, "period_length_min": period_length_min,
         "clock": {"enabled": True, "direction": "down" if basketball else "up", "running": False,
                   "started_at": None, "elapsed_ms": 0},
-        "home": {"name": "Home", "short": "HOME", "color": "#c8102e"},
-        "away": {"name": "Guest", "short": "GUEST", "color": "#1d4ed8"},
+        "home": {"name": "Home", "short": "HOM", "color": "#c8102e"},
+        "away": {"name": "Guest", "short": "GUE", "color": "#1d4ed8"},
         "overlay": {"view": "scoreboard", "position": "top_left", "auto_big": True, "delay_ms": 0},
     }
 
@@ -180,6 +183,31 @@ def apply(state, action, data, now_ms):
         event.update(team=data["team"], count=-1 if action.endswith("_correction") else 1)
         if action == "timeout" and phase == "period_running":
             c.update(elapsed_ms=round(elapsed(s, now_ms)), running=False, started_at=None)
+    elif action in ("technical_foul", "technical_foul_correction"):
+        team = data.get("team")
+        if not basketball or team not in ("home", "away"):
+            raise RuleError("invalid_value")
+        event.update(team=team, technical=True)
+        if action == "technical_foul":
+            player = foul_player(s, team, data)
+            # A player's technical is a personal and team foul (FIBA); a coach/bench one is neither.
+            event.update(player=player, counts_team=player is not None and foul_mode(s) in ("team", "both"))
+    elif action == "possession":
+        if not basketball or data.get("team") not in ("home", "away", None):
+            raise RuleError("invalid_value")
+        s["possession"] = data.get("team")
+        event.update(team=data.get("team"))
+    elif action == "lineup":
+        team, ids = data.get("team"), data.get("player_ids")
+        if not basketball or team not in ("home", "away") or not isinstance(ids, list) or len(ids) > 5 or len(set(map(str, ids))) != len(ids):
+            raise RuleError("invalid_value")
+        squad = {p["id"]: p for p in s[team].get("squad", [])}
+        if any(i not in squad for i in ids):
+            raise RuleError("player_not_found")
+        before_ids = s[team].get("on_court", [])
+        s[team]["on_court"] = list(ids)
+        event.update(team=team, entered=[deepcopy(squad[i]) for i in ids if i not in before_ids],
+                     left=[deepcopy(squad[i]) for i in before_ids if i not in ids and i in squad])
     elif action in ("personal_foul", "personal_foul_correction", "assign_foul_player"):
         team = data.get("team")
         if not basketball or team not in ("home", "away"):
@@ -229,6 +257,8 @@ def apply(state, action, data, now_ms):
         if len({p["id"] for p in cleaned}) != len(cleaned):
             raise RuleError("duplicate_player")
         s[team]["squad"] = cleaned
+        if s[team].get("on_court"):
+            s[team]["on_court"] = [i for i in s[team]["on_court"] if any(p["id"] == i for p in cleaned)]
         if private:
             by_id = {p["id"]: p for p in cleaned}
             s[team]["foul_players"] = [deepcopy(by_id.get(p["id"], p)) for p in private]
@@ -300,7 +330,7 @@ def apply(state, action, data, now_ms):
                 if "name" in t:
                     s[team]["name"] = text(t["name"], 60)
                 if "short" in t:
-                    s[team]["short"] = text(t["short"], 5)
+                    s[team]["short"] = text(t["short"], SHORT_MAX).upper()
                 if "color" in t:
                     if not isinstance(t["color"], str) or not re.fullmatch(r"#[0-9a-fA-F]{6}", t["color"]):
                         raise RuleError("invalid_value")
@@ -338,5 +368,6 @@ def apply(state, action, data, now_ms):
                 raise RuleError("player_number_required")
     normalize_clock(s, now_ms)
     # Store only changed fields: undoing a goal must never rewind a running clock.
-    before = {key: deepcopy(value) for key, value in state.items() if s[key] != value}
+    # Fields added by this action (e.g. possession) are restored to None.
+    before = {key: deepcopy(state.get(key)) for key in s if state.get(key) != s[key]}
     return s, event, before

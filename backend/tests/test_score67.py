@@ -212,8 +212,10 @@ def test_automatic_board_timestamp_and_inline_team_settings(system):
     s = state(client, slug)
     assert s['name'].endswith(' UTC')
     assert len(s['name']) == 27
-    updated = command(client, slug, 'settings', {'home': {'name': 'FC Hafen', 'short': 'HAFEN', 'color': '#FACC15'}}).json()
+    updated = command(client, slug, 'settings', {'home': {'name': 'FC Hafen', 'short': 'haf', 'color': '#FACC15'}}).json()
     assert updated['home']['name'] == 'FC Hafen' and updated['home']['color'] == '#facc15'
+    assert updated['home']['short'] == 'HAF' and updated['away']['short'] == 'GUE'
+    assert command(client, slug, 'settings', {'home': {'short': 'HAFEN'}}).status_code == 422
     assert updated['away']['name'] == 'Guest'
     assert command(client, slug, 'settings', {'home': {'color': 'url(https://evil.test)'}}).status_code == 422
     with client.websocket_connect(f'/ws/s/{slug}') as ws:
@@ -927,3 +929,36 @@ def test_create_with_description_and_schedule_keeps_description_private(system):
     assert client.post('/api/scoreboards', json={'scheduled_at': 1000}).status_code == 422
     other = TestClient(client.app)
     assert other.put(f'/api/s/{slug}/description', json={'description': 'hijack'}).status_code in (401, 403)
+
+
+def test_basketball_technicals_possession_and_lineup(system):
+    _, client = system
+    slug = client.post('/api/scoreboards', json={'sport': 'basketball'}).json()['slug']
+    ids = [str(uuid4()) for _ in range(7)]
+    command(client, slug, 'squad', {'team': 'home', 'players': [{'id': i, 'number': str(n + 4), 'name': ''} for n, i in enumerate(ids)]})
+    command(client, slug, 'period_start')
+    s = command(client, slug, 'lineup', {'team': 'home', 'player_ids': ids[:5]}).json()
+    assert s['home']['on_court'] == ids[:5]
+    s = command(client, slug, 'lineup', {'team': 'home', 'player_ids': ids[1:6]}).json()
+    sub = s['events'][-1]
+    assert [p['id'] for p in sub['entered']] == [ids[5]] and [p['id'] for p in sub['left']] == [ids[0]]
+    assert command(client, slug, 'lineup', {'team': 'home', 'player_ids': ids[:6]}).status_code == 422
+    assert command(client, slug, 'lineup', {'team': 'home', 'player_ids': [str(uuid4())]}).status_code == 422
+    # Player technical: personal + team foul. Coach technical: neither.
+    s = command(client, slug, 'technical_foul', {'team': 'home', 'player_id': ids[1]}).json()
+    s = command(client, slug, 'technical_foul', {'team': 'home'}).json()
+    row = next(p for p in s['home']['statistics']['players'] if p['id'] == ids[1])
+    assert row['pf'] == 1 and s['home']['statistics']['totals']['pf'] == 1
+    assert s['home']['counters']['team_fouls'] == 1
+    s = command(client, slug, 'technical_foul_correction', {'team': 'home', 'event_id': s['events'][-2]['id']}).json()
+    assert s['home']['counters']['team_fouls'] == 0
+    s = command(client, slug, 'possession', {'team': 'away'}).json()
+    assert s['possession'] == 'away'
+    s = command(client, slug, 'undo', {'event_id': s['events'][-1]['id']}).json()
+    assert s.get('possession') is None
+    public = state(client, slug)
+    assert 'on_court' not in public['home']
+    assert not any(e['type'] in ('technical_foul', 'lineup') for e in public['events'])
+    # Removing a player from the squad also takes them off court.
+    s = command(client, slug, 'squad', {'team': 'home', 'players': [{'id': i, 'number': str(n + 4), 'name': ''} for n, i in enumerate(ids) if i != ids[2]]}).json()
+    assert ids[2] not in s['home']['on_court']

@@ -22,7 +22,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
 from .db import Admin, Board, Match, MatchEvent, RateLimit, Receipt, database
-from .domain import FOOTBALL, BASKETBALL, RuleError, apply, initial_state, normalize_clock, foul_mode, BASKETBALL_STATS, player_statistics
+from .domain import FOOTBALL, BASKETBALL, RuleError, apply, initial_state, normalize_clock, foul_mode, BASKETBALL_STATS, player_statistics, SHORT_MAX
 
 ROOT = Path(__file__).resolve().parents[2]
 RELEASE = json.loads((ROOT / "shared/release.json").read_text())
@@ -92,7 +92,8 @@ class Command(StrictModel):
     data: dict = Field(default_factory=dict)
 
 
-COUNTED_EVENTS = ("score", "red_card", "yellow_card", "team_foul", "timeout", "personal_foul") + BASKETBALL_STATS
+COUNTED_EVENTS = ("score", "red_card", "yellow_card", "team_foul", "timeout", "personal_foul", "technical_foul") + BASKETBALL_STATS
+PRIVATE_EVENTS = ("personal_foul", "technical_foul", "assign_foul_player", "lineup")
 CORRECTION_EVENTS = tuple(f"{kind}_correction" for kind in COUNTED_EVENTS)
 
 
@@ -221,13 +222,14 @@ def create_app(db_url=None, secure_cookies=None):
             s[team]["score"] = sum(e.payload.get("points", 0) for e in events
                                    if not e.cancelled and e.payload.get("team") == team and e.payload["type"] in ("score", "score_correction"))
             s[team].setdefault("squad", [])
+            s[team]["short"] = s[team]["short"][:SHORT_MAX]
             s[team]["counters"] = {f"{color}_cards": sum(e.payload.get("cards", 0) for e in events
                 if not e.cancelled and e.payload.get("team") == team
                 and e.payload["type"] in (f"{color}_card", f"{color}_card_correction")) for color in ("red", "yellow")}
         available = available_events(events)
         for team in ("home", "away"):
             s[team]["counters"].update(
-                team_fouls=sum(1 for e in available if (e.payload["type"] == "team_foul" or (e.payload["type"] == "personal_foul" and e.payload.get("counts_team"))) and e.payload.get("team") == team
+                team_fouls=sum(1 for e in available if (e.payload["type"] == "team_foul" or (e.payload["type"] in ("personal_foul", "technical_foul") and e.payload.get("counts_team"))) and e.payload.get("team") == team
                                and min(e.payload["period"], s["period_count"]) == min(s["period"], s["period_count"])),
                 timeouts=sum(1 for e in available if e.payload["type"] == "timeout" and e.payload.get("team") == team))
             # Points by the period they were scored in; corrections remove their target basket.
@@ -251,9 +253,11 @@ def create_app(db_url=None, secure_cookies=None):
                     totals[player["id"]] = {**player, "fouls": 0}
                 unassigned = 0
                 for e in available:
-                    if e.payload["type"] != "personal_foul" or e.payload["team"] != team:
+                    if e.payload["type"] not in ("personal_foul", "technical_foul") or e.payload["team"] != team:
                         continue
                     player = e.payload.get("player")
+                    if e.payload["type"] == "technical_foul" and not player:
+                        continue
                     if player:
                         totals.setdefault(player["id"], {**player, "fouls": 0})["fouls"] += 1
                     else:
@@ -263,8 +267,10 @@ def create_app(db_url=None, secure_cookies=None):
         else:
             for team in ("home", "away"):
                 s[team].pop("foul_players", None)
-            s["events"] = [e for e in s["events"] if e["type"] not in ("personal_foul", "personal_foul_correction", "assign_foul_player")
+            s["events"] = [e for e in s["events"] if e["type"].removesuffix("_correction") not in PRIVATE_EVENTS
                            and e["type"].removesuffix("_correction") not in BASKETBALL_STATS]
+            for team in ("home", "away"):
+                s[team].pop("on_court", None)
         return s
 
     @app.get("/health")
@@ -466,7 +472,7 @@ def create_app(db_url=None, secure_cookies=None):
             s = initial_state(body.period_count, body.period_length_min, body.sport)
             for team in ("home", "away"):
                 name = getattr(body, team).strip()
-                s[team].update(name=name, short="".join(name.split())[:5].upper())
+                s[team].update(name=name, short="".join(name.split())[:SHORT_MAX].upper())
             m = Match(id=str(uuid4()), slug=slug, state=s,
                       scheduled_at=body.scheduled_at / 1000 if body.scheduled_at else None)
             db.add(m)

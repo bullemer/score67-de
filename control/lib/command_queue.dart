@@ -6,6 +6,7 @@ import 'dart:convert';
 const tallyActions = {
   'score',
   'personal_foul',
+  'technical_foul',
   'team_foul',
   'timeout',
   'red_card',
@@ -29,6 +30,7 @@ const _statColumns = {
   'block': 'blk',
   'turnover': 'to',
   'personal_foul': 'pf',
+  'technical_foul': 'pf',
 };
 
 /// Server state plus the visible effect of unconfirmed tally commands.
@@ -92,10 +94,16 @@ Map<String, dynamic> optimisticState(
       final key = kind == 'team_foul' ? 'team_fouls' : 'timeouts';
       counters[key] = ((counters[key] ?? 0) as num) + sign;
     } else {
-      _addStat(side, playerId, _statColumns[kind]!, sign);
-      if (kind == 'personal_foul') {
+      // A coach/bench technical belongs to no player and no team foul.
+      if (kind != 'technical_foul' || playerId != null) {
+        _addStat(side, playerId, _statColumns[kind]!, sign);
+      }
+      if (kind == 'personal_foul' || kind == 'technical_foul') {
         final countsTeam = correcting
             ? target!['counts_team'] == true
+            : kind == 'technical_foul'
+            ? playerId != null &&
+                  (s['foul_mode'] == 'team' || s['foul_mode'] == 'both')
             : s['foul_mode'] == 'both';
         if (countsTeam) {
           counters['team_fouls'] =

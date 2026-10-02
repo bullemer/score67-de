@@ -93,4 +93,14 @@ void main() {
     expect(identical(optimisticState(server(), [other])['home'], null), false);
     expect(optimisticState(server(), [other])['home']['score'], 5);
   });
+
+  test('player technicals count as fouls; coach technicals do not', () {
+    final shown = optimisticState(server(), [
+      queued('technical_foul', {'team': 'home', 'player_id': 'p7'}),
+      queued('technical_foul', {'team': 'home'}),
+    ]);
+    expect(shown['home']['statistics']['players'][1]['pf'], 2);
+    expect(shown['home']['statistics']['players'][0]['pf'], 0);
+    expect(shown['home']['counters']['team_fouls'], 2);
+  });
 }
