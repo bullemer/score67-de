@@ -1203,3 +1203,36 @@ def test_livestream_link_is_public_and_https_only(system):
     assert client.put(f'/api/s/{slug}/stream', json={'stream_url': 'https://fb.watch/xyz'}).json() == {'stream_url': 'https://fb.watch/xyz'}
     assert viewer.put(f'/api/s/{slug}/stream', json={'stream_url': None}).status_code == 401
     assert client.put(f'/api/s/{slug}/stream', json={'stream_url': '  '}).json() == {'stream_url': None}
+
+
+def _png(width=600, height=400, color=(200, 16, 46, 255)):
+    import base64, io
+    from PIL import Image
+    out = io.BytesIO()
+    Image.new('RGBA', (width, height), color).save(out, 'PNG')
+    return 'data:image/png;base64,' + base64.b64encode(out.getvalue()).decode()
+
+
+def test_team_logo_upload_reencodes_and_is_public(system):
+    _, client = system
+    slug = create(client)['slug']
+    match = state(client, slug)['match_id']
+    url = f'/api/s/{slug}/matches/{match}/logo'
+    s = client.post(url, json={'team': 'home', 'data': _png()}).json()
+    logo = s['home']['logo']
+    assert logo.startswith('/media/') and logo.endswith('.png')
+    media = TestClient(client.app).get(logo)
+    assert media.status_code == 200 and media.headers['content-type'] == 'image/png'
+    from PIL import Image
+    import io
+    assert max(Image.open(io.BytesIO(media.content)).size) == 256          # downscaled, re-encoded
+    assert state(client, slug)['home']['logo'] == logo                     # public
+    # Garbage, wrong types, svg and bombs are rejected; strangers cannot upload.
+    for bad in ('data:image/png;base64,AAAA', 'data:image/svg+xml;base64,PHN2Zz4=', 'not-a-data-url', _png(2500, 2000)):
+        assert client.post(url, json={'team': 'away', 'data': bad}).status_code == 422
+    assert TestClient(client.app).post(url, json={'team': 'away', 'data': _png()}).status_code == 401
+    assert client.post(url, json={'team': 'away', 'data': 'x' * 500_000}).status_code in (413, 422)
+    # Only stored logos can be referenced through settings; removal works.
+    assert command(client, slug, 'settings', {'home': {'logo': 'https://evil.example/x.png'}}).status_code == 422
+    assert client.post(url, json={'team': 'home', 'data': None}).json()['home']['logo'] is None
+    assert TestClient(client.app).get('/media/' + '0' * 32 + '.png').status_code == 404

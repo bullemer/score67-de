@@ -72,6 +72,10 @@ Double-tap a team tile to edit the team name, short name and colour; double-tap 
 
 The public ticker (`/s/<code>`) shows only the score, phase, period and time; everything else (Simple/Extended view, share icons, OBS link, take over control, venue, language, live directory, connection and version) is in the ☰ pop-up menu. Scores are sized from the viewport: portrait phones stack the teams as rows with large numbers, landscape and tablets show them side by side; three-digit scores shrink to fit. Simple view fills exactly one screen. The Extended view adds, for football, all goals in chronological order with minute, scorer, penalty marker, team and running score; for basketball, points per player for both teams plus quarter scores; and the game log. A small dot on the menu button signals a lost connection.
 
+### Editing games and team logos
+
+In My scoreboards every game card has an Edit button: team names, optional team logos, description and livestream link. Logos (PNG, JPEG or WebP) are downscaled in the browser (max. 512 px), then decoded and re-encoded server-side as PNG (max. 256 px, max. 4 megapixels input, decompression bombs rejected) and stored in the database (`asset`, max. 30 per scoreboard; unused ones are cleaned up automatically). They are public at `/media/<id>.png` and appear on the ticker, live directory cards and OBS overlay. Only stored logos can be referenced in team settings.
+
 ### Private games
 
 Games are public by default. The "Private game" switch at the top of the Sharing tab hides the spectator page (it shows a private notice), the public state API, live socket and the /live directory from everyone except this board's control devices. The OBS overlay link carries an overlay key (`?k=…`) and keeps working while private; switching back to public re-enables all sharing links.

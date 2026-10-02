@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 import hashlib
 import hmac
 import json
+import re
 import os
 from pathlib import Path
 import secrets
@@ -19,9 +20,9 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 
-from .db import Admin, Board, Display, DisplayAdmin, Match, MatchEvent, RateLimit, Receipt, database
+from .db import Admin, Asset, Board, Display, DisplayAdmin, Match, MatchEvent, RateLimit, Receipt, database
 from .domain import FOOTBALL, BASKETBALL, RuleError, apply, initial_state, normalize_clock, foul_mode, BASKETBALL_STATS, player_statistics, SHORT_MAX, FOOTBALL_EVENTS
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -67,6 +68,42 @@ class DisplayUpdate(StrictModel):
 
 class DisplayPair(StrictModel):
     code: str = Field(min_length=6, max_length=12)
+
+
+LOGO_PATH = re.compile(r"^/api/s/[^/]+/matches/[^/]+/logo$")
+LOGO_MAX_REQUEST = 400_000
+LOGO_MAX_PIXELS = 4_000_000
+
+
+class LogoUpload(StrictModel):
+    team: Literal["home", "away"]
+    data: str | None = Field(default=None, max_length=LOGO_MAX_REQUEST)
+
+
+def encode_logo(data_url):
+    """Decode an uploaded PNG/JPEG/WebP and re-encode it as PNG (max 256 px).
+
+    Only the re-encoded pixels are stored, never the uploaded bytes; oversized
+    or malformed images ("decompression bombs") are rejected before decoding."""
+    import base64
+    import io
+    from PIL import Image
+    match = re.fullmatch(r"data:image/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)", data_url or "")
+    if not match:
+        raise HTTPException(422, "logo_invalid")
+    try:
+        raw = base64.b64decode(match[2], validate=True)
+        with Image.open(io.BytesIO(raw)) as image:
+            if image.format not in ("PNG", "JPEG", "WEBP") or image.width * image.height > LOGO_MAX_PIXELS:
+                raise ValueError("unsupported")
+            image.load()
+            picture = image.convert("RGBA")
+        picture.thumbnail((256, 256))
+        out = io.BytesIO()
+        picture.save(out, "PNG", optimize=True)
+        return out.getvalue()
+    except (Image.DecompressionBombError, OSError, ValueError, SyntaxError) as exc:
+        raise HTTPException(422, "logo_invalid") from exc
 
 
 class PrivacyUpdate(StrictModel):
@@ -244,15 +281,17 @@ def create_app(db_url=None, secure_cookies=None):
                 return JSONResponse({"error": "origin_rejected"}, status_code=403)
             if request.method != "DELETE" and request.headers.get("content-type", "").split(";")[0] != "application/json":
                 return JSONResponse({"error": "json_required"}, status_code=415)
+            # Logo uploads (already downscaled by the client) may be larger.
+            limit = LOGO_MAX_REQUEST if LOGO_PATH.match(request.url.path) else 16384
             length = request.headers.get("content-length", "0")
-            if not length.isdigit() or int(length) > 16384:
+            if not length.isdigit() or int(length) > limit:
                 return JSONResponse({"error": "request_too_large"}, status_code=413)
             # Also bound chunked requests, for which Content-Length can be absent.
             size = 0
             chunks = []
             async for chunk in request.stream():
                 size += len(chunk)
-                if size > 16384:
+                if size > limit:
                     return JSONResponse({"error": "request_too_large"}, status_code=413)
                 chunks.append(chunk)
             request._body = b"".join(chunks)
@@ -476,6 +515,51 @@ def create_app(db_url=None, secure_cookies=None):
             db.commit()
             return {"private": b.private}
 
+    @app.post("/api/s/{slug}/matches/{match_id}/logo")
+    def upload_logo(slug: str, match_id: str, body: LogoUpload, request: Request):
+        png = encode_logo(body.data) if body.data is not None else None
+        with lock, app.state.sessions() as db:
+            admin = authorize(db, slug, request)
+            b = board(db, slug)
+            m = db.get(Match, match_id)
+            if not m or m.slug != slug or m.deleted_at:
+                raise HTTPException(404, "not_found")
+            url = None
+            if png is not None:
+                assets = db.scalars(select(Asset).where(Asset.slug == slug).order_by(Asset.created_at)).all()
+                if len(assets) >= 30:
+                    used = " ".join(json.dumps(x.state) for x in db.scalars(select(Match).where(Match.slug == slug)))
+                    for asset in assets:
+                        if asset.id not in used:
+                            db.delete(asset)
+                    db.flush()
+                    if db.scalar(select(func.count()).select_from(Asset).where(Asset.slug == slug)) >= 30:
+                        raise HTTPException(422, "logo_quota")
+                asset = Asset(id=uuid4().hex, slug=slug, content_type="image/png", data=png, created_at=time.time())
+                db.add(asset)
+                url = f"/media/{asset.id}.png"
+            try:
+                updated, payload, before = apply(m.state, "settings", {body.team: {"logo": url}}, round(time.time() * 1000))
+            except RuleError as exc:
+                raise HTTPException(422, str(exc)) from exc
+            m.state = updated
+            payload["command_id"] = str(uuid4())
+            db.add(MatchEvent(match_id=m.id, admin_id=admin.id, payload=payload, before=before))
+            m.revision += 1
+            db.commit()
+            return state(db, b, m.id, private=True)
+
+    @app.get("/media/{name}")
+    def media(name: str):
+        if not re.fullmatch(r"[0-9a-f]{32}\.png", name):
+            raise HTTPException(404, "not_found")
+        with app.state.sessions() as db:
+            asset = db.get(Asset, name[:-4])
+            if not asset:
+                raise HTTPException(404, "not_found")
+            return Response(asset.data, media_type=asset.content_type,
+                            headers={"Cache-Control": "public, max-age=31536000, immutable"})
+
     @app.put("/api/s/{slug}/stream")
     def update_stream(slug: str, body: StreamUpdate, request: Request):
         with lock, app.state.sessions() as db:
@@ -615,8 +699,8 @@ def create_app(db_url=None, secure_cookies=None):
                     "scoreboard": b.slug, "match_id": m.id, "active": b.active_match == m.id,
                     "scheduled_at": round(m.scheduled_at * 1000), "sport": m.state["sport"],
                     "period_count": m.state["period_count"], "period_length_min": m.state["period_length_min"],
-                    "home": {k: m.state["home"][k] for k in ("name", "color")},
-                    "away": {k: m.state["away"][k] for k in ("name", "color")},
+                    "home": {**{k: m.state["home"][k] for k in ("name", "color")}, "logo": m.state["home"].get("logo")},
+                    "away": {**{k: m.state["away"][k] for k in ("name", "color")}, "logo": m.state["away"].get("logo")},
                     "location": {k: location[k] for k in ("lat", "lng", "label")} if location else None,
                     "description": b.description, "stream_url": b.stream_url})
             return {"games": games, "upcoming": upcoming, "server_now": round(now * 1000)}

@@ -43,7 +43,9 @@ function upcomingCard(game) {
   card.append(meta);
   for (const side of ['home', 'away']) {
     const row = document.createElement('div'); row.className = 'live-team'; row.style.borderColor = game[side].color;
-    row.append(textNode('span', game[side].name, 'live-name'));
+    const name = textNode('span', game[side].name, 'live-name');
+    if (game[side].logo) { const img = document.createElement('img'); img.src = game[side].logo; img.alt = ''; img.className = 'live-logo'; name.prepend(img); }
+    row.append(name);
     card.append(row);
   }
   extras(card, game);
@@ -70,7 +72,9 @@ function render() {
     for (const side of ['home', 'away']) {
       const team = game[side];
       const row = document.createElement('div'); row.className = 'live-team'; row.style.borderColor = team.color;
-      row.append(textNode('span', team.name, 'live-name'), textNode('strong', team.score, 'live-score'));
+      const name = textNode('span', team.name, 'live-name');
+      if (team.logo) { const img = document.createElement('img'); img.src = team.logo; img.alt = ''; img.className = 'live-logo'; name.prepend(img); }
+      row.append(name, textNode('strong', team.score, 'live-score'));
       for (const color of ['red','yellow']) {
       const count = team.counters?.[`${color}_cards`] || 0;
       if (count) {

@@ -2,16 +2,24 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 
+import 'game_editor.dart';
+
 typedef DashboardApi =
     Future<dynamic> Function(String, String, Map<String, dynamic>?);
+
+Future<String?> _noLogo() async => null;
 
 class Dashboard extends StatefulWidget {
   final DashboardApi api;
   final String Function(String) t;
   final void Function(String) navigate;
   final int periods, minutes;
+
+  /// Image picker for team logos (browser only; null hides logo upload).
+  final Future<String?> Function() pickLogo;
   const Dashboard({
     super.key,
+    this.pickLogo = _noLogo,
     required this.api,
     required this.t,
     required this.navigate,
@@ -472,6 +480,25 @@ class _DashboardState extends State<Dashboard> {
                     ),
                     child: Text(t('game.view')),
                   ),
+                OutlinedButton.icon(
+                  onPressed: enabled
+                      ? () async {
+                          final saved = await showDialog<bool>(
+                            context: context,
+                            builder: (context) => GameEditorDialog(
+                              api: widget.api,
+                              t: t,
+                              board: Map<String, dynamic>.from(board),
+                              game: Map<String, dynamic>.from(game),
+                              pickLogo: widget.pickLogo,
+                            ),
+                          );
+                          if (saved == true) await refresh();
+                        }
+                      : null,
+                  icon: const Icon(Icons.edit_outlined, size: 18),
+                  label: Text(t('game.edit')),
+                ),
                 if (game['phase'] == 'pre_game' && !game['archived'])
                   OutlinedButton(
                     onPressed: enabled

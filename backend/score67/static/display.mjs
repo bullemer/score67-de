@@ -169,6 +169,9 @@ function render() {
   for (const team of ['home', 'away']) {
     el(`${team}-name`).textContent = state[team][small ? 'short' : 'name'];
     el(`${team}-score`).textContent = state[team].score;
+    const logo = el(`${team}-logo`);
+    logo.hidden = !state[team].logo;
+    if (state[team].logo && logo.getAttribute('src') !== state[team].logo) logo.src = state[team].logo;
     const fouls = el(`${team}-fouls`);
     fouls.hidden = state.sport !== 'basketball' || !state.team_fouls_enabled;
     fouls.textContent = `${words.team_fouls}: ${state[team].counters?.team_fouls || 0}`;

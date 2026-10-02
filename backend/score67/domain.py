@@ -351,12 +351,17 @@ def apply(state, action, data, now_ms):
         for team in ("home", "away"):
             if team in data:
                 t = data[team]
-                if not isinstance(t, dict) or set(t) - {"name", "short", "color"}:
+                if not isinstance(t, dict) or set(t) - {"name", "short", "color", "logo"}:
                     raise RuleError("invalid_value")
                 if "name" in t:
                     s[team]["name"] = text(t["name"], 60)
                 if "short" in t:
                     s[team]["short"] = text(t["short"], SHORT_MAX).upper()
+                if "logo" in t:
+                    # Only logos stored by the upload endpoint can be referenced.
+                    if t["logo"] is not None and not (isinstance(t["logo"], str) and re.fullmatch(r"/media/[0-9a-f]{32}\.png", t["logo"])):
+                        raise RuleError("invalid_value")
+                    s[team]["logo"] = t["logo"]
                 if "color" in t:
                     if not isinstance(t["color"], str) or not re.fullmatch(r"#[0-9a-fA-F]{6}", t["color"]):
                         raise RuleError("invalid_value")

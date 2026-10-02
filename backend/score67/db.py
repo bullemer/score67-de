@@ -2,7 +2,7 @@ import os
 import time
 from pathlib import Path
 
-from sqlalchemy import false, JSON, Boolean, Float, ForeignKey, Integer, String, create_engine, event, text
+from sqlalchemy import false, JSON, LargeBinary, Boolean, Float, ForeignKey, Integer, String, create_engine, event, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 
@@ -26,6 +26,16 @@ class Board(Base):
     # Private boards hide spectator views; the overlay key keeps OBS working.
     private: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     overlay_key: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+
+class Asset(Base):
+    """Uploaded team logo, always re-encoded server-side (PNG, max 256 px)."""
+    __tablename__ = "asset"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    slug: Mapped[str] = mapped_column(ForeignKey("scoreboard.slug"), index=True)
+    content_type: Mapped[str] = mapped_column(String(30))
+    data: Mapped[bytes] = mapped_column(LargeBinary)
+    created_at: Mapped[float] = mapped_column(Float)
 
 
 class Display(Base):
@@ -115,6 +125,6 @@ def database(url: str | None = None):
     else:
         with engine.connect() as connection:
             version = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            if version != "0008_board_stream":
+            if version != "0009_assets":
                 raise RuntimeError("Database schema does not match this release; run migrations first")
     return engine, sessionmaker(engine, expire_on_commit=False)

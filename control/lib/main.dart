@@ -13,6 +13,7 @@ import 'squad.dart';
 import 'match_console.dart';
 import 'team_editor.dart';
 import 'displays.dart';
+import 'logo_picker.dart';
 import 'led_display.dart';
 import 'command_queue.dart';
 import 'package:web/web.dart' as web;
@@ -3252,6 +3253,7 @@ class _Score67State extends State<Score67> {
                                     navigate: navigate,
                                     periods: defaultPeriods,
                                     minutes: defaultMinutes,
+                                    pickLogo: pickLogo,
                                   )
                                 else if (slug.isEmpty)
                                   createView()

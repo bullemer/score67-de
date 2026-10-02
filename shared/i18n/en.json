@@ -413,5 +413,11 @@
   "stream.watch": "Watch livestream",
   "stream.label": "Livestream link (optional)",
   "stream.hint": "e.g. YouTube or Facebook live link (https://…). Shown in the live directory and the ticker menu.",
-  "error.stream_url_invalid": "Please enter a complete https:// link."
+  "error.stream_url_invalid": "Please enter a complete https:// link.",
+  "game.edit": "Edit",
+  "logo.choose": "Choose logo",
+  "logo.remove": "Remove logo",
+  "logo.hint": "Team names and optional logos (PNG, JPEG or WebP) – logos appear on the ticker, in the live directory and in the OBS overlay.",
+  "error.logo_invalid": "This image could not be read. Please use a PNG, JPEG or WebP file.",
+  "error.logo_quota": "Too many logos stored for this scoreboard. Remove unused logos first."
 }
