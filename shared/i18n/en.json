@@ -339,5 +339,13 @@
   "landing.feature.share": "Share a live link with spectators, show the score on a screen or TV at the venue, or add it to your stream as a transparent OBS overlay.",
   "landing.feature.phone": "No account needed, controlled from your phone in landscape – taps are kept even on a weak connection.",
   "landing.dev": "This project is still in development. Developed by",
-  "console.reb": "REBOUND"
+  "console.reb": "REBOUND",
+  "menu.edit_teams": "Edit teams",
+  "menu.pause": "Pause game",
+  "menu.close": "Close game",
+  "console.ft_hit": "Hit",
+  "console.ft_miss": "Miss",
+  "console.ft_missed": "FT missed",
+  "free_throw_missed": "Free throw missed",
+  "free_throw_missed_correction": "Missed free throw removed"
 }

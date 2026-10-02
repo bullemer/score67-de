@@ -12,11 +12,14 @@ FOOTBALL = json.loads((Path(__file__).parent / "profiles/football.json").read_te
 BASKETBALL = json.loads((Path(__file__).parent / "profiles/basketball.json").read_text())
 
 
-BASKETBALL_STATS = ("rebound", "assist", "steal", "block", "turnover")
+BASKETBALL_STATS = ("rebound", "assist", "steal", "block", "turnover", "free_throw_missed")
 FOOTBALL_EVENTS = ("foul", "free_kick", "penalty")
 LINEUP_MAX = {"basketball": 5, "football": 11}
 STAT_COLUMNS = {"score": "pts", "rebound": "reb", "assist": "ast",
-                "steal": "stl", "block": "blk", "turnover": "to", "personal_foul": "pf", "technical_foul": "pf"}
+                "steal": "stl", "block": "blk", "turnover": "to", "personal_foul": "pf", "technical_foul": "pf",
+                "free_throw_missed": "ftx"}
+# ftm = free throws made (scores marked free_throw), ftx = free throws missed.
+COLUMNS = tuple(dict.fromkeys([*STAT_COLUMNS.values(), "ftm"]))
 SHORT_MAX = 3
 
 
@@ -24,7 +27,7 @@ def player_statistics(team_state, events):
     """Project active events; retain historical players after squad edits."""
     def row(player=None):
         return {**(player or {"id": None, "number": "", "name": ""}),
-                **dict.fromkeys(STAT_COLUMNS.values(), 0)}
+                **dict.fromkeys(COLUMNS, 0)}
     rows = {None: row()}
     # Squad by shirt number for fast scanning, then number-only foul entries.
     squad = sorted(team_state.get("squad", []), key=lambda p: (not p["number"], int(p["number"] or 0), p["name"]))
@@ -38,13 +41,16 @@ def player_statistics(team_state, events):
         if event["type"] == "technical_foul" and not player:
             continue  # Coach/bench technicals belong to no player.
         identifier = player["id"] if player else None
-        rows.setdefault(identifier, row(player))[column] += event.get("points", 0) if column == "pts" else 1
+        stats = rows.setdefault(identifier, row(player))
+        stats[column] += event.get("points", 0) if column == "pts" else 1
+        if event.get("detail") == "free_throw":
+            stats["ftm"] += 1
     active_ids = {p["id"] for p in team_state.get("squad", [])}
     foul_ids = {p["id"] for p in team_state.get("foul_players", [])}
     for identifier, stats in rows.items():
         stats["in_squad"] = identifier in active_ids
         stats["foul_player"] = identifier in foul_ids
-    totals = {column: sum(r[column] for r in rows.values()) for column in STAT_COLUMNS.values()}
+    totals = {column: sum(r[column] for r in rows.values()) for column in COLUMNS}
     return {"players": list(rows.values()), "totals": totals}
 
 
@@ -168,9 +174,11 @@ def apply(state, action, data, now_ms):
             raise RuleError("invalid_score")
         event.update(team=data["team"], points=int(points))
         if data.get("detail") is not None:
-            if basketball or action != "score" or data["detail"] != "penalty":
+            # Football: converted penalty. Basketball: made free throw (1 point).
+            allowed = "free_throw" if basketball else "penalty"
+            if action != "score" or data["detail"] != allowed or (basketball and points != 1):
                 raise RuleError("invalid_value")
-            event["detail"] = "penalty"
+            event["detail"] = allowed
     elif action.removesuffix("_correction") in BASKETBALL_STATS:
         if not basketball or data.get("team") not in ("home", "away"):
             raise RuleError("invalid_value")

@@ -87,6 +87,7 @@ class _Score67State extends State<Score67> {
   int retryMs = 500;
   web.WakeLockSentinel? wakeLock;
   bool landscapeRequested = false;
+  final consoleKey = GlobalKey<MatchConsoleState>();
   Timer? refreshTimer, renderTimer, reconnectTimer, retryTimer;
   WebSocketChannel? channel;
   StreamSubscription? subscription;
@@ -2029,7 +2030,7 @@ class _Score67State extends State<Score67> {
         (phase == 'pre_game' || phase == 'break') &&
         state['period'] < state['period_count'];
     return MatchConsole(
-      key: ValueKey('console:${state['match_id']}'),
+      key: consoleKey,
       state: state,
       t: t,
       clock: clockText(),
@@ -2111,6 +2112,15 @@ class _Score67State extends State<Score67> {
         command('technical_foul', {'team': team, ...player});
       case 'reb':
         command('rebound', {'team': team, ...player});
+      case 'ft_hit':
+        command('score', {
+          'team': team,
+          'points': 1,
+          'detail': 'free_throw',
+          ...player,
+        });
+      case 'ft_miss':
+        command('free_throw_missed', {'team': team, ...player});
       case 'timeout':
         command('timeout', {'team': team});
     }
@@ -2143,6 +2153,8 @@ class _Score67State extends State<Score67> {
         return t('console.foul_short');
       case 'free_kick':
         return t('console.free_kick_short');
+      case 'free_throw_missed':
+        return t('console.ft_missed');
       case 'penalty':
         return t('console.penalty_short');
       case 'score':
@@ -2284,6 +2296,7 @@ class _Score67State extends State<Score67> {
     'foul',
     'free_kick',
     'penalty',
+    'free_throw_missed',
   };
 
   /// Undo what the game flow shows last. A hidden clock entry after it is
@@ -2360,6 +2373,7 @@ class _Score67State extends State<Score67> {
       'foul',
       'free_kick',
       'penalty',
+      'free_throw_missed',
     };
     const assignable = {
       'score',
@@ -2369,6 +2383,7 @@ class _Score67State extends State<Score67> {
       'foul',
       'free_kick',
       'penalty',
+      'free_throw_missed',
     };
     final type = e['type'] as String;
     final choice = await showModalBottomSheet<String>(
@@ -2676,27 +2691,12 @@ class _Score67State extends State<Score67> {
             mainAxisSize: MainAxisSize.min,
             children: [
               for (final entry in [
+                ('teams', Icons.groups, t('menu.edit_teams')),
+                if (state['phase'] != 'finished') ...[
+                  ('pause', Icons.pause_circle_outline, t('menu.pause')),
+                  ('close', Icons.flag_outlined, t('menu.close')),
+                ],
                 ('dashboard', Icons.dashboard_outlined, t('dashboard')),
-                (
-                  'lineup:home',
-                  Icons.swap_horiz,
-                  '${t('console.subs')} · ${state['home']['short']}',
-                ),
-                (
-                  'lineup:away',
-                  Icons.swap_horiz,
-                  '${t('console.subs')} · ${state['away']['short']}',
-                ),
-                (
-                  'squad:home',
-                  Icons.groups,
-                  '${t('squad')} · ${state['home']['short']}',
-                ),
-                (
-                  'squad:away',
-                  Icons.groups,
-                  '${t('squad')} · ${state['away']['short']}',
-                ),
                 ('links', Icons.link, t('links')),
                 ('share', Icons.share_outlined, t('share.spectator')),
                 ('location', Icons.place_outlined, t('location.title')),
@@ -2720,12 +2720,20 @@ class _Score67State extends State<Score67> {
     if (choice == null) return;
     final [kind, ...rest] = choice.split(':');
     switch (kind) {
+      case 'teams':
+        consoleKey.currentState?.showTab(1);
+      case 'pause':
+        // The game stays open (resume from "My scoreboards"); a running
+        // basketball clock is stopped first.
+        if (basketball && basketballClockRunning) {
+          if (!await command('clock_stop')) return;
+        }
+        navigate('/');
+      case 'close':
+        if (!await confirm(t('finish.confirm'))) return;
+        if (await command('game_end')) navigate('/');
       case 'dashboard':
         navigate('/dashboard');
-      case 'lineup':
-        await editLineup(rest.first);
-      case 'squad':
-        await editSquad(rest.first);
       case 'links':
         await manageAccess();
       case 'share':

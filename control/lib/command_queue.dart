@@ -16,6 +16,7 @@ const tallyActions = {
   'steal',
   'block',
   'turnover',
+  'free_throw_missed',
   'foul',
   'free_kick',
   'penalty',
@@ -34,6 +35,7 @@ const _statColumns = {
   'turnover': 'to',
   'personal_foul': 'pf',
   'technical_foul': 'pf',
+  'free_throw_missed': 'ftx',
 };
 
 /// Server state plus the visible effect of unconfirmed tally commands.

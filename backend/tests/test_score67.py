@@ -1070,3 +1070,19 @@ def test_football_formats_up_to_ninety_minute_periods(system):
     s = state(client, slug)
     assert (s['period_count'], s['period_length_min']) == (1, 90)
     assert client.post('/api/scoreboards', json={'period_length_min': 121}).status_code == 422
+
+
+def test_basketball_free_throws_made_and_missed(system):
+    _, client = system
+    slug = client.post('/api/scoreboards', json={'sport': 'basketball'}).json()['slug']
+    pid = str(uuid4())
+    command(client, slug, 'squad', {'team': 'home', 'players': [{'id': pid, 'number': '7', 'name': ''}]})
+    command(client, slug, 'score', {'team': 'home', 'points': 1, 'player_id': pid, 'detail': 'free_throw'})
+    command(client, slug, 'free_throw_missed', {'team': 'home', 'player_id': pid})
+    s = command(client, slug, 'score', {'team': 'home', 'points': 1, 'detail': 'free_throw'}).json()
+    row = next(p for p in s['home']['statistics']['players'] if p['id'] == pid)
+    assert (row['pts'], row['ftm'], row['ftx']) == (1, 1, 1)
+    assert s['home']['score'] == 2 and s['home']['statistics']['totals']['ftm'] == 2
+    assert command(client, slug, 'score', {'team': 'home', 'points': 2, 'detail': 'free_throw'}).status_code == 422
+    assert command(client, slug, 'score', {'team': 'home', 'points': 1, 'detail': 'penalty'}).status_code == 422
+    assert not any(e['type'] == 'free_throw_missed' for e in state(client, slug)['events'])

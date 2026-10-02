@@ -339,5 +339,13 @@
   "landing.feature.share": "Live-Link mit Zuschauern teilen, den Spielstand auf einem Bildschirm oder TV in der Halle zeigen oder als transparentes Overlay per OBS in den Stream einblenden.",
   "landing.feature.phone": "Ohne Konto, gesteuert vom Handy im Querformat – Eingaben gehen auch bei schwachem Netz nicht verloren.",
   "landing.dev": "Das Projekt ist noch in Entwicklung. Entwickelt von",
-  "console.reb": "REBOUND"
+  "console.reb": "REBOUND",
+  "menu.edit_teams": "Teams bearbeiten",
+  "menu.pause": "Spiel pausieren",
+  "menu.close": "Spiel beenden",
+  "console.ft_hit": "Treffer",
+  "console.ft_miss": "Daneben",
+  "console.ft_missed": "FW daneben",
+  "free_throw_missed": "Freiwurf daneben",
+  "free_throw_missed_correction": "Fehlwurf entfernt"
 }

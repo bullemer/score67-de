@@ -80,6 +80,10 @@ Spielverlauf shows sporting events only: clock start/stop, squad edits, settings
 
 The create form has free controls for the number of periods (1–12) and the length per period (1–120 min): − / + buttons around a typeable number, plus one-tap presets (football 2×45, 2×40, 2×35, 2×30, 2×20, 1×10; basketball 4×10, 4×12, 8×5, 2×20). Defaults: football 2 × 45, basketball 4 × 10, reset when switching sport.
 
+### Console menu
+
+The ☰ menu starts with Edit teams (opens the Team tab), Pause game (stops a running basketball clock and returns to the start page; the game stays open and can be resumed from My scoreboards) and Close game (confirms, ends the game, returns to the start page), followed by My scoreboards, links, sharing, venue, description and language.
+
 ### Typing on a phone
 
 While a text field in the console's middle panel has focus, the header, team columns and actions hide so the panel uses the full screen above the phone keyboard; the edited row scrolls to the top. Edit dialogs (team, player, description, settings, clock, squad) open at the top of the screen.
@@ -90,7 +94,7 @@ Creating a scoreboard opens the console directly. The console's Sharing tab show
 
 ### Basketball console (landscape)
 
-The live basketball control is a full-screen landscape console modelled on InGame. Header: menu, possession arrow per team (tap to set), team fouls (amber at 4, red from 5), timeouts used/allowed in the current window (FIBA 2 first half, 3 second half, 1 per overtime; total only for other formats), both scores in team colours, period, connection, clock (tap to set) and Play/Stop. Left: one column per team — the team tile (3-letter short name) and the players on court (or the whole squad until a lineup is set), each with a five-segment foul bar and points. Right: FREE THROW, 2 POINTS, 3 POINTS, FOUL, TECH. F., REBOUND, T.O., Undo and SUBSTITUTIONS. Rebounds are recorded per player or, via the team tile, as team rebounds.
+The live basketball control is a full-screen landscape console modelled on InGame. Header: menu, possession arrow per team (tap to set), team fouls (amber at 4, red from 5), timeouts used/allowed in the current window (FIBA 2 first half, 3 second half, 1 per overtime; total only for other formats), both scores in team colours, period, connection, clock (tap to set) and Play/Stop. Left: one column per team — the team tile (3-letter short name) and the players on court (or the whole squad until a lineup is set), each with a five-segment foul bar and points. Right: FREE THROW, 2 POINTS, 3 POINTS, FOUL, TECH. F., REBOUND, T.O., Undo and SUBSTITUTIONS. Rebounds are recorded per player or, via the team tile, as team rebounds. FREE THROW then a player opens an inline Hit/Miss bar that stays open for the next attempts; hits score 1 point marked as free throw, misses are recorded privately (statistics `ftm`/`ftx`).
 
 Pick the action first, then a player; tap the team tile when the player is unknown — the entry then counts for the team only. FOUL records a personal foul (personal/both modes) or a team foul (team mode). A player's technical foul counts as a personal and team foul; on the team tile it is a coach/bench technical that counts for neither. SUBSTITUTIONS then a team opens the on-court picker (max. 5). The middle panel has Game flow (tap an entry to remove it or assign a player), Period (start/end/overtime/final, quarter scores, clock) and Game settings. Points can be scored while the clock runs. Short team names are limited to three letters.
 
