@@ -25,7 +25,16 @@ Future<void> main() async {
   );
   // FastAPI owns the public routes; /app/ is only the static asset prefix.
   setUrlStrategy(null);
-  runApp(Score67(releaseLabel: release['label']));
+  runApp(Score67(releaseLabel: localReleaseLabel(release)));
+}
+
+/// "v0.19.1 · 02.10.2026 12:59" in the browser's time zone (stamped in UTC).
+String localReleaseLabel(Map<String, dynamic> release) {
+  final built = DateTime.tryParse(release['built_at'] ?? '')?.toLocal();
+  if (built == null) return release['label'] ?? '';
+  String two(int value) => value.toString().padLeft(2, '0');
+  return 'v${release['version']} · ${two(built.day)}.${two(built.month)}.${built.year} '
+      '${two(built.hour)}:${two(built.minute)}';
 }
 
 class ApiError implements Exception {

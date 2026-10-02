@@ -17,7 +17,7 @@ function upcomingCard(game) {
   const day = new Intl.DateTimeFormat(lang, {weekday: 'short', day: '2-digit', month: '2-digit'}).format(when);
   const time = new Intl.DateTimeFormat(lang, {hour: '2-digit', minute: '2-digit'}).format(when);
   const meta = document.createElement('div'); meta.className = 'live-meta';
-  meta.append(textNode('span', `${words[game.sport || 'football']} · ${game.period_count} × ${game.period_length_min} min`), textNode('span', `${day} · ${time}`, 'live-clock'));
+  meta.append(textNode('span', `${words[game.sport || 'football']} · ${game.period_count} × ${game.period_length_min} min`), textNode('span', `${day} · ${time}`, 'live-when'));
   card.append(meta);
   for (const side of ['home', 'away']) {
     const row = document.createElement('div'); row.className = 'live-team'; row.style.borderColor = game[side].color;
@@ -80,6 +80,7 @@ function tick() {
   const now = serverAt + performance.now() - receivedAt;
   document.querySelectorAll('.live-clock').forEach(node => {
     const game = games.find(g => g.match_id === node.dataset.match);
+    if (!game) return;
     node.textContent = [periodLabel(game, words), clockText(game, now)].filter(Boolean).join(' · ');
   });
 }

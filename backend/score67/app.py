@@ -207,6 +207,9 @@ def create_app(db_url=None, secure_cookies=None):
     app = FastAPI(title="Score67", version=RELEASE["version"], lifespan=lifespan)
     templates = Jinja2Templates(directory=ROOT / "backend/score67/templates")
     templates.env.globals["release_label"] = RELEASE["label"]
+    # Footers show the build time in the viewer's time zone (common.mjs).
+    templates.env.globals["release_version"] = RELEASE["version"]
+    templates.env.globals["release_built_at"] = RELEASE["built_at"]
     app.mount("/static", StaticFiles(directory=ROOT / "backend/score67/static"), name="static")
     app.mount("/i18n", StaticFiles(directory=ROOT / "shared/i18n"), name="i18n")
     build = ROOT / "control/build/web"

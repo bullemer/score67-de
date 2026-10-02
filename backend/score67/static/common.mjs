@@ -63,3 +63,15 @@ export function eventTime(event, state, words) {
   }
   return `${Math.floor(event.clock_ms / 60000) + (event.period - 1) * event.period_length_min + 1}′`;
 }
+
+// Build time in the viewer's own time zone instead of UTC.
+export function localizeVersionFooter() {
+  document.querySelectorAll('.version-footer[data-built]').forEach(node => {
+    const built = new Date(node.dataset.built);
+    if (Number.isNaN(built.getTime())) return;
+    const lang = preferredLanguage() === 'en' ? 'en-GB' : 'de-DE';
+    const when = new Intl.DateTimeFormat(lang, {day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short'}).format(built);
+    node.textContent = `v${node.dataset.version} · ${when}`;
+  });
+}
+if (typeof document !== 'undefined') localizeVersionFooter();
