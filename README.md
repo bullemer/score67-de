@@ -86,6 +86,10 @@ Tap a score in the console header to correct it (− / + or type the right score
 
 When the basketball clock reaches 0:00 the Play button turns into ⏭: one tap ends the period. During the break the console already shows the next period (e.g. Q2 10:00, or 2nd half 45:00 in football) and Play starts it. Ending the last basketball period ends the match automatically unless it is tied (then overtime is offered); the automatic game end is marked `automatic` and can be undone. Clock start/stop/set/adjust entries are hidden from the game flow.
 
+### Displays (Anzeigetafeln)
+
+Settings → Anzeigetafeln (also in the console menu) connects physical scoreboard drivers such as a Raspberry Pi next to an LED board. "Connect display" creates a 6-character pairing code (valid 10 minutes) that is entered on the device's setup page; afterwards choose which of your scoreboards it shows and switch at any time. The list shows online/offline/waiting status, rename, new code and remove. A paired display follows the assigned board's current game, including private games. Device protocol: [docs/DISPLAY-API.md](docs/DISPLAY-API.md).
+
 ### Console menu
 
 The ☰ menu starts with Edit teams (opens the Team tab), Pause game (stops a running basketball clock and returns to the start page; the game stays open and can be resumed from My scoreboards) and Close game (confirms, ends the game, returns to the start page), followed by My scoreboards, links, sharing, venue, description and language.

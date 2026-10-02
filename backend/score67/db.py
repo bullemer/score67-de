@@ -27,6 +27,29 @@ class Board(Base):
     overlay_key: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
 
+class Display(Base):
+    """A physical scoreboard driver (e.g. Raspberry Pi) that shows one board."""
+    __tablename__ = "display"
+    id: Mapped[str] = mapped_column(String(12), primary_key=True)
+    name: Mapped[str] = mapped_column(String(60))
+    token_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
+    pairing_code: Mapped[str | None] = mapped_column(String(6), nullable=True, unique=True)
+    pairing_expires_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+    board_slug: Mapped[str | None] = mapped_column(ForeignKey("scoreboard.slug"), nullable=True)
+    created_at: Mapped[float] = mapped_column(Float)
+    paired_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+    last_seen_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+
+class DisplayAdmin(Base):
+    """A browser allowed to manage a display (cookie score67d_<display id>)."""
+    __tablename__ = "display_admin"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    display_id: Mapped[str] = mapped_column(ForeignKey("display.id", ondelete="CASCADE"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    created_at: Mapped[float] = mapped_column(Float)
+
+
 class Admin(Base):
     __tablename__ = "scoreboard_admin"
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
@@ -91,6 +114,6 @@ def database(url: str | None = None):
     else:
         with engine.connect() as connection:
             version = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            if version != "0006_board_privacy":
+            if version != "0007_displays":
                 raise RuntimeError("Database schema does not match this release; run migrations first")
     return engine, sessionmaker(engine, expire_on_commit=False)

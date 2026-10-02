@@ -1118,3 +1118,49 @@ def test_ending_last_basketball_period_ends_the_match_unless_tied(system):
     assert s['phase'] == 'finished' and s['events'][-1]['type'] == 'game_end' and s['events'][-1]['automatic']
     s = command(client, slug, 'undo', {'event_id': s['events'][-1]['id']}).json()
     assert s['phase'] == 'break'
+
+
+def test_display_pairing_assignment_and_device_feed(system):
+    _, client = system
+    slug = create(client)['slug']
+    command(client, slug, 'period_start')
+    created = client.post('/api/displays', json={'name': 'Halle 1'})
+    assert created.status_code == 201
+    display = created.json()
+    assert len(display['code']) == 6 and not display['paired'] and display['board'] is None
+    listed = client.get('/api/displays').json()['displays']
+    assert [d['id'] for d in listed] == [display['id']]
+    # Assigning needs control of the board; strangers cannot manage the display.
+    stranger = TestClient(client.app)
+    assert stranger.get('/api/displays').json()['displays'] == []
+    assert stranger.put(f"/api/displays/{display['id']}", json={'name': 'x'}).status_code == 404
+    other = stranger.post('/api/scoreboards', json={}).json()['slug']
+    assert client.put(f"/api/displays/{display['id']}", json={'board': other}).status_code == 401
+    assert client.put(f"/api/displays/{display['id']}", json={'board': slug}).json()['board'] == slug
+    # Device pairing with the code (case and dashes ignored), once.
+    device = TestClient(client.app)
+    assert device.post('/api/display/pair', json={'code': 'ZZZZZZ'}).status_code == 404
+    paired = device.post('/api/display/pair', json={'code': display['code'].lower()[:3] + '-' + display['code'][3:]})
+    assert paired.status_code == 200
+    token = paired.json()['token']
+    assert device.post('/api/display/pair', json={'code': display['code']}).status_code == 404
+    headers = {'Authorization': f'Bearer {token}'}
+    feed = device.get('/api/display/state', headers=headers).json()
+    assert feed['board'] == slug and feed['state']['phase'] == 'period_running'
+    assert device.get('/api/display/state').status_code == 401
+    # Private boards stay visible to their paired display.
+    client.put(f'/api/s/{slug}/privacy', json={'private': True})
+    assert device.get('/api/display/state', headers=headers).json()['state']['scoreboard'] == slug
+    with device.websocket_connect(f'/ws/display?token={token}') as ws:
+        assert ws.receive_json()['board'] == slug
+        command(client, slug, 'score', {'team': 'home', 'points': 1})
+        assert ws.receive_json()['state']['home']['score'] == 1
+    info = client.get('/api/displays').json()['displays'][0]
+    assert info['paired'] and info['online'] and info['code'] is None
+    # Unassign, then remove: the device token stops working.
+    assert client.put(f"/api/displays/{display['id']}", json={'board': None}).json()['board'] is None
+    assert device.get('/api/display/state', headers=headers).json()['state'] is None
+    renewed = client.post(f"/api/displays/{display['id']}/code", json={}).json()
+    assert renewed['code'] and renewed['code'] != display['code']
+    assert client.delete(f"/api/displays/{display['id']}").json() == {'ok': True}
+    assert device.get('/api/display/state', headers=headers).status_code == 401

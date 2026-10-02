@@ -12,6 +12,7 @@ import 'dashboard.dart';
 import 'squad.dart';
 import 'match_console.dart';
 import 'team_editor.dart';
+import 'displays.dart';
 import 'command_queue.dart';
 import 'package:web/web.dart' as web;
 import 'package:web_socket_channel/web_socket_channel.dart';
@@ -239,6 +240,12 @@ class _Score67State extends State<Score67> {
                   field(t('period_count'), periods, numeric: true),
                   field(t('period_length'), minutes, numeric: true),
                   Text(t('app.local'), style: const TextStyle(fontSize: 14)),
+                  const Divider(height: 28),
+                  OutlinedButton.icon(
+                    onPressed: openDisplays,
+                    icon: const Icon(Icons.scoreboard_outlined),
+                    label: Text(t('display.title')),
+                  ),
                 ],
               ),
             ),
@@ -295,6 +302,15 @@ class _Score67State extends State<Score67> {
     periods.dispose();
     minutes.dispose();
   }
+
+  /// Global settings → Anzeigetafeln: pair devices and choose their board.
+  Future<void> openDisplays() => showDialog<void>(
+    context: navigator.currentContext!,
+    builder: (context) => DisplaysDialog(
+      api: (path, method, body) => api(path, method: method, body: body),
+      t: t,
+    ),
+  );
 
   Future<void> switchLanguage() async {
     final next = lang == 'de' ? 'en' : 'de';
@@ -2820,6 +2836,7 @@ class _Score67State extends State<Score67> {
                   ('close', Icons.flag_outlined, t('menu.close')),
                 ],
                 ('dashboard', Icons.dashboard_outlined, t('dashboard')),
+                ('displays', Icons.scoreboard_outlined, t('display.title')),
                 ('links', Icons.link, t('links')),
                 ('share', Icons.share_outlined, t('share.spectator')),
                 ('location', Icons.place_outlined, t('location.title')),
@@ -2857,6 +2874,8 @@ class _Score67State extends State<Score67> {
         if (await command('game_end')) navigate('/');
       case 'dashboard':
         navigate('/dashboard');
+      case 'displays':
+        await openDisplays();
       case 'links':
         await manageAccess();
       case 'share':

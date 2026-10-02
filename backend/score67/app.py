@@ -21,7 +21,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
-from .db import Admin, Board, Match, MatchEvent, RateLimit, Receipt, database
+from .db import Admin, Board, Display, DisplayAdmin, Match, MatchEvent, RateLimit, Receipt, database
 from .domain import FOOTBALL, BASKETBALL, RuleError, apply, initial_state, normalize_clock, foul_mode, BASKETBALL_STATS, player_statistics, SHORT_MAX, FOOTBALL_EVENTS
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -50,6 +50,23 @@ class Location(StrictModel):
 
 class LocationUpdate(StrictModel):
     location: Location | None = None
+
+
+DISPLAY_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no 0/O/1/I
+PAIRING_SECONDS = 600
+
+
+class DisplayCreate(StrictModel):
+    name: str = Field(default="Anzeigetafel", min_length=1, max_length=60)
+
+
+class DisplayUpdate(StrictModel):
+    name: str | None = Field(default=None, min_length=1, max_length=60)
+    board: str | None = Field(default=None, max_length=10)
+
+
+class DisplayPair(StrictModel):
+    code: str = Field(min_length=6, max_length=12)
 
 
 class PrivacyUpdate(StrictModel):
@@ -750,6 +767,185 @@ def create_app(db_url=None, secure_cookies=None):
                         with lock, app.state.sessions() as db:
                             s = state(db, board(db, slug))
                         await ws.send_json(s)
+                except asyncio.TimeoutError:
+                    pass
+        except (WebSocketDisconnect, RuntimeError):
+            pass
+
+    # --- Anzeigetafeln (physical displays) -------------------------------
+    # A browser that creates a display gets a management cookie for it. The
+    # device (e.g. a Raspberry Pi) pairs once with a short code and then uses
+    # its own bearer token to follow the assigned board's current game.
+
+    def display_cookie(display_id):
+        return f"score67d_{display_id}"
+
+    def managed_display(db, display_id, cookies):
+        token = cookies.get(display_cookie(display_id), "")
+        d = db.get(Display, display_id)
+        if not d or not token or not db.scalar(select(DisplayAdmin).where(
+                DisplayAdmin.display_id == display_id, DisplayAdmin.token_hash == digest(token))):
+            raise HTTPException(404, "not_found")
+        return d
+
+    def pairing_code(db):
+        while True:
+            code = "".join(secrets.choice(DISPLAY_CODE_ALPHABET) for _ in range(6))
+            if not db.scalar(select(Display).where(Display.pairing_code == code)):
+                return code
+
+    def display_info(db, d):
+        now = time.time()
+        b = db.get(Board, d.board_slug) if d.board_slug else None
+        pending = bool(d.pairing_code and (d.pairing_expires_at or 0) > now)
+        return {"id": d.id, "name": d.name, "paired": d.token_hash is not None,
+                "online": bool(d.last_seen_at and d.last_seen_at > now - 30),
+                "last_seen_at": round(d.last_seen_at * 1000) if d.last_seen_at else None,
+                "code": d.pairing_code if pending else None,
+                "code_expires_at": round(d.pairing_expires_at * 1000) if pending else None,
+                "board": b.slug if b else None, "board_description": b.description if b else None}
+
+    def device_display(db, token):
+        d = db.scalar(select(Display).where(Display.token_hash == digest(token or "")))
+        if not token or not d:
+            raise HTTPException(401, "display_unpaired")
+        return d
+
+    def device_payload(db, d):
+        b = db.get(Board, d.board_slug) if d.board_slug else None
+        return {"display": {"id": d.id, "name": d.name}, "board": b.slug if b else None,
+                "state": state(db, b) if b else None, "server_now": round(time.time() * 1000)}
+
+    def bearer(request):
+        header = request.headers.get("authorization", "")
+        return header[7:].strip() if header.lower().startswith("bearer ") else ""
+
+    @app.post("/api/displays", status_code=201)
+    def create_display(body: DisplayCreate, response: Response):
+        with lock, app.state.sessions() as db:
+            now = time.time()
+            display_id = "".join(secrets.choice("abcdefghijklmnopqrstuvwxyz0123456789") for _ in range(12))
+            d = Display(id=display_id, name=body.name.strip(), created_at=now,
+                        pairing_code=pairing_code(db), pairing_expires_at=now + PAIRING_SECONDS)
+            db.add(d)
+            db.flush()
+            token = secrets.token_urlsafe(32)
+            db.add(DisplayAdmin(id=str(uuid4()), display_id=d.id, token_hash=digest(token), created_at=now))
+            response.set_cookie(display_cookie(d.id), token, httponly=True, secure=secure,
+                                samesite="lax", max_age=365 * 86400, path="/")
+            db.commit()
+            return display_info(db, d)
+
+    @app.get("/api/displays")
+    def list_displays(request: Request):
+        with lock, app.state.sessions() as db:
+            result = []
+            for cookie in request.cookies:
+                if cookie.startswith("score67d_"):
+                    try:
+                        result.append(display_info(db, managed_display(db, cookie[9:], request.cookies)))
+                    except HTTPException:
+                        continue
+            return {"displays": sorted(result, key=lambda d: d["name"].lower())}
+
+    @app.put("/api/displays/{display_id}")
+    def update_display(display_id: str, body: DisplayUpdate, request: Request):
+        with lock, app.state.sessions() as db:
+            d = managed_display(db, display_id, request.cookies)
+            if body.name is not None:
+                d.name = body.name.strip()
+            if "board" in body.model_fields_set:
+                if body.board is not None:
+                    authorize(db, body.board, request)  # Only boards this browser controls.
+                d.board_slug = body.board
+            db.commit()
+            return display_info(db, d)
+
+    @app.post("/api/displays/{display_id}/code")
+    def renew_display_code(display_id: str, request: Request):
+        with lock, app.state.sessions() as db:
+            d = managed_display(db, display_id, request.cookies)
+            d.pairing_code, d.pairing_expires_at = pairing_code(db), time.time() + PAIRING_SECONDS
+            db.commit()
+            return display_info(db, d)
+
+    @app.delete("/api/displays/{display_id}")
+    def delete_display(display_id: str, request: Request, response: Response):
+        with lock, app.state.sessions() as db:
+            d = managed_display(db, display_id, request.cookies)
+            for admin in db.scalars(select(DisplayAdmin).where(DisplayAdmin.display_id == d.id)).all():
+                db.delete(admin)
+            db.flush()  # Admin rows first; the database cascade would otherwise race the ORM.
+            db.delete(d)
+            db.commit()
+            response.delete_cookie(display_cookie(display_id), path="/")
+            return {"ok": True}
+
+    @app.post("/api/display/pair")
+    def pair_display(body: DisplayPair, request: Request):
+        with lock, app.state.sessions() as db:
+            now = time.time()
+            key = "pair:" + digest(request.client.host if request.client else "unknown")
+            limit = db.get(RateLimit, key)
+            if not limit:
+                limit = RateLimit(key=key, count=0, reset_at=now + 3600)
+                db.add(limit)
+            if limit.reset_at <= now:
+                limit.count, limit.reset_at = 0, now + 3600
+            limit.count += 1
+            if limit.count > 30:
+                db.commit()
+                raise HTTPException(429, "rate_limited")
+            code = body.code.strip().upper().replace("-", "").replace(" ", "")
+            d = db.scalar(select(Display).where(Display.pairing_code == code))
+            if not d or (d.pairing_expires_at or 0) <= now:
+                db.commit()
+                raise HTTPException(404, "pairing_code_invalid")
+            token = secrets.token_urlsafe(32)
+            d.token_hash, d.pairing_code, d.pairing_expires_at = digest(token), None, None
+            d.paired_at = d.last_seen_at = now
+            db.commit()
+            return {"display_id": d.id, "name": d.name, "token": token}
+
+    @app.get("/api/display/state")
+    def display_state(request: Request):
+        with lock, app.state.sessions() as db:
+            d = device_display(db, bearer(request))
+            d.last_seen_at = time.time()
+            payload = device_payload(db, d)
+            db.commit()
+            return payload
+
+    @app.websocket("/ws/display")
+    async def display_live(ws: WebSocket):
+        token = ws.query_params.get("token", "")
+        with lock, app.state.sessions() as db:
+            try:
+                device_display(db, token)
+            except HTTPException:
+                await ws.close(code=1008)
+                return
+        await ws.accept()
+        signature, seen = None, 0.0
+        try:
+            while True:
+                with lock, app.state.sessions() as db:
+                    d = db.scalar(select(Display).where(Display.token_hash == digest(token)))
+                    if not d:
+                        await ws.close(code=1008)  # Removed or re-paired.
+                        return
+                    b = db.get(Board, d.board_slug) if d.board_slug else None
+                    m = db.get(Match, b.active_match) if b and b.active_match else None
+                    current = (d.board_slug, d.name, m.id if m else None, m.revision if m else 0)
+                    payload = device_payload(db, d) if current != signature else None
+                    if time.time() - seen > 10:
+                        d.last_seen_at = seen = time.time()
+                        db.commit()
+                if payload is not None:
+                    await ws.send_json(payload)
+                    signature = current
+                try:
+                    await asyncio.wait_for(ws.receive_text(), timeout=0.25)
                 except asyncio.TimeoutError:
                     pass
         except (WebSocketDisconnect, RuntimeError):

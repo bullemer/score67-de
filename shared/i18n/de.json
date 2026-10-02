@@ -351,5 +351,21 @@
   "score.adjust": "Spielstand korrigieren",
   "score.adjust_note": "Richtigen Stand eintragen. Die Änderung wird als Admin-Korrektur protokolliert.",
   "console.admin_adjust": "Admin-Korrektur",
-  "score_adjust": "Spielstand korrigiert"
+  "score_adjust": "Spielstand korrigiert",
+  "display.title": "Anzeigetafeln",
+  "display.intro": "Verbinde eine Anzeigetafel (z. B. einen Raspberry Pi an der LED-Tafel) und wähle, welches deiner Scoreboards sie zeigt. Du kannst jederzeit umschalten.",
+  "display.name": "Name der neuen Anzeigetafel",
+  "display.connect": "Anzeigetafel verbinden",
+  "display.code_hint": "Diesen Code auf der Einrichtungsseite der Anzeigetafel eingeben:",
+  "display.code_valid": "gültig bis",
+  "display.shows": "Zeigt Scoreboard",
+  "display.nothing": "— nichts —",
+  "display.new_code": "Neuer Code",
+  "display.remove": "Entfernen",
+  "display.remove_confirm": "Diese Anzeigetafel entfernen? Sie zeigt keine Spielstände mehr, bis sie neu gekoppelt wird.",
+  "display.rename": "Anzeigetafel umbenennen",
+  "display.waiting": "Wartet auf Kopplung",
+  "display.online": "Online",
+  "display.offline": "Offline",
+  "error.pairing_code_invalid": "Code unbekannt oder abgelaufen."
 }

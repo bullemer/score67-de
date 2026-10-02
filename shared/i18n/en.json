@@ -351,5 +351,21 @@
   "score.adjust": "Correct score",
   "score.adjust_note": "Set the correct score. The change is logged as an admin correction.",
   "console.admin_adjust": "Admin correction",
-  "score_adjust": "Score corrected"
+  "score_adjust": "Score corrected",
+  "display.title": "Displays",
+  "display.intro": "Connect a physical scoreboard driver (e.g. a Raspberry Pi next to the LED board) and choose which of your scoreboards it shows. You can switch at any time.",
+  "display.name": "Name of the new display",
+  "display.connect": "Connect display",
+  "display.code_hint": "Enter this code on the display's setup page:",
+  "display.code_valid": "valid until",
+  "display.shows": "Shows scoreboard",
+  "display.nothing": "— nothing —",
+  "display.new_code": "New code",
+  "display.remove": "Remove",
+  "display.remove_confirm": "Remove this display? It stops showing scores until it is paired again.",
+  "display.rename": "Rename display",
+  "display.waiting": "Waiting for pairing",
+  "display.online": "Online",
+  "display.offline": "Offline",
+  "error.pairing_code_invalid": "Code unknown or expired."
 }
