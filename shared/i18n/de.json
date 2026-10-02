@@ -329,5 +329,10 @@
   "trash.reason.manual": "In den Papierkorb gelegt",
   "console.team": "Team",
   "team.on_court": "Auf dem Feld",
-  "player.edit": "Spieler bearbeiten"
+  "player.edit": "Spieler bearbeiten",
+  "privacy.private": "Privates Spiel",
+  "privacy.private_on": "Nur deine Steuergeräte und das OBS-Overlay sehen dieses Spiel.",
+  "privacy.private_off": "Öffentlich: Jeder mit dem Zuschauerlink kann das Spiel verfolgen.",
+  "privacy.note": "Dieses Spiel ist privat. Zuschauerlink, Live-Liste und Teilen sind ausgeschaltet; schalte „Privates Spiel“ aus, um es zu teilen.",
+  "format.total": "Spielzeit"
 }

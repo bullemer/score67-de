@@ -329,5 +329,10 @@
   "trash.reason.manual": "Moved to trash",
   "console.team": "Team",
   "team.on_court": "On court",
-  "player.edit": "Edit player"
+  "player.edit": "Edit player",
+  "privacy.private": "Private game",
+  "privacy.private_on": "Only your control devices and the OBS overlay see this game.",
+  "privacy.private_off": "Public: anyone with the spectator link can follow the game.",
+  "privacy.note": "This game is private. Spectator link, live list and sharing are switched off; turn off “Private game” to share it.",
+  "format.total": "Playing time"
 }

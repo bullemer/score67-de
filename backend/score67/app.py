@@ -52,6 +52,10 @@ class LocationUpdate(StrictModel):
     location: Location | None = None
 
 
+class PrivacyUpdate(StrictModel):
+    private: bool
+
+
 class DescriptionUpdate(StrictModel):
     description: str | None = Field(default=None, max_length=300)
 
@@ -66,7 +70,7 @@ class CreateBoard(StrictModel):
     description: str | None = Field(default=None, max_length=300)
     scheduled_at: int | None = Field(default=None, ge=0)
     period_count: int | None = Field(default=None, ge=1, le=12)
-    period_length_min: int | None = Field(default=None, ge=1, le=60)
+    period_length_min: int | None = Field(default=None, ge=1, le=120)
     location: Location | None = None
 
 
@@ -77,7 +81,7 @@ class CreateMatch(StrictModel):
     away: str = Field(default="Guest", min_length=1, max_length=60)
     scheduled_at: int | None = Field(default=None, ge=0)
     period_count: int | None = Field(default=None, ge=1, le=12)
-    period_length_min: int | None = Field(default=None, ge=1, le=60)
+    period_length_min: int | None = Field(default=None, ge=1, le=120)
 
 
 class Claim(StrictModel):
@@ -244,6 +248,20 @@ def create_app(db_url=None, secure_cookies=None):
         admin.last_seen_at = time.time()
         return admin
 
+    def viewer_allowed(db, b, cookies, key):
+        """Public boards are open; private ones only to controllers and OBS (overlay key)."""
+        if not b.private or (key and b.overlay_key and hmac.compare_digest(key, b.overlay_key)):
+            return True
+        token = cookies.get(f"score67_{b.slug}", "")
+        admin = db.scalar(select(Admin).where(Admin.slug == b.slug, Admin.token_hash == digest(token)))
+        return bool(admin and not admin.revoked)
+
+    def public_board(db, slug, request):
+        b = board(db, slug)
+        if not viewer_allowed(db, b, request.cookies, request.query_params.get("k")):
+            raise HTTPException(403, "private")
+        return b
+
     def grant(db, slug, response, label):
         token = secrets.token_urlsafe(32)
         db.add(Admin(id=str(uuid4()), slug=slug, token_hash=digest(token), label=label, last_seen_at=time.time()))
@@ -305,7 +323,8 @@ def create_app(db_url=None, secure_cookies=None):
         s["events"] = [{**e.payload, "id": e.id, "cancelled": e.cancelled,
             "corrected": e.payload["type"] in COUNTED_EVENTS and not e.cancelled and e.id not in available_ids} for e in events]
         if private:
-            s.update(description=b.description, board_created_at=round(b.created_at * 1000))
+            s.update(description=b.description, board_created_at=round(b.created_at * 1000),
+                     private=bool(b.private), overlay_key=b.overlay_key)
             for team in ("home", "away"):
                 if s["sport"] == "basketball":
                     s[team]["statistics"] = player_statistics(s[team], [
@@ -374,7 +393,7 @@ def create_app(db_url=None, secure_cookies=None):
             label = datetime.fromtimestamp(now, timezone.utc).isoformat(sep=" ", timespec="milliseconds").replace("+00:00", " UTC")
             b = Board(slug=slug, name=label, language=body.language, pin_hash=hash_pin(pin),
                       active_match=match_id, created_at=now, location=body.location.model_dump() if body.location else None,
-                      description=clean_description(body.description))
+                      description=clean_description(body.description), overlay_key=secrets.token_urlsafe(12))
             db.add(b)
             db.flush()
             db.add(Match(id=match_id, slug=slug, state=initial_state(body.period_count, body.period_length_min, body.sport),
@@ -400,6 +419,18 @@ def create_app(db_url=None, secure_cookies=None):
                 db.get(Match, b.active_match).revision += 1
             db.commit()
             return {"location": b.location}
+
+    @app.put("/api/s/{slug}/privacy")
+    def update_privacy(slug: str, body: PrivacyUpdate, request: Request):
+        with lock, app.state.sessions() as db:
+            authorize(db, slug, request)
+            b = board(db, slug)
+            b.private = body.private
+            b.overlay_key = b.overlay_key or secrets.token_urlsafe(12)
+            if b.active_match:
+                db.get(Match, b.active_match).revision += 1
+            db.commit()
+            return {"private": b.private}
 
     @app.put("/api/s/{slug}/description")
     def update_description(slug: str, body: DescriptionUpdate, request: Request):
@@ -462,9 +493,9 @@ def create_app(db_url=None, secure_cookies=None):
             return {"pin": pin}
 
     @app.get("/api/s/{slug}/state")
-    def current_state(slug: str):
+    def current_state(slug: str, request: Request):
         with lock, app.state.sessions() as db:
-            return state(db, board(db, slug))
+            return state(db, public_board(db, slug, request))
 
     @app.get("/api/s/{slug}/control-state")
     @app.get("/api/s/{slug}/matches/{match_id}/control-state")
@@ -506,7 +537,7 @@ def create_app(db_url=None, secure_cookies=None):
         with lock, app.state.sessions() as db:
             games = []
             active = db.scalars(select(Board).join(Match, Board.active_match == Match.id).where(
-                Match.deleted_at.is_(None), Match.archived_at.is_(None),
+                Board.private.is_(False), Match.deleted_at.is_(None), Match.archived_at.is_(None),
                 Match.state["phase"].as_string().in_(("period_running", "break")))
                 .order_by(Match.created_at.desc(), Board.slug))
             for b in active:
@@ -543,9 +574,9 @@ def create_app(db_url=None, secure_cookies=None):
             return {"ok": True, "match_id": m.id}
 
     @app.get("/api/s/{slug}/matches/{match_id}/state")
-    def archived_state(slug: str, match_id: str):
+    def archived_state(slug: str, match_id: str, request: Request):
         with lock, app.state.sessions() as db:
-            return state(db, board(db, slug), match_id)
+            return state(db, public_board(db, slug, request), match_id)
 
     @app.post("/api/s/{slug}/matches/{match_id}/commands")
     def command(slug: str, match_id: str, body: Command, request: Request):
@@ -675,8 +706,10 @@ def create_app(db_url=None, secure_cookies=None):
 
     @app.websocket("/ws/s/{slug}")
     async def live(ws: WebSocket, slug: str):
+        key = ws.query_params.get("k")
         with app.state.sessions() as db:
-            if not db.get(Board, slug):
+            b = db.get(Board, slug)
+            if not b or not viewer_allowed(db, b, ws.cookies, key):
                 await ws.close(code=1008)
                 return
         await ws.accept()
@@ -685,10 +718,14 @@ def create_app(db_url=None, secure_cookies=None):
             while True:
                 with lock, app.state.sessions() as db:
                     b = board(db, slug)
+                    allowed = viewer_allowed(db, b, ws.cookies, key)
                     m = db.get(Match, b.active_match) if b.active_match else None
                     current = (m.id, m.revision) if m else (None, 0)
                     if current != signature:
                         s = state(db, b)
+                if not allowed:
+                    await ws.close(code=1008)  # Made private while watching.
+                    return
                 if current != signature:
                     await ws.send_json(s)
                     signature = current
@@ -718,10 +755,12 @@ def create_app(db_url=None, secure_cookies=None):
     @app.get("/s/{slug}", response_class=HTMLResponse)
     @app.get("/s/{slug}/overlay", response_class=HTMLResponse)
     def display(request: Request, slug: str):
+        overlay = request.url.path.endswith("/overlay")
         with app.state.sessions() as db:
-            board(db, slug)
+            b = board(db, slug)
+            hidden = not viewer_allowed(db, b, request.cookies, request.query_params.get("k"))
         return templates.TemplateResponse(request=request, name="display.html",
-                                          context={"slug": slug, "overlay": request.url.path.endswith("/overlay")})
+                                          context={"slug": slug, "overlay": overlay, "private": hidden})
 
     @app.get("/new")
     @app.get("/dashboard")

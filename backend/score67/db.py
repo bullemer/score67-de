@@ -2,7 +2,7 @@ import os
 import time
 from pathlib import Path
 
-from sqlalchemy import JSON, Boolean, Float, ForeignKey, Integer, String, create_engine, event, text
+from sqlalchemy import false, JSON, Boolean, Float, ForeignKey, Integer, String, create_engine, event, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 
@@ -22,6 +22,9 @@ class Board(Base):
     created_at: Mapped[float] = mapped_column(Float)
     location: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     description: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    # Private boards hide spectator views; the overlay key keeps OBS working.
+    private: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    overlay_key: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
 
 class Admin(Base):
@@ -88,6 +91,6 @@ def database(url: str | None = None):
     else:
         with engine.connect() as connection:
             version = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            if version != "0005_match_trash":
+            if version != "0006_board_privacy":
                 raise RuntimeError("Database schema does not match this release; run migrations first")
     return engine, sessionmaker(engine, expire_on_commit=False)

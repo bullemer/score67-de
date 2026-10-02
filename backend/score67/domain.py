@@ -333,7 +333,7 @@ def apply(state, action, data, now_ms):
         if "period_count" in data:
             s["period_count"] = integer(data["period_count"], max(1, min(s["period"], s["period_count"]) if basketball else s["period"]), 12)
         if "period_length_min" in data:
-            s["period_length_min"] = integer(data["period_length_min"], 1, 60)
+            s["period_length_min"] = integer(data["period_length_min"], 1, 120)
         for team in ("home", "away"):
             if team in data:
                 t = data[team]

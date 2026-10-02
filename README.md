@@ -68,6 +68,18 @@ The console's middle panel has the tabs Spielverlauf (game flow), Team, Periods,
 
 Double-tap a team tile to edit the team name, short name and colour; double-tap a player tile to change number or name (only while no action is selected, so scoring taps stay instant). In basketball, Play also opens the next period or overtime and starts the clock in one tap.
 
+### Private games
+
+Games are public by default. The "Private game" switch at the top of the Sharing tab hides the spectator page (it shows a private notice), the public state API, live socket and the /live directory from everyone except this board's control devices. The OBS overlay link carries an overlay key (`?k=…`) and keeps working while private; switching back to public re-enables all sharing links.
+
+### Game flow
+
+Spielverlauf shows sporting events only: clock start/stop, squad edits, settings and the pre-game lineup are recorded but hidden; in-game substitutions are shown. Undo removes the last visible entry (a score after a hidden clock stop is removed without restarting the clock).
+
+### Football formats
+
+Creating a football scoreboard offers playing time (90, 80, 70, 60, 50, 40, 30, 20, 10 min) and 1–4 equal periods; default 90 min in 2 periods. Period lengths up to 120 minutes are allowed.
+
 ### Sharing tab and creation
 
 Creating a scoreboard opens the console directly. The console's Sharing tab shows the admin PIN (kept only in the creating or renewing browser, because the server stores it hashed), PIN renewal, device management, social sharing and the spectator, OBS and control links.

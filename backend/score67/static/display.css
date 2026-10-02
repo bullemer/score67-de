@@ -11,3 +11,5 @@
 
 .team-label > small {font-size: 18px; font-weight: 600; color: #facc15;}
 html:has(body.overlay){background:transparent}
+
+.private-notice{max-width:640px;margin:15vh auto;padding:0 16px;text-align:center}.private-notice h1{font-size:28px}

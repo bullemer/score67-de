@@ -3,7 +3,10 @@ const overlay = document.body.classList.contains('overlay');
 const params = new URLSearchParams(location.search);
 const slug = document.body.dataset.slug;
 const historyMatch = !overlay && params.get('match');
-const endpoint = historyMatch ? `/api/s/${slug}/matches/${encodeURIComponent(historyMatch)}/state` : `/api/s/${slug}/state`;
+// The overlay key lets OBS keep showing a private board.
+const key = params.get('k');
+const keyQuery = key ? `?k=${encodeURIComponent(key)}` : '';
+const endpoint = (historyMatch ? `/api/s/${slug}/matches/${encodeURIComponent(historyMatch)}/state` : `/api/s/${slug}/state`) + keyQuery;
 const el = id => document.getElementById(id);
 const queue = new DelayedStates();
 let state, lang = preferredLanguage(), words = {}, socket, reconnect = 500;
@@ -125,12 +128,13 @@ async function poll() {
       if (el('connection')) el('connection').textContent = words['error.match_deleted'];
       return;
     }
+    if (response.status === 403) { location.reload(); return; }  // Made private: show the notice.
     if (!response.ok) throw new Error('state');
     receive(await response.json(), (performance.now() - start) / 2);
   } catch { online = false; } finally { pollBusy = false; }
 }
 function connect() {
-  socket = new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws/s/${slug}`);
+  socket = new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws/s/${slug}${keyQuery}`);
   socket.onopen = () => { reconnect = 500; online = true; };
   socket.onmessage = event => { try { receive(JSON.parse(event.data)); } catch { /* Keep last valid state. */ } };
   socket.onclose = () => { online = false; setTimeout(connect, reconnect); reconnect = Math.min(5000, reconnect * 2); };

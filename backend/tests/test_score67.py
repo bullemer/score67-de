@@ -1033,3 +1033,40 @@ def test_cleaner_trashes_abandoned_and_unstarted_games_and_purges(system):
         assert clean_matches(db, t0 + 40 * 24 * hour) == (1, 1)
     boards = client.get('/api/dashboard').json()['boards']
     assert not any(g['match_id'] for b in boards if b['slug'] == fresh for g in b['matches'])
+
+
+def test_private_board_hides_spectators_but_keeps_controllers_and_obs(system):
+    _, client = system
+    slug = create(client)['slug']
+    private = client.get(f'/api/s/{slug}/control-state').json()
+    key = private['overlay_key']
+    assert key and private['private'] is False
+    command(client, slug, 'period_start')
+    stranger = TestClient(client.app)
+    assert stranger.get(f'/api/s/{slug}/state').status_code == 200
+    assert any(g['scoreboard'] == slug for g in stranger.get('/api/live').json()['games'])
+    assert client.put(f'/api/s/{slug}/privacy', json={'private': True}).json() == {'private': True}
+    assert stranger.put(f'/api/s/{slug}/privacy', json={'private': False}).status_code == 401
+    assert stranger.get(f'/api/s/{slug}/state').status_code == 403
+    assert 'Privates Spiel' in stranger.get(f'/s/{slug}').text
+    assert not any(g['scoreboard'] == slug for g in stranger.get('/api/live').json()['games'])
+    with pytest.raises(Exception):
+        with stranger.websocket_connect(f'/ws/s/{slug}') as ws:
+            ws.receive_json()
+    # Controllers and the OBS overlay (with its key) keep working.
+    assert client.get(f'/api/s/{slug}/state').status_code == 200
+    assert stranger.get(f'/api/s/{slug}/state?k={key}').status_code == 200
+    assert stranger.get(f'/api/s/{slug}/state?k=wrong').status_code == 403
+    assert 'Privates Spiel' not in stranger.get(f'/s/{slug}/overlay?k={key}').text
+    with stranger.websocket_connect(f'/ws/s/{slug}?k={key}') as ws:
+        assert ws.receive_json()['scoreboard'] == slug
+    client.put(f'/api/s/{slug}/privacy', json={'private': False})
+    assert stranger.get(f'/api/s/{slug}/state').status_code == 200
+
+
+def test_football_formats_up_to_ninety_minute_periods(system):
+    _, client = system
+    slug = client.post('/api/scoreboards', json={'period_count': 1, 'period_length_min': 90}).json()['slug']
+    s = state(client, slug)
+    assert (s['period_count'], s['period_length_min']) == (1, 90)
+    assert client.post('/api/scoreboards', json={'period_length_min': 121}).status_code == 422

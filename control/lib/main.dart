@@ -59,6 +59,8 @@ class _Score67State extends State<Score67> {
   int defaultPeriods = 2, defaultMinutes = 45;
   String draftSport = 'football';
   int draftPeriods = 4, draftMinutes = 10;
+  // Football: total playing time split into equal periods (default 2 × 45).
+  int footballTotal = 90, footballPeriods = 2;
   bool get basketball => state['sport'] == 'basketball';
   int get periodLengthMs =>
       ((state['period'] > state['period_count']
@@ -107,7 +109,7 @@ class _Score67State extends State<Score67> {
         web.window.localStorage.getItem('score67-settings') ?? '{}',
       );
       defaultPeriods = (preferences['periods'] as int? ?? 2).clamp(1, 12);
-      defaultMinutes = (preferences['minutes'] as int? ?? 45).clamp(1, 60);
+      defaultMinutes = (preferences['minutes'] as int? ?? 45).clamp(1, 120);
     } catch (_) {}
     final segments = url.pathSegments;
     if (segments.length == 3 &&
@@ -250,7 +252,7 @@ class _Score67State extends State<Score67> {
                     p > 12 ||
                     m == null ||
                     m < 1 ||
-                    m > 60) {
+                    m > 120) {
                   notify(t('error.invalid_value'));
                   return;
                 }
@@ -607,10 +609,10 @@ class _Score67State extends State<Score67> {
           'language': lang,
           'period_count': draftSport == 'basketball'
               ? draftPeriods
-              : defaultPeriods,
+              : footballPeriods,
           'period_length_min': draftSport == 'basketball'
               ? draftMinutes
-              : defaultMinutes,
+              : footballTotal ~/ footballPeriods,
           'location': draftLocation,
           'description': draftDescription.text.trim().isEmpty
               ? null
@@ -877,7 +879,7 @@ class _Score67State extends State<Score67> {
                               )
                             : state['period']) ||
                     l < 1 ||
-                    l > 60 ||
+                    l > 120 ||
                     d < 0 ||
                     d > 30000 ||
                     e < 0 ||
@@ -1063,9 +1065,16 @@ class _Score67State extends State<Score67> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SelectableText(spectatorUrl),
-                const SizedBox(height: 16),
-                shareActions(),
+                if (isPrivate)
+                  Text(
+                    t('privacy.note'),
+                    style: const TextStyle(color: Colors.orange),
+                  )
+                else ...[
+                  SelectableText(spectatorUrl),
+                  const SizedBox(height: 16),
+                  shareActions(),
+                ],
               ],
             ),
           ),
@@ -1080,14 +1089,38 @@ class _Score67State extends State<Score67> {
     );
   }
 
+  bool get isPrivate => state['private'] == true;
+
+  /// The OBS link carries the overlay key so it keeps working while private.
+  String get overlayPath => state['overlay_key'] == null
+      ? '/s/$slug/overlay'
+      : '/s/$slug/overlay?k=${state['overlay_key']}';
+
+  Future<void> setPrivate(bool value) async {
+    try {
+      await api(
+        '/api/s/$slug/privacy',
+        method: 'PUT',
+        body: {'private': value},
+      );
+      await refresh();
+    } catch (_) {
+      notify(t('error.network'));
+    }
+  }
+
   List<Widget> linkWidgets() => [
-    Text(t('share.spectator')),
-    const SizedBox(height: 8),
-    shareActions(),
+    if (isPrivate)
+      Text(t('privacy.note'), style: const TextStyle(color: Colors.orange))
+    else ...[
+      Text(t('share.spectator')),
+      const SizedBox(height: 8),
+      shareActions(),
+    ],
     const SizedBox(height: 20),
     for (final entry in {
-      'spectator': '/s/$slug',
-      'overlay.link': '/s/$slug/overlay',
+      if (!isPrivate) 'spectator': '/s/$slug',
+      'overlay.link': overlayPath,
       'control': '/s/$slug/control',
     }.entries)
       Padding(
@@ -1381,6 +1414,45 @@ class _Score67State extends State<Score67> {
         ],
       ),
       Text(t('basketball.pilot')),
+    ],
+    if (draftSport == 'football') ...[
+      const SizedBox(height: 12),
+      Text(t('format.total')),
+      Wrap(
+        spacing: 8,
+        runSpacing: 4,
+        children: [
+          for (final total in [90, 80, 70, 60, 50, 40, 30, 20, 10])
+            ChoiceChip(
+              label: Text('$total min'),
+              selected: footballTotal == total,
+              onSelected: (_) => setState(() {
+                footballTotal = total;
+                // Keep periods whole minutes.
+                if (total % footballPeriods != 0) footballPeriods = 1;
+              }),
+            ),
+        ],
+      ),
+      const SizedBox(height: 8),
+      Text(t('period_count')),
+      Wrap(
+        spacing: 8,
+        children: [
+          for (final periods in [1, 2, 3, 4])
+            ChoiceChip(
+              label: Text('$periods'),
+              selected: footballPeriods == periods,
+              onSelected: footballTotal % periods == 0
+                  ? (_) => setState(() => footballPeriods = periods)
+                  : null,
+            ),
+        ],
+      ),
+      Text(
+        '$footballPeriods × ${footballTotal ~/ footballPeriods} min',
+        style: const TextStyle(color: Color(0xffb6f36e)),
+      ),
     ],
     const SizedBox(height: 12),
     Text(t('create.note')),
@@ -1944,9 +2016,7 @@ class _Score67State extends State<Score67> {
           setBasketballClock();
         }
       },
-      onUndo: last != null && canWrite
-          ? () => command('undo', {'event_id': last['id']})
-          : null,
+      onUndo: last != null && canWrite ? undoVisible : null,
       onSubstitutions: editLineup,
       onAction: consoleAction,
       onPossession: (team) => command('possession', {'team': team}),
@@ -2140,8 +2210,59 @@ class _Score67State extends State<Score67> {
     },
   );
 
+  /// Clock toggles and team/match setup stay recorded (undo, history) but
+  /// are not shown in the game flow. Substitutions during play are shown.
+  static const hiddenInFlow = {
+    'clock_start',
+    'clock_stop',
+    'squad',
+    'settings',
+    'overlay',
+  };
+  bool visibleInFlow(dynamic e) =>
+      !hiddenInFlow.contains(e['type']) &&
+      !(e['type'] == 'lineup' && (e['period'] ?? 0) == 0);
+
+  static const removableTallies = {
+    'score',
+    'personal_foul',
+    'technical_foul',
+    'team_foul',
+    'timeout',
+    'red_card',
+    'yellow_card',
+    'foul',
+    'free_kick',
+    'penalty',
+  };
+
+  /// Undo what the game flow shows last. A hidden clock entry after it is
+  /// left alone: a tally is removed by correction instead.
+  Future<void> undoVisible() async {
+    final active = events.where((e) => e['cancelled'] == false).toList();
+    if (active.isEmpty) return;
+    final visible = active
+        .where(
+          (e) =>
+              visibleInFlow(e) &&
+              e['corrected'] != true &&
+              !(e['type'] as String).endsWith('_correction'),
+        )
+        .lastOrNull;
+    if (visible == null || identical(visible, active.last)) {
+      await command('undo', {'event_id': active.last['id']});
+    } else if (removableTallies.contains(visible['type'])) {
+      await command('${visible['type']}_correction', {
+        'team': visible['team'],
+        'event_id': visible['id'],
+      });
+    } else {
+      await command('undo', {'event_id': active.last['id']});
+    }
+  }
+
   Widget gameFlow() {
-    final list = events.reversed.toList();
+    final list = events.reversed.where(visibleInFlow).toList();
     if (list.isEmpty) {
       return Center(child: Text(t('log.empty')));
     }
@@ -2387,6 +2508,16 @@ class _Score67State extends State<Score67> {
     return ListView(
       padding: const EdgeInsets.all(12),
       children: [
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: Text(t('privacy.private')),
+          subtitle: Text(
+            t(isPrivate ? 'privacy.private_on' : 'privacy.private_off'),
+          ),
+          value: isPrivate,
+          onChanged: admin && connected ? setPrivate : null,
+        ),
+        const Divider(height: 20),
         Text(t('pin'), style: const TextStyle(fontWeight: FontWeight.w700)),
         if (known != null) ...[
           SelectableText(
@@ -2404,6 +2535,7 @@ class _Score67State extends State<Score67> {
         action(t('pin.rotate'), canWrite ? rotatePin : null),
         action(t('admins'), manageAccess),
         const Divider(height: 28),
+        const SizedBox(height: 8),
         ...linkWidgets(),
       ],
     );
