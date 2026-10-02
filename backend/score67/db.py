@@ -44,6 +44,10 @@ class Match(Base):
     scheduled_at: Mapped[float | None] = mapped_column(Float, nullable=True)
     archived_at: Mapped[float | None] = mapped_column(Float, nullable=True)
     deleted_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+    trashed_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+    trash_reason: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # Last management activity (restore, schedule, activate); events carry their own times.
+    touched_at: Mapped[float | None] = mapped_column(Float, nullable=True)
 
 
 class MatchEvent(Base):
@@ -84,6 +88,6 @@ def database(url: str | None = None):
     else:
         with engine.connect() as connection:
             version = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            if version != "0004_board_description":
+            if version != "0005_match_trash":
                 raise RuntimeError("Database schema does not match this release; run migrations first")
     return engine, sessionmaker(engine, expire_on_commit=False)

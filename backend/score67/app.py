@@ -97,6 +97,49 @@ PRIVATE_EVENTS = ("personal_foul", "technical_foul", "assign_foul_player", "line
 CORRECTION_EVENTS = tuple(f"{kind}_correction" for kind in COUNTED_EVENTS)
 
 
+def hours_env(name, default):
+    return float(os.getenv(name, default)) * 3600
+
+
+def clean_matches(db, now=None):
+    """Move abandoned and never-started games to the trash; purge old trash.
+
+    Finished games are never touched. Returns (trashed, purged)."""
+    now = now or time.time()
+    stale = hours_env("TRASH_STALE_HOURS", 24)
+    planned = hours_env("TRASH_PLANNED_GRACE_HOURS", 24)
+    unscheduled = hours_env("TRASH_UNSCHEDULED_DAYS", 7) * 24
+    retention = hours_env("TRASH_RETENTION_DAYS", 30) * 24
+    trashed = purged = 0
+    candidates = db.scalars(select(Match).where(Match.deleted_at.is_(None), Match.trashed_at.is_(None),
+                                                Match.archived_at.is_(None))).all()
+    for m in candidates:
+        phase = m.state.get("phase")
+        if phase == "finished":
+            continue
+        last = db.scalar(select(MatchEvent).where(MatchEvent.match_id == m.id).order_by(MatchEvent.id.desc()).limit(1))
+        activity = max(m.created_at, m.touched_at or 0, (last.payload.get("occurred_at", 0) / 1000) if last else 0)
+        if phase == "pre_game":
+            due = (max(m.scheduled_at, m.touched_at or 0) + planned) if m.scheduled_at else activity + unscheduled
+            reason = "not_started"
+        else:
+            due, reason = activity + stale, "abandoned"
+        if now < due:
+            continue
+        m.trashed_at, m.trash_reason = now, reason
+        b = db.get(Board, m.slug)
+        if b and b.active_match == m.id:
+            b.active_match = None
+        m.revision += 1
+        trashed += 1
+    for m in db.scalars(select(Match).where(Match.deleted_at.is_(None), Match.trashed_at.is_not(None),
+                                            Match.trashed_at < now - retention)).all():
+        m.deleted_at = now
+        purged += 1
+    db.commit()
+    return trashed, purged
+
+
 def available_events(events):
     available = []
     for event in events:
@@ -121,7 +164,23 @@ def create_app(db_url=None, secure_cookies=None):
     async def lifespan(app):
         engine, sessions = database(db_url)
         app.state.sessions = sessions
+
+        def clean():
+            with lock, sessions() as db:
+                return clean_matches(db)
+
+        async def cleaner():
+            interval = float(os.getenv("TRASH_INTERVAL_SECONDS", 3600))
+            while interval > 0:
+                try:
+                    await asyncio.to_thread(clean)
+                except Exception:  # noqa: BLE001 - the cleaner must never stop the app
+                    pass
+                await asyncio.sleep(interval)
+
+        task = asyncio.create_task(cleaner())
         yield
+        task.cancel()
         engine.dispose()
 
     app = FastAPI(title="Score67", version=RELEASE["version"], lifespan=lifespan)
@@ -217,7 +276,9 @@ def create_app(db_url=None, secure_cookies=None):
                  revision=m.revision, server_now=round(time.time() * 1000),
                  created_at=round(m.created_at * 1000),
                  scheduled_at=round(m.scheduled_at * 1000) if m.scheduled_at else None,
-                 archived=bool(m.archived_at), active=m.id == b.active_match, location=public_location)
+                 archived=bool(m.archived_at), active=m.id == b.active_match, location=public_location,
+                 trashed=bool(m.trashed_at), trash_reason=m.trash_reason,
+                 trashed_at=round(m.trashed_at * 1000) if m.trashed_at else None)
         for team in ("home", "away"):
             s[team]["score"] = sum(e.payload.get("points", 0) for e in events
                                    if not e.cancelled and e.payload.get("team") == team and e.payload["type"] in ("score", "score_correction"))
@@ -432,7 +493,7 @@ def create_app(db_url=None, secure_cookies=None):
                                     .order_by(Match.created_at.desc())):
                     s = state(db, b, m.id)
                     games.append({k: s[k] for k in ("sport", "team_fouls_enabled", "match_id", "revision", "phase", "home", "away", "period_count",
-                        "period_length_min", "created_at", "scheduled_at", "archived", "active")})
+                        "period_length_min", "created_at", "scheduled_at", "archived", "active", "trashed", "trash_reason", "trashed_at")})
                 boards.append({"slug": b.slug, "name": b.name, "active_match": b.active_match, "description": b.description,
                                "created_at": round(b.created_at * 1000), "matches": games})
                 response.set_cookie(cookie, token, httponly=True, secure=secure,
@@ -502,7 +563,7 @@ def create_app(db_url=None, secure_cookies=None):
                 if receipt.fingerprint != fingerprint:
                     raise HTTPException(409, "command_reused")
                 return state(db, b, private=True)
-            management = body.action in ("activate", "archive", "restore", "delete", "schedule")
+            management = body.action in ("activate", "archive", "restore", "delete", "schedule", "trash")
             if m.deleted_at:
                 raise HTTPException(410, "match_deleted")
             if (not management and b.active_match != m.id) or m.revision != body.expected_revision:
@@ -514,9 +575,10 @@ def create_app(db_url=None, secure_cookies=None):
                     current = db.get(Match, b.active_match) if b.active_match else None
                     if current and current.id != m.id and current.state["phase"] in ("period_running", "break"):
                         raise HTTPException(409, "finish_first")
-                    if m.archived_at:
+                    if m.archived_at or m.trashed_at:
                         raise HTTPException(409, "restore_first")
                     b.active_match = m.id
+                    m.touched_at = time.time()
                 elif body.action in ("archive", "delete"):
                     if body.action == "archive" and m.state["phase"] in ("period_running", "break"):
                         raise HTTPException(409, "finish_first")
@@ -526,15 +588,22 @@ def create_app(db_url=None, secure_cookies=None):
                         m.deleted_at = time.time()
                     if b.active_match == m.id:
                         b.active_match = None
-                elif body.action == "restore":
-                    m.archived_at = None
+                elif body.action in ("restore", "trash"):
+                    if body.action == "trash":
+                        m.trashed_at, m.trash_reason = time.time(), "manual"
+                        if b.active_match == m.id:
+                            b.active_match = None
+                    else:
+                        m.archived_at = m.trashed_at = m.trash_reason = None
+                        m.touched_at = time.time()
                 elif body.action == "schedule":
                     value = body.data.get("scheduled_at")
-                    if m.state["phase"] != "pre_game" or m.archived_at:
+                    if m.state["phase"] != "pre_game" or m.archived_at or m.trashed_at:
                         raise HTTPException(409, "invalid_transition")
                     if value is not None and (type(value) is not int or value <= time.time() * 1000):
                         raise HTTPException(422, "schedule_future")
                     m.scheduled_at = value / 1000 if value else None
+                    m.touched_at = time.time()
             elif body.action == "new_match":
                 if m.state["phase"] != "finished":
                     raise HTTPException(409, "finish_first")

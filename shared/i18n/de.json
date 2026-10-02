@@ -123,9 +123,9 @@
   "game.reschedule": "Termin ändern",
   "game.archive": "Archivieren",
   "game.restore": "Wiederherstellen",
-  "game.delete": "Löschen",
+  "game.delete": "In den Papierkorb",
   "game.archive.confirm": "Dieses Spiel archivieren? Du kannst es später im Archiv wiederherstellen. Ein aktuell angezeigtes Ergebnis wird aus dem Stream ausgeblendet.",
-  "game.delete.confirm": "Dieses Spiel löschen? Es verschwindet aus der Übersicht und aus öffentlichen Anzeigen. Diese Aktion lässt sich hier nicht rückgängig machen.",
+  "game.delete.confirm": "Dieses Spiel endgültig löschen? Es lässt sich nicht wiederherstellen.",
   "error.schedule_future": "Bitte einen Termin in der Zukunft wählen.",
   "error.restore_first": "Bitte das Spiel zuerst aus dem Archiv wiederherstellen.",
   "error.match_deleted": "Dieses Spiel wurde gelöscht.",
@@ -250,7 +250,7 @@
   "stats.pf.description": "Persönliche Fouls eines Spielers.",
   "stats.remove_basket": "Letzten Korb entfernen:",
   "basketball.rotate": "Die Steuerung funktioniert nur im Querformat. Handy drehen (falls nötig die Ausrichtungssperre ausschalten).",
-  "game.delete.running.confirm": "Dieses laufende Spiel löschen? Es verschwindet sofort aus den Live-Anzeigen und der Übersicht. Diese Aktion lässt sich hier nicht rückgängig machen.",
+  "game.delete.running.confirm": "Dieses laufende Spiel in den Papierkorb legen? Es verschwindet sofort aus den Live-Anzeigen. Du kannst es 30 Tage lang aus dem Papierkorb wiederherstellen.",
   "dashboard.empty_boards": "Leere Scoreboards",
   "dashboard.empty_boards.note": "Hier sind keine Spiele vorhanden. Zum Wiederverwenden aufklappen.",
   "game.unscheduled": "Noch kein Termin",
@@ -320,5 +320,11 @@
   "penalty_correction": "Elfmeter entfernt",
   "console.sharing": "Teilen",
   "sharing.pin_note": "Mit Steuerungslink und dieser PIN werden weitere Geräte zur Steuerung. Beides nicht öffentlich teilen.",
-  "sharing.pin_unknown": "Die PIN ist nur auf dem Gerät gespeichert, das sie erstellt oder zuletzt erneuert hat. Erzeuge eine neue PIN, um sie hier zu sehen – die alte verliert dann ihre Gültigkeit."
+  "sharing.pin_unknown": "Die PIN ist nur auf dem Gerät gespeichert, das sie erstellt oder zuletzt erneuert hat. Erzeuge eine neue PIN, um sie hier zu sehen – die alte verliert dann ihre Gültigkeit.",
+  "games.trash": "Papierkorb",
+  "trash.delete_forever": "Endgültig löschen",
+  "trash.retention": "wird nach 30 Tagen automatisch gelöscht",
+  "trash.reason.abandoned": "Nicht beendet, 24 Std. ohne Aktivität",
+  "trash.reason.not_started": "Geplant, aber nie gestartet",
+  "trash.reason.manual": "In den Papierkorb gelegt"
 }

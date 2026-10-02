@@ -123,9 +123,9 @@
   "game.reschedule": "Change date",
   "game.archive": "Archive",
   "game.restore": "Restore",
-  "game.delete": "Delete",
+  "game.delete": "Move to trash",
   "game.archive.confirm": "Archive this game? You can restore it later. If its result is currently on stream, it will be hidden.",
-  "game.delete.confirm": "Delete this game? It will disappear from your dashboard and public displays. You cannot undo this here.",
+  "game.delete.confirm": "Delete this game permanently? It cannot be restored.",
   "error.schedule_future": "Please choose a future date and time.",
   "error.restore_first": "Please restore this game from the archive first.",
   "error.match_deleted": "This game was deleted.",
@@ -250,7 +250,7 @@
   "stats.pf.description": "Personal fouls committed by a player.",
   "stats.remove_basket": "Remove latest basket:",
   "basketball.rotate": "The control center works in landscape only. Turn your phone sideways (switch off the rotation lock if needed).",
-  "game.delete.running.confirm": "Delete this running game? It will immediately disappear from live displays and the dashboard. This cannot be undone here.",
+  "game.delete.running.confirm": "Move this running game to the trash? It disappears from live views at once. You can restore it from the trash for 30 days.",
   "dashboard.empty_boards": "Empty scoreboards",
   "dashboard.empty_boards.note": "No games here. Expand to reuse a scoreboard.",
   "game.unscheduled": "No date scheduled",
@@ -320,5 +320,11 @@
   "penalty_correction": "Penalty removed",
   "console.sharing": "Sharing",
   "sharing.pin_note": "Other devices become controllers with the control link and this PIN. Keep both private.",
-  "sharing.pin_unknown": "The PIN is only stored on the device that created or last renewed it. Create a new PIN to see it here; the old one stops working."
+  "sharing.pin_unknown": "The PIN is only stored on the device that created or last renewed it. Create a new PIN to see it here; the old one stops working.",
+  "games.trash": "Trash",
+  "trash.delete_forever": "Delete permanently",
+  "trash.retention": "deleted automatically after 30 days",
+  "trash.reason.abandoned": "Not ended, no activity for 24 h",
+  "trash.reason.not_started": "Planned but never started",
+  "trash.reason.manual": "Moved to trash"
 }

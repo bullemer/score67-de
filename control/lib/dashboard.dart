@@ -122,6 +122,7 @@ class _DashboardState extends State<Dashboard> {
   }
 
   String category(dynamic game) {
+    if (game['trashed'] == true) return 'trash';
     if (game['archived']) return 'archived';
     if (game['phase'] == 'finished') return 'completed';
     if (['period_running', 'break'].contains(game['phase'])) return 'running';
@@ -353,9 +354,13 @@ class _DashboardState extends State<Dashboard> {
     Map<String, dynamic>? data,
   }) async {
     if (!enabled) return;
-    if (['archive', 'delete'].contains(action) &&
+    // Moving to the trash is reversible; only a running game asks first.
+    final ask =
+        ['archive', 'delete'].contains(action) ||
+        (action == 'trash' && category(game) == 'running');
+    if (ask &&
         !await confirm(
-          '${game['home']['name']} – ${game['away']['name']}\n\n${t(action == 'delete' && category(game) == 'running' ? 'game.delete.running.confirm' : 'game.$action.confirm')}',
+          '${game['home']['name']} – ${game['away']['name']}\n\n${t(action == 'trash' ? 'game.delete.running.confirm' : 'game.$action.confirm')}',
         )) {
       return;
     }
@@ -410,6 +415,11 @@ class _DashboardState extends State<Dashboard> {
             '${t('created')}: ${dateLabel(game['created_at'])}',
             style: const TextStyle(fontSize: 13, color: Color(0xff8d9bb0)),
           ),
+          if (status == 'trash')
+            Text(
+              '${t('trash.reason.${game['trash_reason'] ?? 'manual'}')} · ${dateLabel(game['trashed_at'])} · ${t('trash.retention')}',
+              style: const TextStyle(fontSize: 13, color: Color(0xffffb4ab)),
+            ),
           const SizedBox(height: 12),
           Wrap(
             spacing: 8,
@@ -422,76 +432,97 @@ class _DashboardState extends State<Dashboard> {
                       : null,
                   child: Text(t('control')),
                 ),
-              if (!game['active'] &&
-                  !game['archived'] &&
-                  game['phase'] == 'pre_game')
-                FilledButton(
-                  onPressed: enabled
-                      ? () => manage(
-                          board,
-                          game,
-                          'activate',
-                          data: {
-                            'expected_active_match': board['active_match'],
-                          },
-                        )
-                      : null,
-                  child: Text(t('game.use')),
-                ),
-              if (game['phase'] == 'finished' || game['archived'])
-                OutlinedButton(
-                  onPressed: () => widget.navigate(
-                    '/s/${board['slug']}?match=${game['match_id']}',
-                  ),
-                  child: Text(t('game.view')),
-                ),
-              if (game['phase'] == 'pre_game' && !game['archived'])
-                OutlinedButton(
-                  onPressed: enabled
-                      ? () async {
-                          final selected = await chooseDateTime(
-                            DateTime.fromMillisecondsSinceEpoch(
-                              game['scheduled_at'] ??
-                                  DateTime.now()
-                                      .add(const Duration(days: 1))
-                                      .millisecondsSinceEpoch,
-                            ),
-                          );
-                          if (selected != null) {
-                            manage(
-                              board,
-                              game,
-                              'schedule',
-                              data: {
-                                'scheduled_at': selected.millisecondsSinceEpoch,
-                              },
-                            );
-                          }
-                        }
-                      : null,
-                  child: Text(t('game.reschedule')),
-                ),
-              if (status != 'running' && !game['archived'])
-                OutlinedButton(
-                  onPressed: enabled
-                      ? () => manage(board, game, 'archive')
-                      : null,
-                  child: Text(t('game.archive')),
-                ),
-              if (game['archived'])
+              if (status == 'trash') ...[
                 FilledButton(
                   onPressed: enabled
                       ? () => manage(board, game, 'restore')
                       : null,
                   child: Text(t('game.restore')),
                 ),
-              TextButton(
-                onPressed: enabled ? () => manage(board, game, 'delete') : null,
-                child: Text(
-                  t('game.delete'),
-                  style: const TextStyle(color: Color(0xffffb4ab)),
+                TextButton(
+                  onPressed: enabled
+                      ? () => manage(board, game, 'delete')
+                      : null,
+                  child: Text(
+                    t('trash.delete_forever'),
+                    style: const TextStyle(color: Color(0xffffb4ab)),
+                  ),
                 ),
-              ),
+              ] else ...[
+                if (!game['active'] &&
+                    !game['archived'] &&
+                    game['phase'] == 'pre_game')
+                  FilledButton(
+                    onPressed: enabled
+                        ? () => manage(
+                            board,
+                            game,
+                            'activate',
+                            data: {
+                              'expected_active_match': board['active_match'],
+                            },
+                          )
+                        : null,
+                    child: Text(t('game.use')),
+                  ),
+                if (game['phase'] == 'finished' || game['archived'])
+                  OutlinedButton(
+                    onPressed: () => widget.navigate(
+                      '/s/${board['slug']}?match=${game['match_id']}',
+                    ),
+                    child: Text(t('game.view')),
+                  ),
+                if (game['phase'] == 'pre_game' && !game['archived'])
+                  OutlinedButton(
+                    onPressed: enabled
+                        ? () async {
+                            final selected = await chooseDateTime(
+                              DateTime.fromMillisecondsSinceEpoch(
+                                game['scheduled_at'] ??
+                                    DateTime.now()
+                                        .add(const Duration(days: 1))
+                                        .millisecondsSinceEpoch,
+                              ),
+                            );
+                            if (selected != null) {
+                              manage(
+                                board,
+                                game,
+                                'schedule',
+                                data: {
+                                  'scheduled_at':
+                                      selected.millisecondsSinceEpoch,
+                                },
+                              );
+                            }
+                          }
+                        : null,
+                    child: Text(t('game.reschedule')),
+                  ),
+                if (status != 'running' && !game['archived'])
+                  OutlinedButton(
+                    onPressed: enabled
+                        ? () => manage(board, game, 'archive')
+                        : null,
+                    child: Text(t('game.archive')),
+                  ),
+                if (game['archived'])
+                  FilledButton(
+                    onPressed: enabled
+                        ? () => manage(board, game, 'restore')
+                        : null,
+                    child: Text(t('game.restore')),
+                  ),
+                TextButton(
+                  onPressed: enabled
+                      ? () => manage(board, game, 'trash')
+                      : null,
+                  child: Text(
+                    t('game.delete'),
+                    style: const TextStyle(color: Color(0xffffb4ab)),
+                  ),
+                ),
+              ],
             ],
           ),
         ],
@@ -550,7 +581,13 @@ class _DashboardState extends State<Dashboard> {
           spacing: 8,
           runSpacing: 8,
           children: [
-            for (final key in ['planned', 'running', 'completed', 'archived'])
+            for (final key in [
+              'planned',
+              'running',
+              'completed',
+              'archived',
+              'trash',
+            ])
               ChoiceChip(
                 label: Text(
                   '${t('games.$key')} (${boards.expand((b) => b['matches'] as List).where((g) => category(g) == key).length})',

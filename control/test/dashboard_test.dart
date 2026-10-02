@@ -5,7 +5,7 @@ import 'package:score67_control/dashboard.dart';
 void main() {
   for (final phase in ['pre_game', 'period_running', 'break']) {
     testWidgets(
-      'delete $phase with confirmation; hide planning while running',
+      'trash $phase (confirm only while running); hide planning while running',
       (tester) async {
         tester.view.physicalSize = const Size(1000, 1400);
         tester.view.devicePixelRatio = 1;
@@ -65,18 +65,23 @@ void main() {
         } else {
           expect(find.text('game.new'), findsOneWidget);
         }
+        // Moving to the trash is reversible: only a running game asks first.
+        if (phase != 'pre_game') {
+          await tester.tap(find.text('game.delete'));
+          await tester.pumpAndSettle();
+          expect(writes, isEmpty);
+          expect(find.textContaining('Home – Guest'), findsOneWidget);
+          await tester.tap(find.text('cancel'));
+          await tester.pumpAndSettle();
+          expect(writes, isEmpty);
+        }
         await tester.tap(find.text('game.delete'));
         await tester.pumpAndSettle();
-        expect(writes, isEmpty);
-        expect(find.textContaining('Home – Guest'), findsOneWidget);
-        await tester.tap(find.text('cancel'));
-        await tester.pumpAndSettle();
-        expect(writes, isEmpty);
-        await tester.tap(find.text('game.delete'));
-        await tester.pumpAndSettle();
-        await tester.tap(find.text('confirm'));
-        await tester.pumpAndSettle();
-        expect(writes.single['action'], 'delete');
+        if (phase != 'pre_game') {
+          await tester.tap(find.text('confirm'));
+          await tester.pumpAndSettle();
+        }
+        expect(writes.single['action'], 'trash');
         expect(writes.single['expected_revision'], 5);
         expect(find.text('game.delete'), findsNothing);
         await tester.pumpWidget(const SizedBox());

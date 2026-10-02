@@ -10,7 +10,7 @@ from sqlalchemy.engine import make_url
 from alembic import command as migrations
 from alembic.config import Config
 
-from score67.app import create_app
+from score67.app import create_app, clean_matches
 from score67.db import Admin, Board, MatchEvent, Base
 from score67.domain import RuleError, apply, elapsed, initial_state
 
@@ -29,6 +29,7 @@ def system(tmp_path, monkeypatch):
     monkeypatch.setenv('DATABASE_URL', url)
     migrations.upgrade(Config(str(Path(__file__).parents[1] / 'alembic.ini')), 'head')
     monkeypatch.setenv('AUTO_CREATE_SCHEMA', 'false')
+    monkeypatch.setenv('TRASH_INTERVAL_SECONDS', '0')
     app = create_app(url, secure_cookies=False)
     with TestClient(app) as client:
         yield app, client
@@ -353,6 +354,7 @@ def test_upgrade_preserves_existing_board_match_and_admin(tmp_path, monkeypatch)
         db.execute(tables['match_event'].insert().values(match_id=match_id,admin_id=admin_id,payload={'type':'score','team':'home','points':1},before={},cancelled=False))
     migrations.upgrade(config, 'head')
     monkeypatch.setenv('AUTO_CREATE_SCHEMA', 'false')
+    monkeypatch.setenv('TRASH_INTERVAL_SECONDS', '0')
     with TestClient(create_app(url,secure_cookies=False)) as client:
         client.cookies.set(f'score67_{slug}', 'migration-test')
         s = state(client,slug)
@@ -990,3 +992,44 @@ def test_football_console_events_lineup_and_penalty_goal(system):
     assert public['events'][-1]['detail'] == 'penalty'
     b = client.post('/api/scoreboards', json={'sport': 'basketball'}).json()['slug']
     assert command(client, b, 'foul', {'team': 'home'}).status_code == 422
+
+
+
+def test_cleaner_trashes_abandoned_and_unstarted_games_and_purges(system):
+    app, client = system
+    hour = 3600
+    running = create(client)['slug']
+    command(client, running, 'period_start')
+    finished = create(client)['slug']
+    command(client, finished, 'period_start')
+    command(client, finished, 'game_end')
+    fresh = create(client)['slug']
+    scheduled = client.post('/api/scoreboards', json={'scheduled_at': 4102444800000}).json()['slug']
+    t0 = __import__('time').time()
+    with app.state.sessions() as db:
+        assert clean_matches(db, t0 + 23 * hour) == (0, 0)
+    with app.state.sessions() as db:
+        assert clean_matches(db, t0 + 25 * hour) == (1, 0)          # abandoned running game
+    gone = state(client, running)
+    assert gone['phase'] == 'no_match'                               # removed from stream/controller
+    game = next(g for b in client.get('/api/dashboard').json()['boards'] if b['slug'] == running for g in b['matches'])
+    assert game['trashed'] and game['trash_reason'] == 'abandoned'
+    with app.state.sessions() as db:
+        assert clean_matches(db, t0 + 7 * 24 * hour + hour) == (1, 0)  # never-used board, no start time
+    assert state(client, fresh)['phase'] == 'no_match'
+    assert state(client, finished)['phase'] == 'finished'            # finished games are never trashed
+    assert state(client, scheduled)['phase'] == 'pre_game'           # start time still in the future
+    # Restore counts as activity, so the cleaner does not trash it again at once.
+    m = game['match_id']
+    restored = client.post(f'/api/s/{running}/matches/{m}/commands', json={
+        'command_id': str(uuid4()), 'expected_revision': game['revision'], 'action': 'restore', 'data': {}})
+    assert restored.status_code == 200, restored.text
+    assert command(client, running, 'activate', current=client.get(f'/api/s/{running}/matches/{m}/state').json()).status_code == 200
+    with app.state.sessions() as db:
+        assert clean_matches(db, __import__('time').time() + hour) == (0, 0)
+    # Trash older than the retention period is deleted permanently; the
+    # restored game is abandoned again after another quiet day.
+    with app.state.sessions() as db:
+        assert clean_matches(db, t0 + 40 * 24 * hour) == (1, 1)
+    boards = client.get('/api/dashboard').json()['boards']
+    assert not any(g['match_id'] for b in boards if b['slug'] == fresh for g in b['matches'])
