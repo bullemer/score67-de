@@ -76,9 +76,9 @@ Games are public by default. The "Private game" switch at the top of the Sharing
 
 Spielverlauf shows sporting events only: clock start/stop, squad edits, settings and the pre-game lineup are recorded but hidden; in-game substitutions are shown. Undo removes the last visible entry (a score after a hidden clock stop is removed without restarting the clock).
 
-### Football formats
+### Formats at creation
 
-Creating a football scoreboard offers playing time (90, 80, 70, 60, 50, 40, 30, 20, 10 min) and 1–4 equal periods; default 90 min in 2 periods. Period lengths up to 120 minutes are allowed.
+The create form has free controls for the number of periods (1–12) and the length per period (1–120 min): − / + buttons around a typeable number, plus one-tap presets (football 2×45, 2×40, 2×35, 2×30, 2×20, 1×10; basketball 4×10, 4×12, 8×5, 2×20). Defaults: football 2 × 45, basketball 4 × 10, reset when switching sport.
 
 ### Sharing tab and creation
 

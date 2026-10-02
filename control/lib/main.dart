@@ -57,10 +57,14 @@ class _Score67State extends State<Score67> {
       slug.isNotEmpty &&
       state['match_id'] != null;
   int defaultPeriods = 2, defaultMinutes = 45;
+  // Create form: football defaults to 2 × 45, basketball to 4 × 10.
   String draftSport = 'football';
-  int draftPeriods = 4, draftMinutes = 10;
-  // Football: total playing time split into equal periods (default 2 × 45).
-  int footballTotal = 90, footballPeriods = 2;
+  final periodsInput = TextEditingController(text: '2');
+  final minutesInput = TextEditingController(text: '45');
+  int get draftPeriods => (int.tryParse(periodsInput.text) ?? 2).clamp(1, 12);
+  int get draftMinutes => (int.tryParse(minutesInput.text) ?? 45).clamp(1, 120);
+  set draftPeriods(int value) => periodsInput.text = '$value';
+  set draftMinutes(int value) => minutesInput.text = '$value';
   bool get basketball => state['sport'] == 'basketball';
   int get periodLengthMs =>
       ((state['period'] > state['period_count']
@@ -607,12 +611,8 @@ class _Score67State extends State<Score67> {
         body: {
           'sport': draftSport,
           'language': lang,
-          'period_count': draftSport == 'basketball'
-              ? draftPeriods
-              : footballPeriods,
-          'period_length_min': draftSport == 'basketball'
-              ? draftMinutes
-              : footballTotal ~/ footballPeriods,
+          'period_count': draftPeriods,
+          'period_length_min': draftMinutes,
           'location': draftLocation,
           'description': draftDescription.text.trim().isEmpty
               ? null
@@ -1380,6 +1380,57 @@ class _Score67State extends State<Score67> {
     );
   }
 
+  /// − value + around a typeable number, clamped to [low, high].
+  Widget numberStepper(
+    String label,
+    TextEditingController input,
+    int low,
+    int high, {
+    String suffix = '',
+  }) {
+    final value = (int.tryParse(input.text) ?? low).clamp(low, high);
+    void set(int next) => setState(() => input.text = '$next');
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Expanded(child: Text(label)),
+          IconButton.outlined(
+            tooltip: '−',
+            onPressed: value > low ? () => set(value - 1) : null,
+            icon: const Icon(Icons.remove),
+          ),
+          SizedBox(
+            width: 80,
+            child: TextField(
+              controller: input,
+              textAlign: TextAlign.center,
+              keyboardType: TextInputType.number,
+              maxLength: 3,
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+              decoration: InputDecoration(
+                isDense: true,
+                counterText: '',
+                suffixText: suffix,
+                border: const OutlineInputBorder(),
+              ),
+              onChanged: (_) => setState(() {}),
+              onTapOutside: (_) {
+                FocusManager.instance.primaryFocus?.unfocus();
+                set(value);
+              },
+            ),
+          ),
+          IconButton.outlined(
+            tooltip: '+',
+            onPressed: value < high ? () => set(value + 1) : null,
+            icon: const Icon(Icons.add),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget createView() => section(t('create'), [
     Wrap(
       spacing: 12,
@@ -1388,72 +1439,54 @@ class _Score67State extends State<Score67> {
           ChoiceChip(
             label: Text(t(sport)),
             selected: draftSport == sport,
-            onSelected: busy ? null : (_) => setState(() => draftSport = sport),
+            onSelected: busy
+                ? null
+                : (_) => setState(() {
+                    draftSport = sport;
+                    draftPeriods = sport == 'basketball' ? 4 : 2;
+                    draftMinutes = sport == 'basketball' ? 10 : 45;
+                  }),
           ),
       ],
     ),
-    if (draftSport == 'basketball') ...[
-      const SizedBox(height: 12),
-      Wrap(
-        spacing: 8,
-        children: [
-          for (final format in [
-            [4, 10],
-            [4, 12],
-            [8, 5],
-            [2, 20],
-          ])
-            ChoiceChip(
-              label: Text('${format[0]} × ${format[1]} min'),
-              selected: draftPeriods == format[0] && draftMinutes == format[1],
-              onSelected: (_) => setState(() {
-                draftPeriods = format[0];
-                draftMinutes = format[1];
-              }),
-            ),
-        ],
-      ),
-      Text(t('basketball.pilot')),
-    ],
-    if (draftSport == 'football') ...[
-      const SizedBox(height: 12),
-      Text(t('format.total')),
-      Wrap(
-        spacing: 8,
-        runSpacing: 4,
-        children: [
-          for (final total in [90, 80, 70, 60, 50, 40, 30, 20, 10])
-            ChoiceChip(
-              label: Text('$total min'),
-              selected: footballTotal == total,
-              onSelected: (_) => setState(() {
-                footballTotal = total;
-                // Keep periods whole minutes.
-                if (total % footballPeriods != 0) footballPeriods = 1;
-              }),
-            ),
-        ],
-      ),
-      const SizedBox(height: 8),
-      Text(t('period_count')),
-      Wrap(
-        spacing: 8,
-        children: [
-          for (final periods in [1, 2, 3, 4])
-            ChoiceChip(
-              label: Text('$periods'),
-              selected: footballPeriods == periods,
-              onSelected: footballTotal % periods == 0
-                  ? (_) => setState(() => footballPeriods = periods)
-                  : null,
-            ),
-        ],
-      ),
-      Text(
-        '$footballPeriods × ${footballTotal ~/ footballPeriods} min',
-        style: const TextStyle(color: Color(0xffb6f36e)),
-      ),
-    ],
+    const SizedBox(height: 12),
+    numberStepper(t('period_count'), periodsInput, 1, 12),
+    numberStepper(t('period_length'), minutesInput, 1, 120),
+    Wrap(
+      spacing: 8,
+      runSpacing: 4,
+      children: [
+        for (final format
+            in draftSport == 'basketball'
+                ? const [
+                    [4, 10],
+                    [4, 12],
+                    [8, 5],
+                    [2, 20],
+                  ]
+                : const [
+                    [2, 45],
+                    [2, 40],
+                    [2, 35],
+                    [2, 30],
+                    [2, 20],
+                    [1, 10],
+                  ])
+          ChoiceChip(
+            label: Text('${format[0]} × ${format[1]}'),
+            selected: draftPeriods == format[0] && draftMinutes == format[1],
+            onSelected: (_) => setState(() {
+              draftPeriods = format[0];
+              draftMinutes = format[1];
+            }),
+          ),
+      ],
+    ),
+    Text(
+      '$draftPeriods × $draftMinutes min = ${draftPeriods * draftMinutes} min',
+      style: const TextStyle(color: Color(0xffb6f36e)),
+    ),
+    if (draftSport == 'basketball') Text(t('basketball.pilot')),
     const SizedBox(height: 12),
     Text(t('create.note')),
     const SizedBox(height: 16),
@@ -2952,6 +2985,8 @@ class _Score67State extends State<Score67> {
     pinInput.dispose();
     deviceName.dispose();
     draftDescription.dispose();
+    periodsInput.dispose();
+    minutesInput.dispose();
     super.dispose();
   }
 }
