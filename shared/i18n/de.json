@@ -249,7 +249,7 @@
   "stats.to.description": "Ballverlust durch einen Fehler oder eine Regelübertretung.",
   "stats.pf.description": "Persönliche Fouls eines Spielers.",
   "stats.remove_basket": "Letzten Korb entfernen:",
-  "basketball.rotate": "Drehe dein Handy ins Querformat für die vollständige Punktematrix.",
+  "basketball.rotate": "Die Spielerfassung funktioniert nur im Querformat. Handy drehen (falls nötig die Ausrichtungssperre ausschalten).",
   "game.delete.running.confirm": "Dieses laufende Spiel löschen? Es verschwindet sofort aus den Live-Anzeigen und der Übersicht. Diese Aktion lässt sich hier nicht rückgängig machen.",
   "dashboard.empty_boards": "Leere Scoreboards",
   "dashboard.empty_boards.note": "Hier sind keine Spiele vorhanden. Zum Wiederverwenden aufklappen.",
@@ -266,5 +266,6 @@
   "stats.tf": "TF",
   "stats.timeouts": "Auszeit",
   "stats.team_row": "Team",
-  "stats.total_short": "Summe"
+  "stats.total_short": "Summe",
+  "landscape.enter": "Vollbild quer"
 }

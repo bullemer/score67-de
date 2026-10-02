@@ -249,7 +249,7 @@
   "stats.to.description": "Losing possession through a mistake or violation.",
   "stats.pf.description": "Personal fouls committed by a player.",
   "stats.remove_basket": "Remove latest basket:",
-  "basketball.rotate": "Rotate your phone to landscape for the full scoring matrix.",
+  "basketball.rotate": "The scoring screen works in landscape only. Turn your phone sideways (switch off the rotation lock if needed).",
   "game.delete.running.confirm": "Delete this running game? It will immediately disappear from live displays and the dashboard. This cannot be undone here.",
   "dashboard.empty_boards": "Empty scoreboards",
   "dashboard.empty_boards.note": "No games here. Expand to reuse a scoreboard.",
@@ -266,5 +266,6 @@
   "stats.tf": "TF",
   "stats.timeouts": "TO",
   "stats.team_row": "Team",
-  "stats.total_short": "Total"
+  "stats.total_short": "Total",
+  "landscape.enter": "Full screen landscape"
 }

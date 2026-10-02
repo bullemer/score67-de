@@ -81,6 +81,7 @@ class _Score67State extends State<Score67> {
   bool sending = false;
   int retryMs = 500;
   web.WakeLockSentinel? wakeLock;
+  bool landscapeRequested = false;
   Timer? refreshTimer, renderTimer, reconnectTimer, retryTimer;
   WebSocketChannel? channel;
   StreamSubscription? subscription;
@@ -352,6 +353,35 @@ class _Score67State extends State<Score67> {
     } catch (_) {}
   }
 
+  /// Full screen plus orientation lock (Android browsers). Browsers without
+  /// support (iPhone Safari) fall back to the rotate screen in portrait.
+  Future<void> lockLandscape() async {
+    landscapeRequested = true;
+    try {
+      if (web.document.fullscreenElement == null) {
+        await web.document.documentElement!.requestFullscreen().toDart;
+      }
+      await web.window.screen.orientation.lock('landscape').toDart;
+    } catch (_) {}
+  }
+
+  Widget rotateView() => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 12),
+    child: Column(
+      children: [
+        const Icon(Icons.screen_rotation, size: 96, color: Color(0xffb6f36e)),
+        const SizedBox(height: 24),
+        Text(
+          t('basketball.rotate'),
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontSize: 20),
+        ),
+        const SizedBox(height: 24),
+        action(t('landscape.enter'), lockLandscape, primary: true),
+      ],
+    ),
+  );
+
   Future<void> keepAwake() async {
     if (!admin || slug.isEmpty || web.document.visibilityState != 'visible') {
       return;
@@ -517,7 +547,6 @@ class _Score67State extends State<Score67> {
                   ? <String, dynamic>{}
                   : Map<String, dynamic>.from(applied),
             );
-        if (!queueable(item['action'])) notify(t('saved'));
       } on ApiError catch (e) {
         queue.removeAt(0);
         queueChanged();
@@ -2800,117 +2829,131 @@ class _Score67State extends State<Score67> {
       ),
     ),
     home: Builder(
-      builder: (context) => Scaffold(
-        bottomNavigationBar: liveBasketball
-            ? null
-            : SafeArea(
-                top: false,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
-                  child: Text(
-                    widget.releaseLabel,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Color(0xffb5c2d4),
+      builder: (context) => Listener(
+        // Fullscreen and orientation lock need a user gesture: use the first tap.
+        onPointerUp: (_) {
+          if (liveBasketball && !landscapeRequested) unawaited(lockLandscape());
+        },
+        child: Scaffold(
+          bottomNavigationBar: liveBasketball
+              ? null
+              : SafeArea(
+                  top: false,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    child: Text(
+                      widget.releaseLabel,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xffb5c2d4),
+                      ),
                     ),
                   ),
                 ),
-              ),
-        appBar: AppBar(
-          leading: IconButton(
-            tooltip: t('back'),
-            icon: const Icon(Icons.arrow_back),
-            onPressed: () => navigate(dashboardPage ? '/' : '/dashboard'),
+          appBar: AppBar(
+            leading: IconButton(
+              tooltip: t('back'),
+              icon: const Icon(Icons.arrow_back),
+              onPressed: () => navigate(dashboardPage ? '/' : '/dashboard'),
+            ),
+            title: liveBasketball
+                ? basketballHeader()
+                : const Text(
+                    'SCORE67',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -1,
+                    ),
+                  ),
+            bottom:
+                liveBasketball &&
+                    MediaQuery.orientationOf(context) ==
+                        Orientation.landscape &&
+                    MediaQuery.sizeOf(context).width <
+                        2 * BasketballStatistics.width + 40
+                ? PreferredSize(
+                    preferredSize: const Size.fromHeight(48),
+                    child: basketballTeamBar(),
+                  )
+                : null,
+            actions: liveBasketball
+                ? []
+                : [
+                    if (admin && slug.isNotEmpty) syncBadge(),
+                    IconButton(
+                      tooltip: t('app.settings'),
+                      icon: const Icon(Icons.settings_outlined),
+                      onPressed: ready ? appSettings : null,
+                    ),
+                    TextButton(
+                      onPressed: ready ? switchLanguage : null,
+                      child: Text(lang == 'de' ? 'EN' : 'DE'),
+                    ),
+                    const SizedBox(width: 12),
+                  ],
           ),
-          title: liveBasketball
-              ? basketballHeader()
-              : const Text(
-                  'SCORE67',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: -1,
-                  ),
+          body: SafeArea(
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: basketball && admin ? 1400 : 760,
                 ),
-          bottom:
-              liveBasketball &&
-                  MediaQuery.sizeOf(context).width <
-                      2 * BasketballStatistics.width + 40
-              ? PreferredSize(
-                  preferredSize: const Size.fromHeight(48),
-                  child: basketballTeamBar(),
-                )
-              : null,
-          actions: liveBasketball
-              ? []
-              : [
-                  if (admin && slug.isNotEmpty) syncBadge(),
-                  IconButton(
-                    tooltip: t('app.settings'),
-                    icon: const Icon(Icons.settings_outlined),
-                    onPressed: ready ? appSettings : null,
-                  ),
-                  TextButton(
-                    onPressed: ready ? switchLanguage : null,
-                    child: Text(lang == 'de' ? 'EN' : 'DE'),
-                  ),
-                  const SizedBox(width: 12),
-                ],
-        ),
-        body: SafeArea(
-          child: Align(
-            alignment: Alignment.topCenter,
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxWidth: basketball && admin ? 1400 : 760,
+                child: !ready
+                    ? const Center(child: CircularProgressIndicator())
+                    : ListView(
+                        padding: EdgeInsets.all(basketball && admin ? 8 : 20),
+                        children: [
+                          if (error.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 18),
+                              child: Text(
+                                t('error.$error'),
+                                style: const TextStyle(
+                                  color: Color(0xffffb4ab),
+                                ),
+                              ),
+                            ),
+                          if (dashboardPage)
+                            Dashboard(
+                              api: (path, method, body) =>
+                                  api(path, method: method, body: body),
+                              t: t,
+                              navigate: navigate,
+                              periods: defaultPeriods,
+                              minutes: defaultMinutes,
+                            )
+                          else if (pin.isNotEmpty)
+                            pinView()
+                          else if (slug.isEmpty)
+                            createView()
+                          else if (state.isEmpty)
+                            section(t('connecting'), [
+                              action(t('retry'), refresh),
+                            ])
+                          else if (!admin)
+                            claimView()
+                          else if (state['match_id'] == null)
+                            section(t('no_match'), [
+                              action(
+                                t('dashboard'),
+                                () => navigate('/dashboard'),
+                                primary: true,
+                              ),
+                            ])
+                          else if (liveBasketball &&
+                              MediaQuery.orientationOf(context) ==
+                                  Orientation.portrait)
+                            rotateView()
+                          else
+                            matchView(),
+                        ],
+                      ),
               ),
-              child: !ready
-                  ? const Center(child: CircularProgressIndicator())
-                  : ListView(
-                      padding: EdgeInsets.all(basketball && admin ? 8 : 20),
-                      children: [
-                        if (error.isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 18),
-                            child: Text(
-                              t('error.$error'),
-                              style: const TextStyle(color: Color(0xffffb4ab)),
-                            ),
-                          ),
-                        if (dashboardPage)
-                          Dashboard(
-                            api: (path, method, body) =>
-                                api(path, method: method, body: body),
-                            t: t,
-                            navigate: navigate,
-                            periods: defaultPeriods,
-                            minutes: defaultMinutes,
-                          )
-                        else if (pin.isNotEmpty)
-                          pinView()
-                        else if (slug.isEmpty)
-                          createView()
-                        else if (state.isEmpty)
-                          section(t('connecting'), [
-                            action(t('retry'), refresh),
-                          ])
-                        else if (!admin)
-                          claimView()
-                        else if (state['match_id'] == null)
-                          section(t('no_match'), [
-                            action(
-                              t('dashboard'),
-                              () => navigate('/dashboard'),
-                              primary: true,
-                            ),
-                          ])
-                        else
-                          matchView(),
-                      ],
-                    ),
             ),
           ),
         ),
