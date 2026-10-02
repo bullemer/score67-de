@@ -1086,3 +1086,35 @@ def test_basketball_free_throws_made_and_missed(system):
     assert command(client, slug, 'score', {'team': 'home', 'points': 2, 'detail': 'free_throw'}).status_code == 422
     assert command(client, slug, 'score', {'team': 'home', 'points': 1, 'detail': 'penalty'}).status_code == 422
     assert not any(e['type'] == 'free_throw_missed' for e in state(client, slug)['events'])
+
+
+def test_admin_score_adjustment_is_logged_and_undoable(system):
+    _, client = system
+    slug = client.post('/api/scoreboards', json={'sport': 'basketball'}).json()['slug']
+    command(client, slug, 'period_start')
+    command(client, slug, 'score', {'team': 'home', 'points': 3})
+    s = command(client, slug, 'score_adjust', {'team': 'home', 'delta': -1}).json()
+    assert s['home']['score'] == 2 and s['home']['period_scores'][0] == 2
+    assert s['events'][-1]['type'] == 'score_adjust' and s['events'][-1]['points'] == -1
+    assert state(client, slug)['events'][-1]['type'] == 'score_adjust'   # visible to spectators
+    s = command(client, slug, 'undo', {'event_id': s['events'][-1]['id']}).json()
+    assert s['home']['score'] == 3
+    for bad in ({'team': 'home', 'delta': 0}, {'team': 'home', 'delta': 1.5}, {'team': 'x', 'delta': 1}):
+        assert command(client, slug, 'score_adjust', bad).status_code == 422
+
+
+def test_ending_last_basketball_period_ends_the_match_unless_tied(system):
+    _, client = system
+    slug = client.post('/api/scoreboards', json={'sport': 'basketball', 'period_count': 2, 'period_length_min': 5}).json()['slug']
+    command(client, slug, 'period_start')
+    s = command(client, slug, 'period_end').json()
+    assert s['phase'] == 'break'                          # not the last period
+    command(client, slug, 'period_start')
+    s = command(client, slug, 'period_end').json()
+    assert s['phase'] == 'break'                          # tied 0:0 -> overtime offered
+    command(client, slug, 'overtime_start')
+    command(client, slug, 'score', {'team': 'away', 'points': 2})
+    s = command(client, slug, 'period_end').json()
+    assert s['phase'] == 'finished' and s['events'][-1]['type'] == 'game_end' and s['events'][-1]['automatic']
+    s = command(client, slug, 'undo', {'event_id': s['events'][-1]['id']}).json()
+    assert s['phase'] == 'break'

@@ -17,6 +17,9 @@ class MatchConsole extends StatefulWidget {
   final String Function(String) t;
   final String clock, period;
   final bool running, canToggleClock, canTap, canWrite, connected;
+
+  /// Basketball clock at 0:00: the Play button ends the period instead.
+  final bool periodOver;
   final Widget sync;
   final VoidCallback onMenu, onToggleClock, onClockTap;
   final VoidCallback? onUndo;
@@ -30,6 +33,9 @@ class MatchConsole extends StatefulWidget {
   /// armed, so scoring taps are never delayed by double-tap detection).
   final void Function(String team) onEditTeam;
   final void Function(String team, String playerId) onEditPlayer;
+
+  /// Tap on a header score: admin adjustment of a wrong score.
+  final void Function(String team) onScoreTap;
   final List<(String, Widget)> tabs;
   const MatchConsole({
     super.key,
@@ -38,6 +44,7 @@ class MatchConsole extends StatefulWidget {
     required this.clock,
     required this.period,
     required this.running,
+    this.periodOver = false,
     required this.canToggleClock,
     required this.canTap,
     required this.canWrite,
@@ -52,6 +59,7 @@ class MatchConsole extends StatefulWidget {
     required this.onPossession,
     required this.onEditTeam,
     required this.onEditPlayer,
+    required this.onScoreTap,
     required this.tabs,
   });
 
@@ -364,6 +372,7 @@ class MatchConsoleState extends State<MatchConsole> {
       background: color(team),
       foreground: readableOn(color(team)),
       width: 66,
+      onTap: widget.canWrite ? () => widget.onScoreTap(team) : null,
     );
     return Container(
       color: headerBackground,
@@ -463,6 +472,8 @@ class MatchConsoleState extends State<MatchConsole> {
                   minimumSize: const Size(56, 44),
                   backgroundColor: widget.running
                       ? const Color(0xffdc2626)
+                      : widget.periodOver
+                      ? const Color(0xffd97706)
                       : const Color(0xff16a34a),
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
@@ -471,7 +482,11 @@ class MatchConsoleState extends State<MatchConsole> {
                 ),
                 onPressed: widget.canToggleClock ? widget.onToggleClock : null,
                 child: Icon(
-                  widget.running ? Icons.stop : Icons.play_arrow,
+                  widget.running
+                      ? Icons.stop
+                      : widget.periodOver
+                      ? Icons.skip_next
+                      : Icons.play_arrow,
                   size: 34,
                   semanticLabel: t(
                     widget.running ? 'basketball.stop' : 'basketball.play',

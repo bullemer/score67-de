@@ -347,5 +347,9 @@
   "console.ft_miss": "Daneben",
   "console.ft_missed": "FW daneben",
   "free_throw_missed": "Freiwurf daneben",
-  "free_throw_missed_correction": "Fehlwurf entfernt"
+  "free_throw_missed_correction": "Fehlwurf entfernt",
+  "score.adjust": "Spielstand korrigieren",
+  "score.adjust_note": "Richtigen Stand eintragen. Die Änderung wird als Admin-Korrektur protokolliert.",
+  "console.admin_adjust": "Admin-Korrektur",
+  "score_adjust": "Spielstand korrigiert"
 }

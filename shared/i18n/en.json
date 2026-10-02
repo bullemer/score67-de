@@ -347,5 +347,9 @@
   "console.ft_miss": "Miss",
   "console.ft_missed": "FT missed",
   "free_throw_missed": "Free throw missed",
-  "free_throw_missed_correction": "Missed free throw removed"
+  "free_throw_missed_correction": "Missed free throw removed",
+  "score.adjust": "Correct score",
+  "score.adjust_note": "Set the correct score. The change is logged as an admin correction.",
+  "console.admin_adjust": "Admin correction",
+  "score_adjust": "Score corrected"
 }

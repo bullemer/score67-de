@@ -80,6 +80,12 @@ Spielverlauf shows sporting events only: clock start/stop, squad edits, settings
 
 The create form has free controls for the number of periods (1–12) and the length per period (1–120 min): − / + buttons around a typeable number, plus one-tap presets (football 2×45, 2×40, 2×35, 2×30, 2×20, 1×10; basketball 4×10, 4×12, 8×5, 2×20). Defaults: football 2 × 45, basketball 4 × 10, reset when switching sport.
 
+### Score corrections and period flow
+
+Tap a score in the console header to correct it (− / + or type the right score). The change is stored as an admin correction (`score_adjust`, any non-zero delta), shown in the game flow and to spectators as "Score corrected", and can be undone.
+
+When the basketball clock reaches 0:00 the Play button turns into ⏭: one tap ends the period. During the break the console already shows the next period (e.g. Q2 10:00, or 2nd half 45:00 in football) and Play starts it. Ending the last basketball period ends the match automatically unless it is tied (then overtime is offered); the automatic game end is marked `automatic` and can be undone. Clock start/stop/set/adjust entries are hidden from the game flow.
+
 ### Console menu
 
 The ☰ menu starts with Edit teams (opens the Team tab), Pause game (stops a running basketball clock and returns to the start page; the game stays open and can be resumed from My scoreboards) and Close game (confirms, ends the game, returns to the start page), followed by My scoreboards, links, sharing, venue, description and language.

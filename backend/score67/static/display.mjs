@@ -95,14 +95,16 @@ function render() {
   }
   if (!overlay && logSignature !== `${state.match_id}:${state.revision}:${lang}`) {
     logSignature = `${state.match_id}:${state.revision}:${lang}`;
-    const entries = (state.events || []).filter(e => ['score','red_card','yellow_card','score_correction','red_card_correction','yellow_card_correction','team_foul','team_foul_correction','timeout','timeout_correction'].includes(e.type)).slice(-30).reverse();
+    const entries = (state.events || []).filter(e => ['score','score_adjust','red_card','yellow_card','score_correction','red_card_correction','yellow_card_correction','team_foul','team_foul_correction','timeout','timeout_correction'].includes(e.type)).slice(-30).reverse();
     el('match-events').hidden = entries.length === 0;
     el('event-list').replaceChildren(...entries.map(event => {
       const row = document.createElement('li');
       const player = event.player;
       const who = player ? [player.number ? `#${player.number}` : '', player.name].filter(Boolean).join(' ') : '';
       const minute = eventTime(event, state, words);
-      const label = state.sport === 'basketball' && event.type.startsWith('score') ? `${event.points > 0 ? '+' : ''}${event.points}` : words[event.type];
+      const signed = `${event.points > 0 ? '+' : ''}${event.points}`;
+      const label = event.type === 'score_adjust' ? `${words.score_adjust} ${signed}`
+        : state.sport === 'basketball' && event.type.startsWith('score') ? signed : words[event.type];
       row.textContent = [minute, label, state[event.team].name, who, event.cancelled ? words.cancelled : event.corrected ? words['event.corrected'] : ''].filter(Boolean).join(' · ');
       if (event.cancelled || event.corrected) row.className = 'cancelled';
       return row;

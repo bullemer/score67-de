@@ -299,7 +299,7 @@ def create_app(db_url=None, secure_cookies=None):
                  trashed_at=round(m.trashed_at * 1000) if m.trashed_at else None)
         for team in ("home", "away"):
             s[team]["score"] = sum(e.payload.get("points", 0) for e in events
-                                   if not e.cancelled and e.payload.get("team") == team and e.payload["type"] in ("score", "score_correction"))
+                                   if not e.cancelled and e.payload.get("team") == team and e.payload["type"] in ("score", "score_correction", "score_adjust"))
             s[team].setdefault("squad", [])
             s[team]["short"] = s[team]["short"][:SHORT_MAX]
             s[team]["counters"] = {f"{color}_cards": sum(e.payload.get("cards", 0) for e in events
@@ -316,6 +316,10 @@ def create_app(db_url=None, secure_cookies=None):
             periods = [0] * max(s["period"], s["period_count"], 1)
             for e in available:
                 if e.payload["type"] == "score" and e.payload.get("team") == team:
+                    index = min(max(e.payload.get("period", 0), 1), len(periods)) - 1
+                    periods[index] += e.payload.get("points", 0)
+            for e in events:
+                if e.payload["type"] == "score_adjust" and not e.cancelled and e.payload.get("team") == team:
                     index = min(max(e.payload.get("period", 0), 1), len(periods)) - 1
                     periods[index] += e.payload.get("points", 0)
             s[team]["period_scores"] = periods
@@ -699,6 +703,17 @@ def create_app(db_url=None, secure_cookies=None):
                 m.state = updated
                 payload["command_id"] = str(body.command_id)
                 db.add(MatchEvent(match_id=m.id, admin_id=admin.id, payload=payload, before=before))
+                # Ending the last basketball period ends the match unless tied
+                # (then overtime is offered). Undo reverts the game end first.
+                if body.action == "period_end" and m.state["sport"] == "basketball" and m.state["period"] >= m.state["period_count"]:
+                    db.flush()
+                    current = state(db, b, m.id)
+                    if current["home"]["score"] != current["away"]["score"]:
+                        finished, final, before_end = apply(m.state, "game_end", {}, round(time.time() * 1000))
+                        m.state = finished
+                        final["command_id"] = str(body.command_id)
+                        final["automatic"] = True
+                        db.add(MatchEvent(match_id=m.id, admin_id=admin.id, payload=final, before=before_end))
             m.revision += 1
             db.add(Receipt(id=key, fingerprint=fingerprint))
             db.commit()

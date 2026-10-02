@@ -185,6 +185,12 @@ def apply(state, action, data, now_ms):
         event.update(team=data["team"])
         if not action.endswith("_correction"):
             event["player"] = player_snapshot(s, data["team"], data.get("player_id"))
+    elif action == "score_adjust":
+        # Admin correction of a wrong score: any non-zero change, team level.
+        delta = integer(data.get("delta"), -500, 500)
+        if data.get("team") not in ("home", "away") or delta == 0:
+            raise RuleError("invalid_value")
+        event.update(team=data["team"], points=delta)
     elif action.removesuffix("_correction") in FOOTBALL_EVENTS:
         if basketball or data.get("team") not in ("home", "away"):
             raise RuleError("invalid_value")

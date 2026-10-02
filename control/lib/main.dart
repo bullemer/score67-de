@@ -2025,6 +2025,23 @@ class _Score67State extends State<Score67> {
         : finalBreak && state['home']['score'] == state['away']['score']
         ? 'overtime_start'
         : null;
+    final periodOver =
+        basketball &&
+        phase == 'period_running' &&
+        state['clock']['enabled'] == true &&
+        elapsed() >= periodLengthMs;
+    // Between periods the console already shows the next one, ready for Play.
+    final upcoming =
+        (basketball ? nextPeriod != null : false) ||
+        (!basketball &&
+            phase == 'break' &&
+            state['period'] < state['period_count']);
+    final nextNumber = (state['period'] as int) + 1;
+    final nextMinutes =
+        (nextNumber > (state['period_count'] as int)
+                ? state['overtime_length_min'] ?? 5
+                : state['period_length_min'])
+            as int;
     final kickOff =
         !basketball &&
         (phase == 'pre_game' || phase == 'break') &&
@@ -2033,22 +2050,31 @@ class _Score67State extends State<Score67> {
       key: consoleKey,
       state: state,
       t: t,
-      clock: clockText(),
-      period: periodLabel().isEmpty ? '–' : periodLabel(),
+      clock: upcoming && phase != 'pre_game'
+          ? basketball
+                ? mmss(nextMinutes * 60000)
+                : mmss((nextNumber - 1) * nextMinutes * 60000)
+          : clockText(),
+      period: upcoming && phase != 'pre_game'
+          ? periodLabel({...state, 'period': nextNumber})
+          : periodLabel().isEmpty
+          ? '–'
+          : periodLabel(),
+      periodOver: periodOver,
       running: running,
       canToggleClock: basketball
           ? canWrite &&
                 state['clock']['enabled'] == true &&
-                (phase == 'period_running'
-                    ? elapsed() < periodLengthMs
-                    : nextPeriod != null)
+                (phase == 'period_running' || nextPeriod != null)
           : canWrite && kickOff,
       canTap: canTap,
       canWrite: canWrite,
       connected: connected,
       sync: syncBadge(),
       onMenu: openMenu,
-      onToggleClock: basketball
+      onToggleClock: periodOver
+          ? () => command('period_end')
+          : basketball
           ? () async {
               // Play also opens the next period (or overtime), then starts the clock.
               if (phase != 'period_running' && !await command(nextPeriod!)) {
@@ -2070,6 +2096,7 @@ class _Score67State extends State<Score67> {
         if (canWrite) editTeam(team);
       },
       onEditPlayer: editPlayer,
+      onScoreTap: adjustScore,
       tabs: [
         (t('console.flow'), gameFlow()),
         (t('console.team'), teamTab()),
@@ -2155,6 +2182,8 @@ class _Score67State extends State<Score67> {
         return t('console.free_kick_short');
       case 'free_throw_missed':
         return t('console.ft_missed');
+      case 'score_adjust':
+        return '${t('console.admin_adjust')} ${e['points'] > 0 ? '+' : ''}${e['points']}';
       case 'penalty':
         return t('console.penalty_short');
       case 'score':
@@ -2176,6 +2205,98 @@ class _Score67State extends State<Score67> {
       default:
         return t(e['type']);
     }
+  }
+
+  /// Admin correction of a wrong score; logged as its own game-flow entry.
+  Future<void> adjustScore(String team) async {
+    final current = state[team]['score'] as int;
+    final input = TextEditingController(text: '$current');
+    final revision = state['revision'];
+    final target = await showDialog<int>(
+      context: navigator.currentContext!,
+      builder: (context) => StatefulBuilder(
+        builder: (context, update) {
+          final value = int.tryParse(input.text.trim());
+          void step(int by) => update(() {
+            input.text = '${((value ?? current) + by).clamp(0, 999)}';
+          });
+          return AlertDialog(
+            alignment: Alignment.topCenter,
+            insetPadding: const EdgeInsets.fromLTRB(24, 12, 24, 12),
+            title: Text('${t('score.adjust')} · ${state[team]['name']}'),
+            content: SizedBox(
+              width: 360,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      IconButton.outlined(
+                        onPressed: () => step(-1),
+                        icon: const Icon(Icons.remove),
+                      ),
+                      const SizedBox(width: 12),
+                      SizedBox(
+                        width: 96,
+                        child: TextField(
+                          controller: input,
+                          textAlign: TextAlign.center,
+                          keyboardType: TextInputType.number,
+                          maxLength: 3,
+                          style: const TextStyle(
+                            fontSize: 32,
+                            fontWeight: FontWeight.w900,
+                          ),
+                          decoration: const InputDecoration(
+                            counterText: '',
+                            border: OutlineInputBorder(),
+                          ),
+                          onChanged: (_) => update(() {}),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      IconButton.outlined(
+                        onPressed: () => step(1),
+                        icon: const Icon(Icons.add),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    value == null || value == current
+                        ? t('score.adjust_note')
+                        : '${t('console.admin_adjust')} ${value > current ? '+' : ''}${value - current}',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 13),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text(t('cancel')),
+              ),
+              FilledButton(
+                onPressed: value == null || value < 0 || value == current
+                    ? null
+                    : () => Navigator.pop(context, value),
+                child: Text(t('save')),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    input.dispose();
+    if (target == null || !mounted) return;
+    if (state['revision'] != revision) {
+      notify(t('error.state_changed'));
+      return;
+    }
+    await command('score_adjust', {'team': team, 'delta': target - current});
   }
 
   /// Change one player's number or name (double-tap on a console tile).
@@ -2277,6 +2398,8 @@ class _Score67State extends State<Score67> {
   static const hiddenInFlow = {
     'clock_start',
     'clock_stop',
+    'clock_set',
+    'clock_adjust',
     'squad',
     'settings',
     'overlay',
