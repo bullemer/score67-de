@@ -6,6 +6,8 @@
 <main class="private-notice"><h1>Privates Spiel · Private game</h1><p>Dieses Spiel ist privat und wird nicht öffentlich geteilt.</p><p>This game is private and not shared publicly.</p></main>
 <footer><a href="/live">Live</a><a href="/s/{{ slug }}/control">Steuerung · Control</a></footer>{% endif %}
 {% else %}{% if not overlay %}<header><a class="brand" href="/">SCORE<span>67</span></a><button id="language" aria-label="Deutsch / English">DE / EN</button></header>{% endif %}
+{% if not overlay %}<div class="view-toggle" role="tablist"><button id="view-simple" role="tab" data-i18n="ticker.simple"></button><button id="view-extended" role="tab" data-i18n="ticker.extended"></button></div>
+<div class="ticker-layout">{% endif %}
 <main id="scoreboard" class="scoreboard" hidden>
 <div id="phase" class="phase"></div>
 <div class="teams">
@@ -21,7 +23,11 @@
 </div>
 <div class="time"><span id="period"></span><span id="clock"></span></div><div id="venue" class="venue" hidden><a id="venue-link" target="_blank" rel="noopener noreferrer"></a></div></main>
 {% if not overlay %}
-<section id="match-events" class="match-events" hidden><h2 data-i18n="log"></h2><ol id="event-list"></ol></section>
+<aside id="details" class="ticker-details" hidden>
+<section id="scorers" class="detail-card" hidden><h2 data-i18n="ticker.scorers"></h2><ol id="scorer-list" class="scorer-list"></ol><p id="scorers-empty" data-i18n="ticker.no_goals" hidden></p></section>
+<section id="stats" class="detail-card" hidden><h2 data-i18n="ticker.points"></h2><div id="stats-body" class="stats-body"></div><table id="periods" class="period-table"></table></section>
+<section id="match-events" class="match-events detail-card" hidden><h2 data-i18n="log"></h2><ol id="event-list"></ol></section>
+</aside></div>
 <section class="share-panel" aria-labelledby="share-title"><h2 id="share-title" data-i18n="share.spectator"></h2>
 <div class="share-actions">
 <a id="share-whatsapp" class="icon-button whatsapp" target="_blank" rel="noopener noreferrer" data-label="share.whatsapp"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#fff" d="M12 2a10 10 0 0 0-8.7 15l-1.3 5 5.1-1.3A10 10 0 1 0 12 2z"/><path fill="#25d366" d="M8.6 7.2c.3-.6.6-.6.9-.6h.6c.2 0 .5 0 .7.6l.9 2.2c.1.2.1.5-.1.7l-.6.8c-.2.2-.2.4 0 .7.5.9 1.2 1.7 2 2.3.6.4 1.1.7 1.5.9.3.1.5.1.7-.1l.8-1c.2-.3.5-.3.8-.2l2.1 1c.3.1.5.3.5.5 0 .6-.2 1.3-.7 1.7-.6.6-1.5.9-2.4.7-1.6-.4-3.2-1.3-4.6-2.7-1.4-1.4-2.4-3-2.8-4.6-.2-.9 0-1.9.5-2.6z"/></svg></a>

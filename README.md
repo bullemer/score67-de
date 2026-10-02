@@ -68,6 +68,10 @@ The console's middle panel has the tabs Spielverlauf (game flow), Team, Periods,
 
 Double-tap a team tile to edit the team name, short name and colour; double-tap a player tile to change number or name (only while no action is selected, so scoring taps stay instant). In basketball, Play also opens the next period or overtime and starts the clock in one tap.
 
+### Ticker page views
+
+The public ticker (`/s/<code>`) has a Simple view (score, period and clock) and an Extended view, remembered per device. Extended shows, for football, all goals in chronological order with minute, scorer (or "goal without scorer"), penalty marker, team and running score; for basketball, points per player for both teams (whole squad, sorted by points, with team points without a scorer and totals) plus quarter scores; and the game log. Phones stack everything; from 900 px width the scoreboard and details sit side by side.
+
 ### Private games
 
 Games are public by default. The "Private game" switch at the top of the Sharing tab hides the spectator page (it shows a private notice), the public state API, live socket and the /live directory from everyone except this board's control devices. The OBS overlay link carries an overlay key (`?k=…`) and keeps working while private; switching back to public re-enables all sharing links.

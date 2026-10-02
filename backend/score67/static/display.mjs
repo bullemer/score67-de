@@ -12,6 +12,108 @@ const queue = new DelayedStates();
 let state, lang = preferredLanguage(), words = {}, socket, reconnect = 500;
 let serverAt = Date.now(), receivedAt = performance.now(), online = false, pollBusy = false, lastReceived = -1;
 let languageVersion = 0, logSignature = '';
+// Spectator page: simple (score only) or extended (scorers / player points).
+let tickerView = 'simple';
+try { tickerView = localStorage.getItem('score67-ticker-view') || 'simple'; } catch { /* optional */ }
+function applyView() {
+  if (overlay) return;
+  const extended = tickerView === 'extended';
+  document.body.classList.toggle('extended', extended);
+  el('details').hidden = !extended;
+  el('view-simple').setAttribute('aria-selected', String(!extended));
+  el('view-extended').setAttribute('aria-selected', String(extended));
+}
+if (!overlay) {
+  for (const mode of ['simple', 'extended']) {
+    el(`view-${mode}`).onclick = () => {
+      tickerView = mode;
+      try { localStorage.setItem('score67-ticker-view', mode); } catch { /* optional */ }
+      logSignature = '';
+      applyView();
+    };
+  }
+  applyView();
+}
+function node(tag, text, className) {
+  const n = document.createElement(tag);
+  if (text != null) n.textContent = text;
+  if (className) n.className = className;
+  return n;
+}
+function playerLabel(player) {
+  return player ? [player.number ? `#${player.number}` : '', player.name].filter(Boolean).join(' ') : '';
+}
+function renderDetails() {
+  const active = (state.events || []).filter(e => !e.cancelled && !e.corrected);
+  const basketball = state.sport === 'basketball';
+  el('scorers').hidden = basketball;
+  el('stats').hidden = !basketball;
+  if (!basketball) {
+    // Football: goals in chronological order with the running score.
+    const goals = active.filter(e => e.type === 'score' || e.type === 'score_adjust');
+    const running = {home: 0, away: 0};
+    el('scorers-empty').hidden = goals.length > 0;
+    el('scorer-list').replaceChildren(...goals.map(e => {
+      running[e.team] += e.points;
+      const row = node('li');
+      row.style.borderColor = state[e.team].color;
+      const who = e.type === 'score_adjust'
+        ? `${words.score_adjust} ${e.points > 0 ? '+' : ''}${e.points}`
+        : playerLabel(e.player) || words['ticker.team_goal'];
+      row.append(node('span', eventTime(e, state, words), 'scorer-minute'),
+        node('span', `${who}${e.detail === 'penalty' ? ` (${words['console.penalty_short']})` : ''}`, 'scorer-name'),
+        node('span', state[e.team].short, 'scorer-team'),
+        node('strong', `${running.home}:${running.away}`, 'scorer-score'));
+      return row;
+    }));
+    return;
+  }
+  // Basketball: points per player (all squad players) and team points without a player.
+  const tables = ['home', 'away'].map(team => {
+    const rows = new Map();
+    for (const p of state[team].squad || []) rows.set(p.id, {player: p, pts: 0});
+    let teamPoints = 0;
+    for (const e of active) {
+      if (e.team !== team || !['score', 'score_adjust'].includes(e.type)) continue;
+      if (e.type === 'score' && e.player) {
+        if (!rows.has(e.player.id)) rows.set(e.player.id, {player: e.player, pts: 0});
+        rows.get(e.player.id).pts += e.points;
+      } else teamPoints += e.points;
+    }
+    const sorted = [...rows.values()].sort((a, b) => b.pts - a.pts || (Number(a.player.number) || 999) - (Number(b.player.number) || 999));
+    const box = node('div', null, 'team-stats');
+    box.style.borderColor = state[team].color;
+    box.append(node('h3', state[team].name));
+    const table = node('table');
+    for (const {player, pts} of sorted) {
+      const tr = node('tr', null, pts ? '' : 'zero');
+      tr.append(node('td', player.number ? `#${player.number}` : '', 'num'), node('td', player.name || ''), node('td', String(pts), 'pts'));
+      table.append(tr);
+    }
+    if (teamPoints || !sorted.length) {
+      const tr = node('tr', null, 'team-row');
+      tr.append(node('td', '', 'num'), node('td', words['ticker.team_points']), node('td', String(teamPoints), 'pts'));
+      table.append(tr);
+    }
+    const total = node('tr', null, 'total');
+    total.append(node('td', '', 'num'), node('td', words['stats.total_short']), node('td', String(state[team].score), 'pts'));
+    table.append(total);
+    box.append(table);
+    return box;
+  });
+  el('stats-body').replaceChildren(...tables);
+  const periods = state.home.period_scores || [];
+  const head = node('tr');
+  head.append(node('th', ''));
+  periods.forEach((_, i) => head.append(node('th', i >= state.period_count ? `OT${i - state.period_count + 1}` : state.period_count === 4 ? `Q${i + 1}` : `${i + 1}`)));
+  const lines = ['home', 'away'].map(team => {
+    const tr = node('tr');
+    tr.append(node('th', state[team].short));
+    (state[team].period_scores || []).forEach(v => tr.append(node('td', String(v))));
+    return tr;
+  });
+  el('periods').replaceChildren(head, ...lines);
+}
 if (overlay && params.get('preview') === '1') document.body.classList.add('preview');
 function delayFor(s) {
   const raw = params.has('delay') ? Number(params.get('delay')) : s.overlay.delay_ms;
@@ -43,7 +145,7 @@ function render() {
   if (!state) return;
   if (!state.match_id) {
     el('scoreboard').hidden = true;
-    if (!overlay) { el('match-events').hidden = true; el('event-list').replaceChildren(); logSignature = ''; }
+    if (!overlay) { el('match-events').hidden = true; el('event-list').replaceChildren(); el('details').hidden = true; logSignature = ''; }
     if (el('connection')) el('connection').textContent = words.no_match;
     return;
   }
@@ -109,6 +211,7 @@ function render() {
       if (event.cancelled || event.corrected) row.className = 'cancelled';
       return row;
     }));
+    if (tickerView === 'extended') renderDetails();
   }
   el('clock').textContent = clockText(state, serverAt + performance.now() - receivedAt - delayFor(state));
   el('period').textContent = periodLabel(state, words);
@@ -126,7 +229,7 @@ async function poll() {
       state = null;
       queue.queue = [];
       el('scoreboard').hidden = true;
-      if (!overlay) { el('match-events').hidden = true; el('event-list').replaceChildren(); logSignature = ''; }
+      if (!overlay) { el('match-events').hidden = true; el('event-list').replaceChildren(); el('details').hidden = true; logSignature = ''; }
       if (el('connection')) el('connection').textContent = words['error.match_deleted'];
       return;
     }

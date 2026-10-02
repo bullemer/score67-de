@@ -401,5 +401,12 @@
   "share.facebook": "Auf Facebook teilen",
   "share.obs": "OBS-Overlay-Link kopieren",
   "share.obs_copied": "OBS-Link kopiert",
-  "share.take_control": "Steuerung übernehmen"
+  "share.take_control": "Steuerung übernehmen",
+  "ticker.simple": "Einfach",
+  "ticker.extended": "Erweitert",
+  "ticker.scorers": "Torschützen",
+  "ticker.no_goals": "Noch keine Tore.",
+  "ticker.team_goal": "Tor (ohne Schütze)",
+  "ticker.points": "Punkte je Spieler",
+  "ticker.team_points": "Team (ohne Spieler)"
 }

@@ -401,5 +401,12 @@
   "share.facebook": "Share on Facebook",
   "share.obs": "Copy OBS overlay link",
   "share.obs_copied": "OBS link copied",
-  "share.take_control": "Take over control"
+  "share.take_control": "Take over control",
+  "ticker.simple": "Simple",
+  "ticker.extended": "Extended",
+  "ticker.scorers": "Goal scorers",
+  "ticker.no_goals": "No goals yet.",
+  "ticker.team_goal": "Goal (no scorer)",
+  "ticker.points": "Points per player",
+  "ticker.team_points": "Team (no player)"
 }
