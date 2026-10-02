@@ -63,7 +63,7 @@
   "home": "Home",
   "away": "Away",
   "name": "Team name",
-  "short": "Abbreviation (max. 5 characters)",
+  "short": "Abbreviation (max. 3 characters)",
   "period_count": "Number of periods (1–12)",
   "period_length": "Minutes per period (1–60)",
   "format.halves": "2 × 45 minutes",
@@ -328,5 +328,6 @@
   "trash.reason.not_started": "Planned but never started",
   "trash.reason.manual": "Moved to trash",
   "console.team": "Team",
-  "team.on_court": "On court"
+  "team.on_court": "On court",
+  "player.edit": "Edit player"
 }

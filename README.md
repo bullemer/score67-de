@@ -66,6 +66,8 @@ Football uses the same landscape console. Header: menu, short name, yellow/red c
 
 The console's middle panel has the tabs Spielverlauf (game flow), Team, Periods, Einstellungen and Teilen. Team edits both rosters inline: shirt number, optional name (basketball requires numbers) and an on-court checkbox (max. 5 in basketball, 11 in football). A new empty row appears automatically; a pasted list ("7 Alex" per line) can be imported. Save sends the squad, then the lineup; ticked players appear in the left columns and can be selected for actions. Unsaved edits are kept per team while switching teams or tabs (marked with •).
 
+Double-tap a team tile to edit the team name, short name and colour; double-tap a player tile to change number or name (only while no action is selected, so scoring taps stay instant). In basketball, Play also opens the next period or overtime and starts the clock in one tap.
+
 ### Sharing tab and creation
 
 Creating a scoreboard opens the console directly. The console's Sharing tab shows the admin PIN (kept only in the creating or renewing browser, because the server stores it hashed), PIN renewal, device management, social sharing and the spectator, OBS and control links.

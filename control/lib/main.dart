@@ -1899,6 +1899,14 @@ class _Score67State extends State<Score67> {
     final last = events.where((e) => e['cancelled'] == false).lastOrNull;
     final running = basketball && basketballClockRunning;
     // Football: the clock runs continuously; Play starts the next half.
+    final finalBreak =
+        phase == 'break' && state['period'] >= state['period_count'];
+    final String? nextPeriod =
+        phase == 'pre_game' || (phase == 'break' && !finalBreak)
+        ? 'period_start'
+        : finalBreak && state['home']['score'] == state['away']['score']
+        ? 'overtime_start'
+        : null;
     final kickOff =
         !basketball &&
         (phase == 'pre_game' || phase == 'break') &&
@@ -1912,9 +1920,10 @@ class _Score67State extends State<Score67> {
       running: running,
       canToggleClock: basketball
           ? canWrite &&
-                phase == 'period_running' &&
                 state['clock']['enabled'] == true &&
-                elapsed() < periodLengthMs
+                (phase == 'period_running'
+                    ? elapsed() < periodLengthMs
+                    : nextPeriod != null)
           : canWrite && kickOff,
       canTap: canTap,
       canWrite: canWrite,
@@ -1922,7 +1931,13 @@ class _Score67State extends State<Score67> {
       sync: syncBadge(),
       onMenu: openMenu,
       onToggleClock: basketball
-          ? () => command(running ? 'clock_stop' : 'clock_start')
+          ? () async {
+              // Play also opens the next period (or overtime), then starts the clock.
+              if (phase != 'period_running' && !await command(nextPeriod!)) {
+                return;
+              }
+              await command(running ? 'clock_stop' : 'clock_start');
+            }
           : () => command('period_start'),
       onClockTap: () {
         if (basketball && canWrite && phase == 'period_running') {
@@ -1935,6 +1950,10 @@ class _Score67State extends State<Score67> {
       onSubstitutions: editLineup,
       onAction: consoleAction,
       onPossession: (team) => command('possession', {'team': team}),
+      onEditTeam: (team) {
+        if (canWrite) editTeam(team);
+      },
+      onEditPlayer: editPlayer,
       tabs: [
         (t('console.flow'), gameFlow()),
         (t('console.team'), teamTab()),
@@ -2028,6 +2047,84 @@ class _Score67State extends State<Score67> {
       default:
         return t(e['type']);
     }
+  }
+
+  /// Change one player's number or name (double-tap on a console tile).
+  Future<void> editPlayer(String team, String playerId) async {
+    if (!canWrite) return;
+    final squad = [
+      for (final p in state[team]['squad'] as List? ?? [])
+        Map<String, dynamic>.from(p),
+    ];
+    final player = squad.where((p) => p['id'] == playerId).firstOrNull;
+    if (player == null) return;
+    final number = TextEditingController(text: player['number']);
+    final name = TextEditingController(text: player['name']);
+    final revision = state['revision'];
+    final ok = await showDialog<bool>(
+      context: navigator.currentContext!,
+      builder: (context) => AlertDialog(
+        title: Text('${t('player.edit')} · ${state[team]['short']}'),
+        content: SizedBox(
+          width: 360,
+          child: Row(
+            children: [
+              SizedBox(
+                width: 80,
+                child: TextField(
+                  controller: number,
+                  maxLength: 3,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    labelText: t('player.number'),
+                    counterText: '',
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: name,
+                  autofocus: true,
+                  maxLength: 60,
+                  decoration: InputDecoration(
+                    labelText: t('player.name'),
+                    counterText: '',
+                    border: const OutlineInputBorder(),
+                  ),
+                  onSubmitted: (_) => Navigator.pop(context, true),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(t('cancel')),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(t('save')),
+          ),
+        ],
+      ),
+    );
+    final values = (number.text.trim(), name.text.trim());
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    number.dispose();
+    name.dispose();
+    if (ok != true || !mounted) return;
+    if (state['revision'] != revision) {
+      notify(t('error.state_changed'));
+      return;
+    }
+    player
+      ..['number'] = values.$1
+      ..['name'] = values.$2;
+    // Server validation reports duplicates, missing basketball numbers etc.
+    await command('squad', {'team': team, 'players': squad});
   }
 
   Widget teamTab() => TeamEditor(
@@ -2295,7 +2392,7 @@ class _Score67State extends State<Score67> {
           SelectableText(
             known,
             style: const TextStyle(
-              fontSize: 40,
+              fontSize: 24,
               letterSpacing: 8,
               fontWeight: FontWeight.bold,
             ),

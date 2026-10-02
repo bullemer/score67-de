@@ -63,7 +63,7 @@
   "home": "Heim",
   "away": "Gast",
   "name": "Teamname",
-  "short": "Kürzel (max. 5 Zeichen)",
+  "short": "Kürzel (max. 3 Zeichen)",
   "period_count": "Anzahl Abschnitte (1–12)",
   "period_length": "Minuten je Abschnitt (1–60)",
   "format.halves": "2 × 45 Minuten",
@@ -328,5 +328,6 @@
   "trash.reason.not_started": "Geplant, aber nie gestartet",
   "trash.reason.manual": "In den Papierkorb gelegt",
   "console.team": "Team",
-  "team.on_court": "Auf dem Feld"
+  "team.on_court": "Auf dem Feld",
+  "player.edit": "Spieler bearbeiten"
 }

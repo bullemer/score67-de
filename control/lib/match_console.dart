@@ -25,6 +25,11 @@ class MatchConsole extends StatefulWidget {
   /// Records [action] for [team]; [playerId] null means the team itself.
   final void Function(String action, String team, String? playerId) onAction;
   final void Function(String team) onPossession;
+
+  /// Double-tap editing of team and player names (only while no action is
+  /// armed, so scoring taps are never delayed by double-tap detection).
+  final void Function(String team) onEditTeam;
+  final void Function(String team, String playerId) onEditPlayer;
   final List<(String, Widget)> tabs;
   const MatchConsole({
     super.key,
@@ -45,6 +50,8 @@ class MatchConsole extends StatefulWidget {
     required this.onSubstitutions,
     required this.onAction,
     required this.onPossession,
+    required this.onEditTeam,
+    required this.onEditPlayer,
     required this.tabs,
   });
 
@@ -507,6 +514,11 @@ class MatchConsoleState extends State<MatchConsole> {
         child: InkWell(
           borderRadius: BorderRadius.circular(6),
           onTap: () => target(team, playerId),
+          onDoubleTap: armed
+              ? null
+              : () => playerId == null
+                    ? widget.onEditTeam(team)
+                    : widget.onEditPlayer(team, playerId),
           child: Container(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(6),
