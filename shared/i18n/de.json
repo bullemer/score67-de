@@ -334,5 +334,10 @@
   "privacy.private_on": "Nur deine Steuergeräte und das OBS-Overlay sehen dieses Spiel.",
   "privacy.private_off": "Öffentlich: Jeder mit dem Zuschauerlink kann das Spiel verfolgen.",
   "privacy.note": "Dieses Spiel ist privat. Zuschauerlink, Live-Liste und Teilen sind ausgeschaltet; schalte „Privates Spiel“ aus, um es zu teilen.",
-  "format.total": "Spielzeit"
+  "format.total": "Spielzeit",
+  "landing.feature.track": "Scoreboards für Fußball oder Basketball anlegen – Spielzeit, Tore und Körbe, Fouls, Karten und weitere Aktionen auf Team- oder Spielerebene erfassen.",
+  "landing.feature.share": "Live-Link mit Zuschauern teilen, den Spielstand auf einem Bildschirm oder TV in der Halle zeigen oder als transparentes Overlay per OBS in den Stream einblenden.",
+  "landing.feature.phone": "Ohne Konto, gesteuert vom Handy im Querformat – Eingaben gehen auch bei schwachem Netz nicht verloren.",
+  "landing.dev": "Das Projekt ist noch in Entwicklung. Entwickelt von",
+  "console.reb": "REBOUND"
 }

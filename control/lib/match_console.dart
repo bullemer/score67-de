@@ -102,6 +102,11 @@ Color hexColor(String value) =>
 class MatchConsoleState extends State<MatchConsole> {
   String? pending;
   int tab = 0;
+
+  /// While a text field in the middle panel has focus (phone keyboard open),
+  /// everything else hides so the edited row stays visible above the keyboard.
+  bool editing = false;
+  final middleKey = GlobalKey();
   bool hint = false;
   Timer? hintTimer;
 
@@ -142,6 +147,7 @@ class MatchConsoleState extends State<MatchConsole> {
           ConsoleAction('3pt', t('console.3pt'), const Color(0xfff97316)),
           ConsoleAction('foul', t('console.foul'), const Color(0xffdc2626)),
           ConsoleAction('tech', t('console.tech'), const Color(0xffdc2626)),
+          ConsoleAction('reb', t('console.reb'), const Color(0xffa855f7)),
           ConsoleAction(
             'timeout',
             t('console.timeout'),
@@ -739,29 +745,8 @@ class MatchConsoleState extends State<MatchConsole> {
           row([actionButton(a['2pt']!)]),
           row([actionButton(a['3pt']!)]),
           row([actionButton(a['foul']!), actionButton(a['tech']!)]),
-          row([
-            actionButton(a['timeout']!),
-            Padding(
-              padding: const EdgeInsets.all(3),
-              child: Material(
-                color: const Color(0xff1f2937),
-                borderRadius: BorderRadius.circular(6),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(6),
-                  onTap: widget.onUndo,
-                  child: Tooltip(
-                    message: t('undo'),
-                    child: Icon(
-                      Icons.undo,
-                      size: 30,
-                      color: widget.onUndo == null ? Colors.white30 : null,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ]),
-          row([actionButton(a['subs']!)]),
+          row([actionButton(a['reb']!), actionButton(a['timeout']!)]),
+          row([undo, actionButton(a['subs']!)]),
         ],
       ),
     );
@@ -900,26 +885,38 @@ class MatchConsoleState extends State<MatchConsole> {
   }
 
   @override
-  Widget build(BuildContext context) => ColoredBox(
-    color: consoleBackground,
-    child: Column(
-      children: [
-        header(),
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.all(4),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                teamColumn('home'),
-                teamColumn('away'),
-                Expanded(child: middlePanel()),
-                actionPanel(),
-              ],
+  Widget build(BuildContext context) {
+    Widget side(Widget child) =>
+        Visibility(visible: !editing, maintainState: true, child: child);
+    return ColoredBox(
+      color: consoleBackground,
+      child: Column(
+        children: [
+          side(header()),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(4),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  side(teamColumn('home')),
+                  side(teamColumn('away')),
+                  Expanded(
+                    child: Focus(
+                      canRequestFocus: false,
+                      skipTraversal: true,
+                      onFocusChange: (focused) =>
+                          setState(() => editing = focused),
+                      child: KeyedSubtree(key: middleKey, child: middlePanel()),
+                    ),
+                  ),
+                  side(actionPanel()),
+                ],
+              ),
             ),
           ),
-        ),
-      ],
-    ),
-  );
+        ],
+      ),
+    );
+  }
 }

@@ -763,6 +763,9 @@ class _Score67State extends State<Score67> {
       context: navigator.currentContext!,
       builder: (context) => StatefulBuilder(
         builder: (context, update) => AlertDialog(
+          // Top-aligned so the phone keyboard never covers the fields.
+          alignment: Alignment.topCenter,
+          insetPadding: const EdgeInsets.fromLTRB(24, 12, 24, 12),
           title: Text(t('settings')),
           content: SizedBox(
             width: 440,
@@ -1301,6 +1304,9 @@ class _Score67State extends State<Score67> {
     final value = await showDialog<String>(
       context: navigator.currentContext!,
       builder: (context) => AlertDialog(
+        // Top-aligned so the phone keyboard never covers the fields.
+        alignment: Alignment.topCenter,
+        insetPadding: const EdgeInsets.fromLTRB(24, 12, 24, 12),
         title: Text(t('description.edit')),
         content: SizedBox(
           width: 420,
@@ -1579,6 +1585,9 @@ class _Score67State extends State<Score67> {
       context: navigator.currentContext!,
       builder: (context) => StatefulBuilder(
         builder: (context, update) => AlertDialog(
+          // Top-aligned so the phone keyboard never covers the fields.
+          alignment: Alignment.topCenter,
+          insetPadding: const EdgeInsets.fromLTRB(24, 12, 24, 12),
           title: Text(t('team.edit')),
           content: SizedBox(
             width: 420,
@@ -1857,6 +1866,9 @@ class _Score67State extends State<Score67> {
     await showDialog<void>(
       context: navigator.currentContext!,
       builder: (context) => AlertDialog(
+        // Top-aligned so the phone keyboard never covers the fields.
+        alignment: Alignment.topCenter,
+        insetPadding: const EdgeInsets.fromLTRB(24, 12, 24, 12),
         title: Text(t('clock_set')),
         content: TextField(
           controller: input,
@@ -2097,6 +2109,8 @@ class _Score67State extends State<Score67> {
         }
       case 'tech':
         command('technical_foul', {'team': team, ...player});
+      case 'reb':
+        command('rebound', {'team': team, ...player});
       case 'timeout':
         command('timeout', {'team': team});
     }
@@ -2167,6 +2181,9 @@ class _Score67State extends State<Score67> {
     final ok = await showDialog<bool>(
       context: navigator.currentContext!,
       builder: (context) => AlertDialog(
+        // Top-aligned so the phone keyboard never covers the fields.
+        alignment: Alignment.topCenter,
+        insetPadding: const EdgeInsets.fromLTRB(24, 12, 24, 12),
         title: Text('${t('player.edit')} · ${state[team]['short']}'),
         content: SizedBox(
           width: 360,

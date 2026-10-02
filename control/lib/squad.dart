@@ -176,6 +176,8 @@ class _SquadDialogState extends State<SquadDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
+    alignment: Alignment.topCenter,
+    insetPadding: const EdgeInsets.fromLTRB(24, 12, 24, 12),
     title: Text('${t('squad')} · ${widget.teamName}'),
     content: SizedBox(
       width: 520,

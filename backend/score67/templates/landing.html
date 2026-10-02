@@ -3,8 +3,10 @@
 <title>Score67</title><meta name="description" content="Live football and basketball scoreboard for OBS, controlled from your phone.">
 <link rel="stylesheet" href="/static/display.css"></head>
 <body class="landing"><header><a class="brand" href="/">SCORE<span>67</span></a><button id="language" aria-label="Deutsch / English">DE / EN</button></header>
-<main><p class="eyebrow" data-i18n="create.scope"></p><h1 data-i18n="landing.title"></h1><p data-i18n="landing.body"></p><a class="primary" href="/new" data-i18n="create"></a>
+<main><p class="eyebrow" data-i18n="create.scope"></p><h1 data-i18n="landing.title"></h1><p data-i18n="landing.body"></p><ul class="features"><li data-i18n="landing.feature.track"></li><li data-i18n="landing.feature.share"></li><li data-i18n="landing.feature.phone"></li></ul>
+<a class="primary" href="/new" data-i18n="create"></a>
 <a class="primary" style="margin:12px 0 0 8px;background:#182232;color:white" href="/dashboard" data-i18n="dashboard"></a>
 <a class="primary" style="margin:12px 0 0 8px;background:#182232;color:white" href="/live" data-i18n="live.title"></a>
+<p class="dev-note"><span data-i18n="landing.dev"></span> <a href="https://navisense.de" target="_blank" rel="noopener">Navisense</a> · navisense.de</p></main>
 <footer class="version-footer">{{ release_label }}</footer>
 <script type="module" src="/static/landing.mjs"></script></body></html>

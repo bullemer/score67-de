@@ -30,6 +30,7 @@ class _Row {
   final String id;
   final TextEditingController number, name;
   final FocusNode focus = FocusNode();
+  final GlobalKey key = GlobalKey();
   bool onCourt;
   _Row(Map<String, dynamic> p, {this.onCourt = false})
     : id = p['id'] ?? const Uuid().v4(),
@@ -106,6 +107,19 @@ class _TeamEditorState extends State<TeamEditor> {
     paste.dispose();
     super.dispose();
   }
+
+  /// Scroll the edited row to the top once the phone keyboard has opened.
+  void reveal(_Row row) =>
+      Future<void>.delayed(const Duration(milliseconds: 400), () {
+        final target = row.key.currentContext;
+        if (target != null && target.mounted) {
+          Scrollable.ensureVisible(
+            target,
+            alignment: 0,
+            duration: const Duration(milliseconds: 150),
+          );
+        }
+      });
 
   void changed(_Draft d) {
     d.dirty = true;
@@ -248,7 +262,7 @@ class _TeamEditorState extends State<TeamEditor> {
             children: [
               for (final row in d.rows)
                 Padding(
-                  key: ObjectKey(row),
+                  key: row.key,
                   padding: const EdgeInsets.symmetric(vertical: 3),
                   child: Row(
                     children: [
@@ -277,10 +291,12 @@ class _TeamEditorState extends State<TeamEditor> {
                             hintText: t('player.number'),
                           ),
                           onChanged: (_) => changed(d),
+                          onTap: () => reveal(row),
                           onSubmitted: (_) {
                             final next = d.rows.indexOf(row) + 1;
                             if (next < d.rows.length) {
                               d.rows[next].focus.requestFocus();
+                              reveal(d.rows[next]);
                             }
                           },
                         ),
@@ -294,6 +310,7 @@ class _TeamEditorState extends State<TeamEditor> {
                           decoration: dense.copyWith(
                             hintText: t('player.name'),
                           ),
+                          onTap: () => reveal(row),
                           onChanged: (_) => changed(d),
                         ),
                       ),

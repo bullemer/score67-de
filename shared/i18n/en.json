@@ -334,5 +334,10 @@
   "privacy.private_on": "Only your control devices and the OBS overlay see this game.",
   "privacy.private_off": "Public: anyone with the spectator link can follow the game.",
   "privacy.note": "This game is private. Spectator link, live list and sharing are switched off; turn off “Private game” to share it.",
-  "format.total": "Playing time"
+  "format.total": "Playing time",
+  "landing.feature.track": "Create scoreboards for football or basketball – track time, goals and baskets, fouls, cards and other actions at team or player level.",
+  "landing.feature.share": "Share a live link with spectators, show the score on a screen or TV at the venue, or add it to your stream as a transparent OBS overlay.",
+  "landing.feature.phone": "No account needed, controlled from your phone in landscape – taps are kept even on a weak connection.",
+  "landing.dev": "This project is still in development. Developed by",
+  "console.reb": "REBOUND"
 }
