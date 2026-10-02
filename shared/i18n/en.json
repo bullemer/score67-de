@@ -270,8 +270,8 @@
   "landscape.enter": "Full screen landscape",
   "description": "Description (optional)",
   "description.hint": "e.g. U14 league · matchday 3 · home court",
-  "description.edit": "Edit description",
-  "description.private": "Only visible to you and other controllers, never to spectators.",
+  "description.edit": "Description & livestream",
+  "description.private": "Shown in the live directory and on the ticker for public games.",
   "created": "Created",
   "scheduled": "Scheduled start",
   "schedule.choose": "Set start time",
@@ -409,5 +409,9 @@
   "ticker.team_goal": "Goal (no scorer)",
   "ticker.points": "Points per player",
   "ticker.team_points": "Team (no player)",
-  "menu.title": "Menu"
+  "menu.title": "Menu",
+  "stream.watch": "Watch livestream",
+  "stream.label": "Livestream link (optional)",
+  "stream.hint": "e.g. YouTube or Facebook live link (https://…). Shown in the live directory and the ticker menu.",
+  "error.stream_url_invalid": "Please enter a complete https:// link."
 }

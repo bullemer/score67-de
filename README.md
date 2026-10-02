@@ -30,7 +30,7 @@ The development database is `backend/data/score67.db` when started from `backend
 
 ## Included
 
-- Optional private description (up to 300 characters) and planned start time when creating a scoreboard; the controller and dashboard show the description, creation time and scheduled start. Edit the description in the controller.
+- Optional description (up to 300 characters), livestream link (https only, e.g. YouTube/Facebook) and planned start time when creating a scoreboard; both texts can be edited later in the controller (Description & livestream). For public games the description, the public venue and a "▶ Livestream" button appear in the live directory and the ticker menu; the controller and dashboard also show creation time and scheduled start.
 - Optional venue with browser/mobile geolocation, draggable map pin, coordinate/Google Maps link import, and a private-by-default visibility switch. Edit/remove it in the controller.
 - Independent football and basketball scoreboards; automatic timestamp labels, random public links and six-digit PINs.
 - Hashed device cookies, additional devices, revocation, PIN rotation and persistent rate limits.

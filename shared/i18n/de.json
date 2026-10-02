@@ -270,8 +270,8 @@
   "landscape.enter": "Vollbild quer",
   "description": "Beschreibung (optional)",
   "description.hint": "z. B. U14 Liga · 3. Spieltag · Heimspiel",
-  "description.edit": "Beschreibung bearbeiten",
-  "description.private": "Nur für dich und andere Steuergeräte sichtbar, nie für Zuschauer.",
+  "description.edit": "Beschreibung & Livestream",
+  "description.private": "Wird bei öffentlichen Spielen in den Livetickern und auf der Tickerseite angezeigt.",
   "created": "Erstellt",
   "scheduled": "Geplanter Beginn",
   "schedule.choose": "Startzeit festlegen",
@@ -409,5 +409,9 @@
   "ticker.team_goal": "Tor (ohne Schütze)",
   "ticker.points": "Punkte je Spieler",
   "ticker.team_points": "Team (ohne Spieler)",
-  "menu.title": "Menü"
+  "menu.title": "Menü",
+  "stream.watch": "Livestream ansehen",
+  "stream.label": "Livestream-Link (optional)",
+  "stream.hint": "z. B. YouTube- oder Facebook-Live-Link (https://…). Erscheint in den Livetickern und im Ticker-Menü.",
+  "error.stream_url_invalid": "Bitte einen vollständigen https://-Link eingeben."
 }

@@ -81,10 +81,27 @@ def clean_description(value):
     return (value or "").strip() or None
 
 
+def clean_stream_url(value):
+    """Public livestream link: https only, so no javascript:/data: links reach viewers."""
+    value = (value or "").strip()
+    if not value:
+        return None
+    from urllib.parse import urlparse
+    parsed = urlparse(value)
+    if parsed.scheme != "https" or not parsed.netloc or len(value) > 300 or any(c in value for c in ' "<>'):
+        raise HTTPException(422, "stream_url_invalid")
+    return value
+
+
+class StreamUpdate(StrictModel):
+    stream_url: str | None = Field(default=None, max_length=300)
+
+
 class CreateBoard(StrictModel):
     sport: Literal["football", "basketball"] = "football"
     language: Literal["de", "en"] = "de"
     description: str | None = Field(default=None, max_length=300)
+    stream_url: str | None = Field(default=None, max_length=300)
     scheduled_at: int | None = Field(default=None, ge=0)
     period_count: int | None = Field(default=None, ge=1, le=12)
     period_length_min: int | None = Field(default=None, ge=1, le=120)
@@ -294,7 +311,8 @@ def create_app(db_url=None, secure_cookies=None):
         if not target:
             s = initial_state()
             s.update(scoreboard=b.slug, name=b.name, language=b.language, match_id=None,
-                     revision=0, server_now=round(time.time() * 1000), phase="no_match", events=[], location=public_location)
+                     revision=0, server_now=round(time.time() * 1000), phase="no_match", events=[], location=public_location,
+                     description=b.description, stream_url=b.stream_url)
             s["overlay"]["view"] = "hidden"
             for team in ("home", "away"):
                 s[team].update(score=0, squad=[], counters={"red_cards": 0, "yellow_cards": 0})
@@ -310,6 +328,7 @@ def create_app(db_url=None, secure_cookies=None):
         s.setdefault("overtime_length_min", 5)
         normalize_clock(s, round(time.time() * 1000))
         events = db.scalars(select(MatchEvent).where(MatchEvent.match_id == m.id).order_by(MatchEvent.id)).all()
+        s.update(description=b.description, stream_url=b.stream_url)
         s.update(scoreboard=b.slug, name=b.name, language=b.language, match_id=m.id,
                  revision=m.revision, server_now=round(time.time() * 1000),
                  created_at=round(m.created_at * 1000),
@@ -417,7 +436,8 @@ def create_app(db_url=None, secure_cookies=None):
             label = datetime.fromtimestamp(now, timezone.utc).isoformat(sep=" ", timespec="milliseconds").replace("+00:00", " UTC")
             b = Board(slug=slug, name=label, language=body.language, pin_hash=hash_pin(pin),
                       active_match=match_id, created_at=now, location=body.location.model_dump() if body.location else None,
-                      description=clean_description(body.description), overlay_key=secrets.token_urlsafe(12))
+                      description=clean_description(body.description), overlay_key=secrets.token_urlsafe(12),
+                      stream_url=clean_stream_url(body.stream_url))
             db.add(b)
             db.flush()
             db.add(Match(id=match_id, slug=slug, state=initial_state(body.period_count, body.period_length_min, body.sport),
@@ -455,6 +475,17 @@ def create_app(db_url=None, secure_cookies=None):
                 db.get(Match, b.active_match).revision += 1
             db.commit()
             return {"private": b.private}
+
+    @app.put("/api/s/{slug}/stream")
+    def update_stream(slug: str, body: StreamUpdate, request: Request):
+        with lock, app.state.sessions() as db:
+            authorize(db, slug, request)
+            b = board(db, slug)
+            b.stream_url = clean_stream_url(body.stream_url)
+            if b.active_match:
+                db.get(Match, b.active_match).revision += 1
+            db.commit()
+            return {"stream_url": b.stream_url}
 
     @app.put("/api/s/{slug}/description")
     def update_description(slug: str, body: DescriptionUpdate, request: Request):
@@ -549,7 +580,7 @@ def create_app(db_url=None, secure_cookies=None):
                     s = state(db, b, m.id)
                     games.append({k: s[k] for k in ("sport", "team_fouls_enabled", "match_id", "revision", "phase", "home", "away", "period_count",
                         "period_length_min", "created_at", "scheduled_at", "archived", "active", "trashed", "trash_reason", "trashed_at")})
-                boards.append({"slug": b.slug, "name": b.name, "active_match": b.active_match, "description": b.description,
+                boards.append({"slug": b.slug, "name": b.name, "active_match": b.active_match, "description": b.description, "stream_url": b.stream_url,
                                "created_at": round(b.created_at * 1000), "matches": games})
                 response.set_cookie(cookie, token, httponly=True, secure=secure,
                                     samesite="lax", max_age=180 * 86400, path="/")
@@ -567,7 +598,7 @@ def create_app(db_url=None, secure_cookies=None):
             for b in active:
                 s = state(db, b)
                 games.append({k: s[k] for k in ("sport", "overtime_length_min", "team_fouls_enabled", "scoreboard", "match_id", "home", "away", "clock",
-                    "phase", "period", "period_count", "period_length_min", "server_now", "location")})
+                    "phase", "period", "period_count", "period_length_min", "server_now", "location", "description", "stream_url")})
             # Planned games with a start time in the next days (public boards only).
             now = time.time()
             horizon = now + hours_env("LIVE_UPCOMING_HOURS", 72)
@@ -586,7 +617,8 @@ def create_app(db_url=None, secure_cookies=None):
                     "period_count": m.state["period_count"], "period_length_min": m.state["period_length_min"],
                     "home": {k: m.state["home"][k] for k in ("name", "color")},
                     "away": {k: m.state["away"][k] for k in ("name", "color")},
-                    "location": {k: location[k] for k in ("lat", "lng", "label")} if location else None})
+                    "location": {k: location[k] for k in ("lat", "lng", "label")} if location else None,
+                    "description": b.description, "stream_url": b.stream_url})
             return {"games": games, "upcoming": upcoming, "server_now": round(now * 1000)}
 
     @app.post("/api/s/{slug}/matches", status_code=201)

@@ -109,6 +109,7 @@ class _Score67State extends State<Score67> {
   final pinInput = TextEditingController();
   final deviceName = TextEditingController(text: 'Browser');
   final draftDescription = TextEditingController();
+  final draftStream = TextEditingController();
   DateTime? draftStart;
 
   String t(String key) =>
@@ -718,6 +719,9 @@ class _Score67State extends State<Score67> {
               ? null
               : draftDescription.text.trim(),
           'scheduled_at': draftStart?.millisecondsSinceEpoch,
+          'stream_url': draftStream.text.trim().isEmpty
+              ? null
+              : draftStream.text.trim(),
         },
       );
       // Straight to the console; PIN and links live in its Sharing tab.
@@ -1401,7 +1405,8 @@ class _Score67State extends State<Score67> {
 
   Future<void> editDescription() async {
     final input = TextEditingController(text: state['description'] ?? '');
-    final value = await showDialog<String>(
+    final stream = TextEditingController(text: state['stream_url'] ?? '');
+    final saved = await showDialog<bool>(
       context: navigator.currentContext!,
       builder: (context) => AlertDialog(
         // Top-aligned so the phone keyboard never covers the fields.
@@ -1409,18 +1414,39 @@ class _Score67State extends State<Score67> {
         insetPadding: const EdgeInsets.fromLTRB(24, 12, 24, 12),
         title: Text(t('description.edit')),
         content: SizedBox(
-          width: 420,
-          child: TextField(
-            controller: input,
-            autofocus: true,
-            maxLength: 300,
-            minLines: 2,
-            maxLines: 4,
-            decoration: InputDecoration(
-              hintText: t('description.hint'),
-              helperText: t('description.private'),
-              helperMaxLines: 2,
-              border: const OutlineInputBorder(),
+          width: 440,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: input,
+                  autofocus: true,
+                  maxLength: 300,
+                  minLines: 2,
+                  maxLines: 4,
+                  decoration: InputDecoration(
+                    labelText: t('description'),
+                    hintText: t('description.hint'),
+                    helperText: t('description.private'),
+                    helperMaxLines: 2,
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: stream,
+                  maxLength: 300,
+                  keyboardType: TextInputType.url,
+                  decoration: InputDecoration(
+                    labelText: t('stream.label'),
+                    hintText: 'https://youtube.com/live/…',
+                    helperText: t('stream.hint'),
+                    helperMaxLines: 2,
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -1430,21 +1456,31 @@ class _Score67State extends State<Score67> {
             child: Text(t('cancel')),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(context, input.text),
+            onPressed: () => Navigator.pop(context, true),
             child: Text(t('save')),
           ),
         ],
       ),
     );
+    final (text, link) = (input.text.trim(), stream.text.trim());
     await Future<void>.delayed(const Duration(milliseconds: 300));
     input.dispose();
-    if (value == null) return;
+    stream.dispose();
+    if (saved != true) return;
     try {
       await api(
         '/api/s/$slug/description',
         method: 'PUT',
-        body: {'description': value.trim().isEmpty ? null : value.trim()},
+        body: {'description': text.isEmpty ? null : text},
       );
+      await api(
+        '/api/s/$slug/stream',
+        method: 'PUT',
+        body: {'stream_url': link.isEmpty ? null : link},
+      );
+      await refresh();
+    } on ApiError catch (e) {
+      notify(t('error.${e.code}'));
       await refresh();
     } catch (_) {
       notify(t('error.network'));
@@ -1464,6 +1500,16 @@ class _Score67State extends State<Score67> {
             children: [
               if (description.isNotEmpty)
                 Text(description, style: const TextStyle(fontSize: 16)),
+              if ((state['stream_url'] ?? '').isNotEmpty)
+                Text(
+                  '▶ ${state['stream_url']}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: Color(0xffff8b8b),
+                  ),
+                ),
               if (state['created_at'] != null)
                 Text(
                   '${t('created')}: ${dateLabel(state['created_at'])}',
@@ -1605,6 +1651,19 @@ class _Score67State extends State<Score67> {
         labelText: t('description'),
         hintText: t('description.hint'),
         helperText: t('description.private'),
+        helperMaxLines: 2,
+        border: const OutlineInputBorder(),
+      ),
+    ),
+    const SizedBox(height: 4),
+    TextField(
+      controller: draftStream,
+      maxLength: 300,
+      keyboardType: TextInputType.url,
+      decoration: InputDecoration(
+        labelText: t('stream.label'),
+        hintText: 'https://youtube.com/live/…',
+        helperText: t('stream.hint'),
         helperMaxLines: 2,
         border: const OutlineInputBorder(),
       ),
@@ -3238,6 +3297,7 @@ class _Score67State extends State<Score67> {
     pinInput.dispose();
     deviceName.dispose();
     draftDescription.dispose();
+    draftStream.dispose();
     periodsInput.dispose();
     minutesInput.dispose();
     super.dispose();

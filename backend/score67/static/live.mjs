@@ -9,10 +9,32 @@ function textNode(tag, value, className) {
   if (className) node.className = className;
   return node;
 }
+// Cards are clickable panels (not links) so the livestream can be its own link.
+function cardShell(href, extraClass = '') {
+  const card = document.createElement('article');
+  card.className = `live-game ${extraClass}`.trim();
+  card.dataset.href = href;
+  card.tabIndex = 0;
+  card.setAttribute('role', 'link');
+  card.onclick = event => { if (!event.target.closest('a')) location.href = href; };
+  card.onkeydown = event => { if (event.key === 'Enter' && event.target === card) location.href = href; };
+  return card;
+}
+function extras(card, game) {
+  if (game.description) card.append(textNode('p', game.description, 'live-description'));
+  if (game.location) card.append(textNode('p', `📍 ${game.location.label || `${game.location.lat.toFixed(5)}, ${game.location.lng.toFixed(5)}`}`, 'live-venue'));
+  const actions = document.createElement('div'); actions.className = 'live-actions';
+  const open = textNode('a', `${words['live.open']} →`, 'live-open'); open.href = card.dataset.href;
+  actions.append(open);
+  if (game.stream_url) {
+    const stream = textNode('a', `▶ ${words['stream.watch']}`, 'live-stream');
+    stream.href = game.stream_url; stream.target = '_blank'; stream.rel = 'noopener noreferrer';
+    actions.append(stream);
+  }
+  card.append(actions);
+}
 function upcomingCard(game) {
-  const card = document.createElement('a');
-  card.className = 'live-game upcoming';
-  card.href = `/s/${encodeURIComponent(game.scoreboard)}?${game.active ? '' : `match=${encodeURIComponent(game.match_id)}&`}lang=${lang}`;
+  const card = cardShell(`/s/${encodeURIComponent(game.scoreboard)}?${game.active ? '' : `match=${encodeURIComponent(game.match_id)}&`}lang=${lang}`, 'upcoming');
   const when = new Date(game.scheduled_at);
   const day = new Intl.DateTimeFormat(lang, {weekday: 'short', day: '2-digit', month: '2-digit'}).format(when);
   const time = new Intl.DateTimeFormat(lang, {hour: '2-digit', minute: '2-digit'}).format(when);
@@ -24,8 +46,7 @@ function upcomingCard(game) {
     row.append(textNode('span', game[side].name, 'live-name'));
     card.append(row);
   }
-  if (game.location) card.append(textNode('p', game.location.label || `${game.location.lat.toFixed(5)}, ${game.location.lng.toFixed(5)}`, 'live-venue'));
-  card.append(textNode('span', `${words['live.open']} →`, 'live-open'));
+  extras(card, game);
   return card;
 }
 function render() {
@@ -41,9 +62,7 @@ function render() {
   el('empty-upcoming').hidden = tab !== 'upcoming' || !loaded || upcoming.length !== 0;
   el('upcoming').replaceChildren(...upcoming.map(upcomingCard));
   const cards = games.map(game => {
-    const card = document.createElement('a');
-    card.className = 'live-game';
-    card.href = `/s/${encodeURIComponent(game.scoreboard)}?lang=${lang}`;
+    const card = cardShell(`/s/${encodeURIComponent(game.scoreboard)}?lang=${lang}`);
     const meta = document.createElement('div'); meta.className = 'live-meta';
     meta.append(textNode('span', `${words[game.sport || 'football']} · ${words[game.phase === 'break' ? 'break' : 'live.now']}`));
     const clock = textNode('span', '', 'live-clock'); clock.dataset.match = game.match_id; meta.append(clock);
@@ -66,14 +85,13 @@ function render() {
       }
       card.append(row);
     }
-    if (game.location) card.append(textNode('p', game.location.label || `${game.location.lat.toFixed(5)}, ${game.location.lng.toFixed(5)}`, 'live-venue'));
-    card.append(textNode('span', `${words['live.open']} →`, 'live-open'));
+    extras(card, game);
     return card;
   });
   // Retain keyboard focus across automatic refreshes.
-  const focused = document.activeElement?.closest('.live-game')?.getAttribute('href');
+  const focused = document.activeElement?.closest('.live-game')?.dataset.href;
   el('games').replaceChildren(...cards);
-  if (focused) cards.find(card => card.getAttribute('href') === focused)?.focus({preventScroll:true});
+  if (focused) cards.find(card => card.dataset.href === focused)?.focus({preventScroll:true});
   tick();
 }
 function tick() {

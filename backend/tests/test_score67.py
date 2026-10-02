@@ -420,7 +420,7 @@ def test_public_live_directory_only_running_active_games(system):
     assert games[running]['home']['score'] == 1
     assert games[running]['away']['counters']['red_cards'] == 1
     assert games[paused]['phase'] == 'break'
-    assert set(games[running]) == {'sport', 'team_fouls_enabled', 'overtime_length_min', 'scoreboard', 'match_id', 'home', 'away', 'clock', 'phase', 'period', 'period_count', 'period_length_min', 'server_now', 'location'}
+    assert set(games[running]) == {'sport', 'team_fouls_enabled', 'overtime_length_min', 'scoreboard', 'match_id', 'home', 'away', 'clock', 'phase', 'period', 'period_count', 'period_length_min', 'server_now', 'location', 'description', 'stream_url'}
     command(client, running, 'game_end')
     assert [g['scoreboard'] for g in public.get('/api/live').json()['games']] == [paused]
     command(client, paused, 'game_end')
@@ -910,7 +910,7 @@ def test_basketball_period_scores_follow_corrections_and_overtime(system):
     assert q2['away']['period_scores'] == [0, 3]
 
 
-def test_create_with_description_and_schedule_keeps_description_private(system):
+def test_create_with_description_and_schedule(system):
     _, client = system
     future = 4102444800000
     created = client.post('/api/scoreboards', json={'sport': 'basketball', 'description': '  U14 Liga · Spieltag 3  ',
@@ -922,8 +922,8 @@ def test_create_with_description_and_schedule_keeps_description_private(system):
     assert private['scheduled_at'] == future and private['created_at'] <= private['server_now']
     assert private['board_created_at'] == private['created_at']
     public = state(client, slug)
-    assert 'description' not in public and 'board_created_at' not in public
-    assert 'Spieltag' not in client.get(f'/api/s/{slug}/state').text
+    # The description is public (live directory, viewer); creation details stay private.
+    assert public['description'] == 'U14 Liga · Spieltag 3' and 'board_created_at' not in public
     board = client.get('/api/dashboard').json()['boards'][0]
     assert board['description'] == 'U14 Liga · Spieltag 3' and board['matches'][0]['scheduled_at'] == future
     assert client.put(f'/api/s/{slug}/description', json={'description': '   '}).json() == {'description': None}
@@ -1182,5 +1182,24 @@ def test_live_lists_upcoming_games_in_the_next_days(system):
     upcoming = live['upcoming']
     assert [g['scoreboard'] for g in upcoming] == [a]                      # 5 days away and private are excluded
     assert upcoming[0]['scheduled_at'] == soon and upcoming[0]['active'] and upcoming[0]['sport'] == 'basketball'
-    assert 'description' not in upcoming[0] and 'score' not in upcoming[0]['home']
+    assert upcoming[0]['description'] is None and 'score' not in upcoming[0]['home']
     assert b
+
+
+
+def test_livestream_link_is_public_and_https_only(system):
+    _, client = system
+    created = client.post('/api/scoreboards', json={'description': 'Derby', 'stream_url': ' https://youtube.com/live/abc '})
+    slug = created.json()['slug']
+    command(client, slug, 'period_start')
+    viewer = TestClient(client.app)
+    public = viewer.get(f'/api/s/{slug}/state').json()
+    assert public['stream_url'] == 'https://youtube.com/live/abc' and public['description'] == 'Derby'
+    game = viewer.get('/api/live').json()['games'][0]
+    assert game['stream_url'] == 'https://youtube.com/live/abc' and game['description'] == 'Derby'
+    for bad in ('javascript:alert(1)', 'http://insecure.example', 'https://', 'https://x.y/a b', 'ftp://x.y'):
+        assert client.put(f'/api/s/{slug}/stream', json={'stream_url': bad}).status_code == 422, bad
+        assert client.post('/api/scoreboards', json={'stream_url': bad}).status_code == 422, bad
+    assert client.put(f'/api/s/{slug}/stream', json={'stream_url': 'https://fb.watch/xyz'}).json() == {'stream_url': 'https://fb.watch/xyz'}
+    assert viewer.put(f'/api/s/{slug}/stream', json={'stream_url': None}).status_code == 401
+    assert client.put(f'/api/s/{slug}/stream', json={'stream_url': '  '}).json() == {'stream_url': None}

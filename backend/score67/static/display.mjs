@@ -151,7 +151,7 @@ function render() {
   }
   const venue = state.location;
   el('venue').hidden = !venue;
-  el('venue-link').textContent = venue ? (venue.label || `${venue.lat.toFixed(5)}, ${venue.lng.toFixed(5)}`) : '';
+  el('venue-link').textContent = venue ? `${overlay ? '' : '📍 '}${venue.label || `${venue.lat.toFixed(5)}, ${venue.lng.toFixed(5)}`}` : '';
   if (venue) {
     el('venue-link').href = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${venue.lat},${venue.lng}`)}`;
     el('venue-link').title = words['location.open'];
@@ -218,6 +218,10 @@ function render() {
   el('phase').textContent = words[state.phase === 'break' && state.period_count === 2 ? 'halftime' : state.sport === 'basketball' && state.phase === 'pre_game' ? 'basketball.ready' : state.phase] || '';
   if (el('connection')) el('connection').textContent = words[online ? 'connected' : 'offline'];
   if (!overlay) {
+    el('menu-description').hidden = !state.description;
+    el('menu-description').textContent = state.description || '';
+    el('stream-link').hidden = !state.stream_url;
+    if (state.stream_url) el('stream-link').href = state.stream_url;
     document.body.classList.toggle('offline', !online);
     // Long scores (100+) get a smaller size so both always fit.
     el('scoreboard').dataset.digits = String(Math.max(String(state.home.score).length, String(state.away.score).length));

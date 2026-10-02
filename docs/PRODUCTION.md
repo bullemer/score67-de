@@ -85,3 +85,5 @@ Version 0.11 adds migration `0005_match_trash` (nullable `match.trashed_at`, `tr
 Version 0.13 adds migration `0006_board_privacy` (`scoreboard.private` default false, `overlay_key` backfilled for existing boards); the startup schema check requires `0006_board_privacy`. Private boards return 403 `private` on public state, close public sockets and are excluded from /api/live unless the request carries a valid controller cookie or `?k=<overlay_key>`. `period_length_min` now allows 1–120.
 
 Version 0.17 adds migration `0007_displays` (tables `display`, `display_admin`); the startup schema check requires `0007_displays`. Displays are managed by browsers holding a `score67d_<id>` cookie; devices authenticate with a bearer token obtained via `POST /api/display/pair` (30 attempts per IP and hour) and follow `/ws/display` or `GET /api/display/state`. Assigning a board requires control of that board.
+
+Version 0.22 adds migration `0008_board_stream` (nullable `scoreboard.stream_url`, https only); the startup schema check requires `0008_board_stream`. The scoreboard description is now public for public boards (state, /api/live) alongside `stream_url`.

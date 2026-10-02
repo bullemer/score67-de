@@ -79,3 +79,4 @@ body.spectator .big[data-digits="3"] .team strong{font-size:min(30vw,22vh)}
 body.spectator.extended .big .team strong{font-size:min(30vw,15vh)}
 body.spectator .big .time{font-size:min(11vw,7vh)}
 }
+.menu-description{margin:0;color:#d6dee8;font-size:15px;line-height:1.45;overflow-wrap:anywhere}.menu-stream{display:flex;align-items:center;justify-content:center;gap:8px;min-height:48px;border-radius:24px;background:#dc2626;color:#fff;font-weight:700;text-decoration:none}.menu-stream:hover{background:#ef4444}
