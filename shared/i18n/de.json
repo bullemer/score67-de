@@ -392,5 +392,9 @@
   "ble.clock": "Zeit auf der Anzeige",
   "ble.clock.minute": "Ganze Minuten (5') – empfohlen",
   "ble.clock.second": "Jede Sekunde (nur schnelle Anzeigen)",
-  "ble.clock.none": "Keine Zeit, nur Periode"
+  "ble.clock.none": "Keine Zeit, nur Periode",
+  "live.tab_live": "Live",
+  "live.tab_upcoming": "Demnächst",
+  "live.upcoming_description": "Spiele, die in den nächsten drei Tagen geplant sind. Öffne einen Liveticker, um das Spiel ab dem Anpfiff zu verfolgen.",
+  "live.upcoming_empty": "In den nächsten drei Tagen sind keine Spiele geplant."
 }

@@ -1,6 +1,7 @@
 import {preferredLanguage, saveLanguage, translations, clockText, periodLabel} from './common.mjs';
 const el = id => document.getElementById(id);
-let lang = preferredLanguage(), words = {}, games = [], loaded = false, online = true, busy = false;
+let lang = preferredLanguage(), words = {}, games = [], upcoming = [], loaded = false, online = true, busy = false;
+let tab = location.hash === '#upcoming' ? 'upcoming' : 'live';
 let serverAt = Date.now(), receivedAt = performance.now(), languageVersion = 0;
 function textNode(tag, value, className) {
   const node = document.createElement(tag);
@@ -8,9 +9,37 @@ function textNode(tag, value, className) {
   if (className) node.className = className;
   return node;
 }
+function upcomingCard(game) {
+  const card = document.createElement('a');
+  card.className = 'live-game upcoming';
+  card.href = `/s/${encodeURIComponent(game.scoreboard)}?${game.active ? '' : `match=${encodeURIComponent(game.match_id)}&`}lang=${lang}`;
+  const when = new Date(game.scheduled_at);
+  const day = new Intl.DateTimeFormat(lang, {weekday: 'short', day: '2-digit', month: '2-digit'}).format(when);
+  const time = new Intl.DateTimeFormat(lang, {hour: '2-digit', minute: '2-digit'}).format(when);
+  const meta = document.createElement('div'); meta.className = 'live-meta';
+  meta.append(textNode('span', `${words[game.sport || 'football']} · ${game.period_count} × ${game.period_length_min} min`), textNode('span', `${day} · ${time}`, 'live-clock'));
+  card.append(meta);
+  for (const side of ['home', 'away']) {
+    const row = document.createElement('div'); row.className = 'live-team'; row.style.borderColor = game[side].color;
+    row.append(textNode('span', game[side].name, 'live-name'));
+    card.append(row);
+  }
+  if (game.location) card.append(textNode('p', game.location.label || `${game.location.lat.toFixed(5)}, ${game.location.lng.toFixed(5)}`, 'live-venue'));
+  card.append(textNode('span', `${words['live.open']} →`, 'live-open'));
+  return card;
+}
 function render() {
   el('status').textContent = words[!loaded && online ? 'connecting' : online ? 'live.updating' : 'live.offline'];
-  el('empty').hidden = !loaded || games.length !== 0;
+  el('tab-live').textContent = `${words['live.tab_live'] || 'Live'} (${games.length})`;
+  el('tab-upcoming').textContent = `${words['live.tab_upcoming'] || 'Upcoming'} (${upcoming.length})`;
+  el('tab-live').setAttribute('aria-selected', tab === 'live');
+  el('tab-upcoming').setAttribute('aria-selected', tab === 'upcoming');
+  el('intro').textContent = words[tab === 'live' ? 'live.description' : 'live.upcoming_description'] || '';
+  el('games').hidden = tab !== 'live';
+  el('upcoming').hidden = tab !== 'upcoming';
+  el('empty').hidden = tab !== 'live' || !loaded || games.length !== 0;
+  el('empty-upcoming').hidden = tab !== 'upcoming' || !loaded || upcoming.length !== 0;
+  el('upcoming').replaceChildren(...upcoming.map(upcomingCard));
   const cards = games.map(game => {
     const card = document.createElement('a');
     card.className = 'live-game';
@@ -76,10 +105,17 @@ async function poll() {
     const response = await fetch('/api/live', {cache:'no-store', signal:AbortSignal.timeout(5000)});
     if (!response.ok) throw new Error('live');
     const data = await response.json();
-    games = data.games; serverAt = data.server_now + (performance.now() - start) / 2;
+    games = data.games; upcoming = data.upcoming || []; serverAt = data.server_now + (performance.now() - start) / 2;
     receivedAt = performance.now(); loaded = true; online = true;
   } catch { online = false; }
   finally { busy = false; render(); }
+}
+for (const name of ['live', 'upcoming']) {
+  el(`tab-${name}`).onclick = () => {
+    tab = name;
+    history.replaceState(null, '', name === 'upcoming' ? '#upcoming' : location.pathname + location.search);
+    render();
+  };
 }
 el('language').onclick = () => { const next = lang === 'de' ? 'en' : 'de'; saveLanguage(next); setLanguage(next); };
 await setLanguage(lang);

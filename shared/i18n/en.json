@@ -392,5 +392,9 @@
   "ble.clock": "Time on the panel",
   "ble.clock.minute": "Whole minutes (5') – recommended",
   "ble.clock.second": "Every second (fast panels only)",
-  "ble.clock.none": "No time, period only"
+  "ble.clock.none": "No time, period only",
+  "live.tab_live": "Live",
+  "live.tab_upcoming": "Upcoming",
+  "live.upcoming_description": "Games scheduled for the next three days. Open a ticker to follow the game when it starts.",
+  "live.upcoming_empty": "No games are scheduled for the next three days."
 }

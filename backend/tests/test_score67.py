@@ -1164,3 +1164,23 @@ def test_display_pairing_assignment_and_device_feed(system):
     assert renewed['code'] and renewed['code'] != display['code']
     assert client.delete(f"/api/displays/{display['id']}").json() == {'ok': True}
     assert device.get('/api/display/state', headers=headers).status_code == 401
+
+
+def test_live_lists_upcoming_games_in_the_next_days(system):
+    _, client = system
+    import time as clock
+    soon = round((clock.time() + 5 * 3600) * 1000)
+    later = round((clock.time() + 5 * 86400) * 1000)
+    a = client.post('/api/scoreboards', json={'sport': 'basketball', 'scheduled_at': soon}).json()['slug']
+    b = client.post('/api/scoreboards', json={'scheduled_at': later}).json()['slug']
+    hidden = client.post('/api/scoreboards', json={'scheduled_at': soon}).json()['slug']
+    client.put(f'/api/s/{hidden}/privacy', json={'private': True})
+    running = create(client)['slug']
+    command(client, running, 'period_start')
+    live = TestClient(client.app).get('/api/live').json()
+    assert [g['scoreboard'] for g in live['games']] == [running]
+    upcoming = live['upcoming']
+    assert [g['scoreboard'] for g in upcoming] == [a]                      # 5 days away and private are excluded
+    assert upcoming[0]['scheduled_at'] == soon and upcoming[0]['active'] and upcoming[0]['sport'] == 'basketball'
+    assert 'description' not in upcoming[0] and 'score' not in upcoming[0]['home']
+    assert b

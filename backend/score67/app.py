@@ -565,7 +565,26 @@ def create_app(db_url=None, secure_cookies=None):
                 s = state(db, b)
                 games.append({k: s[k] for k in ("sport", "overtime_length_min", "team_fouls_enabled", "scoreboard", "match_id", "home", "away", "clock",
                     "phase", "period", "period_count", "period_length_min", "server_now", "location")})
-            return {"games": games, "server_now": round(time.time() * 1000)}
+            # Planned games with a start time in the next days (public boards only).
+            now = time.time()
+            horizon = now + hours_env("LIVE_UPCOMING_HOURS", 72)
+            upcoming = []
+            planned = db.scalars(select(Match).join(Board, Board.slug == Match.slug).where(
+                Board.private.is_(False), Match.deleted_at.is_(None), Match.archived_at.is_(None),
+                Match.trashed_at.is_(None), Match.scheduled_at.is_not(None),
+                Match.scheduled_at >= now - 3600, Match.scheduled_at <= horizon,
+                Match.state["phase"].as_string() == "pre_game").order_by(Match.scheduled_at, Match.slug))
+            for m in planned:
+                b = db.get(Board, m.slug)
+                location = b.location if b.location and b.location.get("visible") else None
+                upcoming.append({
+                    "scoreboard": b.slug, "match_id": m.id, "active": b.active_match == m.id,
+                    "scheduled_at": round(m.scheduled_at * 1000), "sport": m.state["sport"],
+                    "period_count": m.state["period_count"], "period_length_min": m.state["period_length_min"],
+                    "home": {k: m.state["home"][k] for k in ("name", "color")},
+                    "away": {k: m.state["away"][k] for k in ("name", "color")},
+                    "location": {k: location[k] for k in ("lat", "lng", "label")} if location else None})
+            return {"games": games, "upcoming": upcoming, "server_now": round(now * 1000)}
 
     @app.post("/api/s/{slug}/matches", status_code=201)
     def create_match(slug: str, body: CreateMatch, request: Request):

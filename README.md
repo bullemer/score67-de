@@ -45,7 +45,7 @@ The development database is `backend/data/score67.db` when started from `backend
 - Shared German and English JSON translations.
 - Trash (Papierkorb): an hourly cleaner moves games that were started but not ended and had no activity for 24 h, planned games still not started 24 h after their start time, and unscheduled games untouched for 7 days to the trash. Finished games are never touched. Trashed games leave live views; restore them from the dashboard within 30 days, after which they are deleted. "Move to trash" on the dashboard does the same by hand. Thresholds: `TRASH_STALE_HOURS`, `TRASH_PLANNED_GRACE_HOURS`, `TRASH_UNSCHEDULED_DAYS`, `TRASH_RETENTION_DAYS`, `TRASH_INTERVAL_SECONDS` (0 disables).
 - Device dashboard at `/dashboard`: planned (with or without a date), running, completed and archived games; archive, restore and delete controls.
-- Public `/live` directory of active games, including breaks, with automatically updated scores, clocks and red cards. No sign-in required.
+- Public `/live` directory with two tabs: Live (running games, including breaks, with automatically updated scores, clocks and cards) and Upcoming (public games scheduled within the next 72 hours, `LIVE_UPCOMING_HOURS`, soonest first, with date, time, format and venue). Private, trashed and archived games are never listed. No sign-in required.
 - WhatsApp, Facebook, copy-link and native sharing for spectator links from the public view and controller.
 - Future games can be prepared without interrupting the live game. Opening their controls activates them; kickoff remains manual.
 - Visible back navigation and global language/default game-format settings, saved on this browser.
