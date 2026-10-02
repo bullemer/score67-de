@@ -146,7 +146,7 @@
   "live.open": "Liveticker öffnen",
   "share.spectator": "Zuschauerlink teilen",
   "share.copy": "Link kopieren",
-  "share.more": "Weitere …",
+  "share.more": "Teilen …",
   "close": "Schließen",
   "location.title": "Spielort",
   "location.optional": "Spielort (optional)",
@@ -396,5 +396,10 @@
   "live.tab_live": "Live",
   "live.tab_upcoming": "Demnächst",
   "live.upcoming_description": "Spiele, die in den nächsten drei Tagen geplant sind. Öffne einen Liveticker, um das Spiel ab dem Anpfiff zu verfolgen.",
-  "live.upcoming_empty": "In den nächsten drei Tagen sind keine Spiele geplant."
+  "live.upcoming_empty": "In den nächsten drei Tagen sind keine Spiele geplant.",
+  "share.whatsapp": "Per WhatsApp teilen",
+  "share.facebook": "Auf Facebook teilen",
+  "share.obs": "OBS-Overlay-Link kopieren",
+  "share.obs_copied": "OBS-Link kopiert",
+  "share.take_control": "Steuerung übernehmen"
 }

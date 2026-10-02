@@ -146,7 +146,7 @@
   "live.open": "Open live game",
   "share.spectator": "Share spectator link",
   "share.copy": "Copy link",
-  "share.more": "More …",
+  "share.more": "Share …",
   "close": "Close",
   "location.title": "Venue",
   "location.optional": "Venue (optional)",
@@ -396,5 +396,10 @@
   "live.tab_live": "Live",
   "live.tab_upcoming": "Upcoming",
   "live.upcoming_description": "Games scheduled for the next three days. Open a ticker to follow the game when it starts.",
-  "live.upcoming_empty": "No games are scheduled for the next three days."
+  "live.upcoming_empty": "No games are scheduled for the next three days.",
+  "share.whatsapp": "Share on WhatsApp",
+  "share.facebook": "Share on Facebook",
+  "share.obs": "Copy OBS overlay link",
+  "share.obs_copied": "OBS link copied",
+  "share.take_control": "Take over control"
 }

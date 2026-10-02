@@ -23,8 +23,15 @@
 {% if not overlay %}
 <section id="match-events" class="match-events" hidden><h2 data-i18n="log"></h2><ol id="event-list"></ol></section>
 <section class="share-panel" aria-labelledby="share-title"><h2 id="share-title" data-i18n="share.spectator"></h2>
-<div class="share-actions"><a id="share-whatsapp" target="_blank" rel="noopener noreferrer">WhatsApp</a><a id="share-facebook" target="_blank" rel="noopener noreferrer">Facebook</a><button id="share-copy" data-i18n="share.copy"></button><button id="share-native" data-i18n="share.more" hidden></button></div><p id="share-status" role="status"></p></section>
-<footer><a href="/live" data-i18n="live.title"></a><span id="connection"></span><a href="/s/{{ slug }}/control" data-i18n="control"></a></footer>
+<div class="share-actions">
+<a id="share-whatsapp" class="icon-button whatsapp" target="_blank" rel="noopener noreferrer" data-label="share.whatsapp"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#fff" d="M12 2a10 10 0 0 0-8.7 15l-1.3 5 5.1-1.3A10 10 0 1 0 12 2z"/><path fill="#25d366" d="M8.6 7.2c.3-.6.6-.6.9-.6h.6c.2 0 .5 0 .7.6l.9 2.2c.1.2.1.5-.1.7l-.6.8c-.2.2-.2.4 0 .7.5.9 1.2 1.7 2 2.3.6.4 1.1.7 1.5.9.3.1.5.1.7-.1l.8-1c.2-.3.5-.3.8-.2l2.1 1c.3.1.5.3.5.5 0 .6-.2 1.3-.7 1.7-.6.6-1.5.9-2.4.7-1.6-.4-3.2-1.3-4.6-2.7-1.4-1.4-2.4-3-2.8-4.6-.2-.9 0-1.9.5-2.6z"/></svg></a>
+<a id="share-facebook" class="icon-button facebook" target="_blank" rel="noopener noreferrer" data-label="share.facebook"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#fff" d="M14 8h3V4h-3c-2.8 0-4 1.8-4 4.5V11H7v4h3v9h4v-9h3l1-4h-4V8.8c0-.5.3-.8 1-.8z"/></svg></a>
+<button id="share-copy" class="icon-button" data-label="share.copy"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3.9 12c0-1.7 1.4-3.1 3.1-3.1h4V7H7c-2.8 0-5 2.2-5 5s2.2 5 5 5h4v-1.9H7c-1.7 0-3.1-1.4-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.7 0 3.1 1.4 3.1 3.1s-1.4 3.1-3.1 3.1h-4V17h4c2.8 0 5-2.2 5-5s-2.2-5-5-5z"/></svg></button>
+<button id="share-native" class="icon-button" data-label="share.more" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M18 16.1c-.8 0-1.4.3-2 .8l-7.1-4.2c.1-.2.1-.5.1-.7s0-.5-.1-.7L16 7.2c.5.5 1.2.8 2 .8 1.7 0 3-1.3 3-3s-1.3-3-3-3-3 1.3-3 3c0 .2 0 .5.1.7L8 9.8C7.5 9.3 6.8 9 6 9c-1.7 0-3 1.3-3 3s1.3 3 3 3c.8 0 1.5-.3 2-.8l7.1 4.2c-.1.2-.1.4-.1.6 0 1.6 1.3 2.9 2.9 2.9s2.9-1.3 2.9-2.9-1.3-2.9-2.9-2.9z"/></svg></button>
+<a id="share-obs" class="icon-button" href="/s/{{ slug }}/overlay" target="_blank" rel="noopener" data-label="share.obs"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M17 10.5V7c0-.6-.4-1-1-1H4c-.6 0-1 .4-1 1v10c0 .6.4 1 1 1h12c.6 0 1-.4 1-1v-3.5l4 4v-11l-4 4z"/></svg><small>OBS</small></a>
+<a id="take-control" class="icon-button control" href="/s/{{ slug }}/control" data-label="share.take_control"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12.7 10A6 6 0 1 0 12.7 14H17v4h4v-4h2v-4H12.7zM7 14a2 2 0 1 1 0-4 2 2 0 0 1 0 4z"/></svg><span data-i18n="share.take_control"></span></a>
+</div><p id="share-status" role="status"></p></section>
+<footer><a href="/live" data-i18n="live.title"></a><span id="connection"></span></footer>
 <div class="version-footer">{{ release_label }}</div>
 <script type="module" src="/static/share.mjs"></script>{% endif %}
 <script type="module" src="/static/display.mjs"></script>{% endif %}</body></html>
