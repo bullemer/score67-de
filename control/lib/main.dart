@@ -87,6 +87,8 @@ class _Score67State extends State<Score67> {
   StreamSubscription? subscription;
   final pinInput = TextEditingController();
   final deviceName = TextEditingController(text: 'Browser');
+  final draftDescription = TextEditingController();
+  DateTime? draftStart;
 
   String t(String key) =>
       (words[key] ?? words['error.generic'] ?? key).toString();
@@ -611,6 +613,10 @@ class _Score67State extends State<Score67> {
               ? draftMinutes
               : defaultMinutes,
           'location': draftLocation,
+          'description': draftDescription.text.trim().isEmpty
+              ? null
+              : draftDescription.text.trim(),
+          'scheduled_at': draftStart?.millisecondsSinceEpoch,
         },
       );
       slug = result['slug'];
@@ -1235,6 +1241,125 @@ class _Score67State extends State<Score67> {
     }
   }
 
+  String dateLabel(int milliseconds) {
+    final value = DateTime.fromMillisecondsSinceEpoch(milliseconds);
+    final l = MaterialLocalizations.of(navigator.currentContext!);
+    return '${l.formatMediumDate(value)} · ${l.formatTimeOfDay(TimeOfDay.fromDateTime(value), alwaysUse24HourFormat: true)}';
+  }
+
+  Future<DateTime?> chooseStart(DateTime? current) async {
+    final now = DateTime.now();
+    final initial = current ?? now.add(const Duration(hours: 1));
+    final date = await showDatePicker(
+      context: navigator.currentContext!,
+      initialDate: initial.isBefore(now) ? now : initial,
+      firstDate: DateTime(now.year, now.month, now.day),
+      lastDate: DateTime(now.year + 5, 12, 31),
+    );
+    if (date == null || !mounted) return null;
+    final time = await showTimePicker(
+      context: navigator.currentContext!,
+      initialTime: TimeOfDay.fromDateTime(initial),
+    );
+    if (time == null) return null;
+    final chosen = DateTime(
+      date.year,
+      date.month,
+      date.day,
+      time.hour,
+      time.minute,
+    );
+    if (!chosen.isAfter(DateTime.now())) {
+      notify(t('error.schedule_future'));
+      return null;
+    }
+    return chosen;
+  }
+
+  Future<void> editDescription() async {
+    final input = TextEditingController(text: state['description'] ?? '');
+    final value = await showDialog<String>(
+      context: navigator.currentContext!,
+      builder: (context) => AlertDialog(
+        title: Text(t('description.edit')),
+        content: SizedBox(
+          width: 420,
+          child: TextField(
+            controller: input,
+            autofocus: true,
+            maxLength: 300,
+            minLines: 2,
+            maxLines: 4,
+            decoration: InputDecoration(
+              hintText: t('description.hint'),
+              helperText: t('description.private'),
+              helperMaxLines: 2,
+              border: const OutlineInputBorder(),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(t('cancel')),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, input.text),
+            child: Text(t('save')),
+          ),
+        ],
+      ),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    input.dispose();
+    if (value == null) return;
+    try {
+      await api(
+        '/api/s/$slug/description',
+        method: 'PUT',
+        body: {'description': value.trim().isEmpty ? null : value.trim()},
+      );
+      await refresh();
+    } catch (_) {
+      notify(t('error.network'));
+    }
+  }
+
+  /// Private game facts for controllers: description, creation and start time.
+  Widget matchInfo() {
+    const muted = TextStyle(fontSize: 14, color: Color(0xffb5c2d4));
+    final description = (state['description'] ?? '') as String;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (description.isNotEmpty)
+                Text(description, style: const TextStyle(fontSize: 16)),
+              if (state['created_at'] != null)
+                Text(
+                  '${t('created')}: ${dateLabel(state['created_at'])}',
+                  style: muted,
+                ),
+              if (state['scheduled_at'] != null)
+                Text(
+                  '${t('scheduled')}: ${dateLabel(state['scheduled_at'])}',
+                  style: muted,
+                ),
+            ],
+          ),
+        ),
+        IconButton(
+          tooltip: t('description.edit'),
+          icon: const Icon(Icons.edit_note),
+          onPressed: admin && connected ? editDescription : null,
+        ),
+      ],
+    );
+  }
+
   Widget createView() => section(t('create'), [
     Wrap(
       spacing: 12,
@@ -1272,6 +1397,43 @@ class _Score67State extends State<Score67> {
     ],
     const SizedBox(height: 12),
     Text(t('create.note')),
+    const SizedBox(height: 16),
+    TextField(
+      controller: draftDescription,
+      maxLength: 300,
+      minLines: 1,
+      maxLines: 3,
+      decoration: InputDecoration(
+        labelText: t('description'),
+        hintText: t('description.hint'),
+        helperText: t('description.private'),
+        helperMaxLines: 2,
+        border: const OutlineInputBorder(),
+      ),
+    ),
+    const SizedBox(height: 12),
+    Text(
+      '${t('scheduled')}: ${draftStart == null ? t('game.unscheduled') : dateLabel(draftStart!.millisecondsSinceEpoch)}',
+    ),
+    Wrap(
+      spacing: 8,
+      children: [
+        action(
+          t('schedule.choose'),
+          busy
+              ? null
+              : () async {
+                  final chosen = await chooseStart(draftStart);
+                  if (chosen != null) setState(() => draftStart = chosen);
+                },
+        ),
+        if (draftStart != null)
+          action(
+            t('schedule.clear'),
+            busy ? null : () => setState(() => draftStart = null),
+          ),
+      ],
+    ),
     const SizedBox(height: 16),
     Text(t('location.optional')),
     if (draftLocation != null)
@@ -2375,6 +2537,7 @@ class _Score67State extends State<Score67> {
   Widget basketballAdvanced(String phase) => ExpansionTile(
     title: Text(t('advanced')),
     children: [
+      matchInfo(),
       Wrap(
         spacing: 8,
         children: [
@@ -2556,6 +2719,7 @@ class _Score67State extends State<Score67> {
             ),
           ],
         ),
+        matchInfo(),
         const SizedBox(height: 16),
         Center(
           child: Text(
@@ -2972,6 +3136,7 @@ class _Score67State extends State<Score67> {
     channel?.sink.close();
     pinInput.dispose();
     deviceName.dispose();
+    draftDescription.dispose();
     super.dispose();
   }
 }

@@ -30,6 +30,7 @@ The development database is `backend/data/score67.db` when started from `backend
 
 ## Included
 
+- Optional private description (up to 300 characters) and planned start time when creating a scoreboard; the controller and dashboard show the description, creation time and scheduled start. Edit the description in the controller.
 - Optional venue with browser/mobile geolocation, draggable map pin, coordinate/Google Maps link import, and a private-by-default visibility switch. Edit/remove it in the controller.
 - Independent football and basketball scoreboards; automatic timestamp labels, random public links and six-digit PINs.
 - Hashed device cookies, additional devices, revocation, PIN rotation and persistent rate limits.

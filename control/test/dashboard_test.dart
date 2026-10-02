@@ -148,7 +148,8 @@ void main() {
         order[0] < order[1] && order[1] < order[2] && order[2] < order[3],
         isTrue,
       );
-      expect(find.text('game.unscheduled'), findsOneWidget);
+      expect(find.text('scheduled: game.unscheduled'), findsOneWidget);
+      expect(find.textContaining('created: '), findsNWidgets(4));
       await tester.tap(find.text('dashboard.empty_boards (1)'));
       await tester.pumpAndSettle();
       expect(find.text('empty-board'), findsOneWidget);

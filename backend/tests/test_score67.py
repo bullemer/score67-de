@@ -904,3 +904,26 @@ def test_basketball_period_scores_follow_corrections_and_overtime(system):
     assert s['home']['period_scores'] == [1, 2, 0] and s['away']['period_scores'] == [0, 3, 2]
     assert state(client, slug)['away']['period_scores'] == [0, 3, 2]
     assert q2['away']['period_scores'] == [0, 3]
+
+
+def test_create_with_description_and_schedule_keeps_description_private(system):
+    _, client = system
+    future = 4102444800000
+    created = client.post('/api/scoreboards', json={'sport': 'basketball', 'description': '  U14 Liga · Spieltag 3  ',
+                                                     'scheduled_at': future})
+    assert created.status_code == 201, created.text
+    slug = created.json()['slug']
+    private = client.get(f'/api/s/{slug}/control-state').json()
+    assert private['description'] == 'U14 Liga · Spieltag 3'
+    assert private['scheduled_at'] == future and private['created_at'] <= private['server_now']
+    assert private['board_created_at'] == private['created_at']
+    public = state(client, slug)
+    assert 'description' not in public and 'board_created_at' not in public
+    assert 'Spieltag' not in client.get(f'/api/s/{slug}/state').text
+    board = client.get('/api/dashboard').json()['boards'][0]
+    assert board['description'] == 'U14 Liga · Spieltag 3' and board['matches'][0]['scheduled_at'] == future
+    assert client.put(f'/api/s/{slug}/description', json={'description': '   '}).json() == {'description': None}
+    assert client.put(f'/api/s/{slug}/description', json={'description': 'x' * 301}).status_code == 422
+    assert client.post('/api/scoreboards', json={'scheduled_at': 1000}).status_code == 422
+    other = TestClient(client.app)
+    assert other.put(f'/api/s/{slug}/description', json={'description': 'hijack'}).status_code in (401, 403)

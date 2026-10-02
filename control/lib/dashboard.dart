@@ -397,12 +397,18 @@ class _DashboardState extends State<Dashboard> {
             '${game['home']['name']}  ${game['home']['score']} : ${game['away']['score']}  ${game['away']['name']}',
             style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
           ),
+          if ((board['description'] ?? '').isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(board['description'], style: const TextStyle(fontSize: 15)),
+          ],
           const SizedBox(height: 8),
           Text(
-            status == 'planned' && game['scheduled_at'] == null
-                ? t('game.unscheduled')
-                : dateLabel(game['scheduled_at'] ?? game['created_at']),
+            '${t('scheduled')}: ${game['scheduled_at'] == null ? t('game.unscheduled') : dateLabel(game['scheduled_at'])}',
             style: const TextStyle(fontSize: 14, color: Color(0xffb5c2d4)),
+          ),
+          Text(
+            '${t('created')}: ${dateLabel(game['created_at'])}',
+            style: const TextStyle(fontSize: 13, color: Color(0xff8d9bb0)),
           ),
           const SizedBox(height: 12),
           Wrap(
@@ -606,7 +612,13 @@ class _DashboardState extends State<Dashboard> {
                 if ((board['matches'] as List).isEmpty)
                   ListTile(
                     title: Text(board['slug']),
-                    subtitle: Text(dateLabel(board['created_at'])),
+                    subtitle: Text(
+                      [
+                        if ((board['description'] ?? '').isNotEmpty)
+                          board['description'],
+                        '${t('created')}: ${dateLabel(board['created_at'])}',
+                      ].join('\n'),
+                    ),
                     trailing: OutlinedButton(
                       onPressed: enabled ? () => newGame(board) : null,
                       child: Text(t('game.new')),

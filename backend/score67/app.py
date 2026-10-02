@@ -52,9 +52,19 @@ class LocationUpdate(StrictModel):
     location: Location | None = None
 
 
+class DescriptionUpdate(StrictModel):
+    description: str | None = Field(default=None, max_length=300)
+
+
+def clean_description(value):
+    return (value or "").strip() or None
+
+
 class CreateBoard(StrictModel):
     sport: Literal["football", "basketball"] = "football"
     language: Literal["de", "en"] = "de"
+    description: str | None = Field(default=None, max_length=300)
+    scheduled_at: int | None = Field(default=None, ge=0)
     period_count: int | None = Field(default=None, ge=1, le=12)
     period_length_min: int | None = Field(default=None, ge=1, le=60)
     location: Location | None = None
@@ -231,6 +241,7 @@ def create_app(db_url=None, secure_cookies=None):
         s["events"] = [{**e.payload, "id": e.id, "cancelled": e.cancelled,
             "corrected": e.payload["type"] in COUNTED_EVENTS and not e.cancelled and e.id not in available_ids} for e in events]
         if private:
+            s.update(description=b.description, board_created_at=round(b.created_at * 1000))
             for team in ("home", "away"):
                 if s["sport"] == "basketball":
                     s[team]["statistics"] = player_statistics(s[team], [
@@ -285,6 +296,8 @@ def create_app(db_url=None, secure_cookies=None):
                 db.add(limit)
             if limit.reset_at <= now:
                 limit.count, limit.reset_at = 0, now + 3600
+            if body.scheduled_at is not None and body.scheduled_at <= now * 1000:
+                raise HTTPException(422, "schedule_future")
             limit.count += 1
             slug = "".join(secrets.choice("abcdefghijklmnopqrstuvwxyz0123456789") for _ in range(10))
             while db.get(Board, slug):
@@ -292,10 +305,12 @@ def create_app(db_url=None, secure_cookies=None):
             pin, match_id = f"{secrets.randbelow(1000000):06d}", str(uuid4())
             label = datetime.fromtimestamp(now, timezone.utc).isoformat(sep=" ", timespec="milliseconds").replace("+00:00", " UTC")
             b = Board(slug=slug, name=label, language=body.language, pin_hash=hash_pin(pin),
-                      active_match=match_id, created_at=now, location=body.location.model_dump() if body.location else None)
+                      active_match=match_id, created_at=now, location=body.location.model_dump() if body.location else None,
+                      description=clean_description(body.description))
             db.add(b)
             db.flush()
-            db.add(Match(id=match_id, slug=slug, state=initial_state(body.period_count, body.period_length_min, body.sport)))
+            db.add(Match(id=match_id, slug=slug, state=initial_state(body.period_count, body.period_length_min, body.sport),
+                         created_at=now, scheduled_at=body.scheduled_at / 1000 if body.scheduled_at else None))
             grant(db, slug, response, "Browser")
             db.commit()
             return {"slug": slug, "pin": pin, "links": {"public": f"/s/{slug}",
@@ -317,6 +332,17 @@ def create_app(db_url=None, secure_cookies=None):
                 db.get(Match, b.active_match).revision += 1
             db.commit()
             return {"location": b.location}
+
+    @app.put("/api/s/{slug}/description")
+    def update_description(slug: str, body: DescriptionUpdate, request: Request):
+        with lock, app.state.sessions() as db:
+            authorize(db, slug, request)
+            b = board(db, slug)
+            b.description = clean_description(body.description)
+            if b.active_match:
+                db.get(Match, b.active_match).revision += 1
+            db.commit()
+            return {"description": b.description}
 
     @app.post("/api/s/{slug}/admin/claim")
     def claim(slug: str, body: Claim, response: Response):
@@ -400,7 +426,7 @@ def create_app(db_url=None, secure_cookies=None):
                     s = state(db, b, m.id)
                     games.append({k: s[k] for k in ("sport", "team_fouls_enabled", "match_id", "revision", "phase", "home", "away", "period_count",
                         "period_length_min", "created_at", "scheduled_at", "archived", "active")})
-                boards.append({"slug": b.slug, "name": b.name, "active_match": b.active_match,
+                boards.append({"slug": b.slug, "name": b.name, "active_match": b.active_match, "description": b.description,
                                "created_at": round(b.created_at * 1000), "matches": games})
                 response.set_cookie(cookie, token, httponly=True, secure=secure,
                                     samesite="lax", max_age=180 * 86400, path="/")

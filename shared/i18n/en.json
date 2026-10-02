@@ -267,5 +267,13 @@
   "stats.timeouts": "TO",
   "stats.team_row": "Team",
   "stats.total_short": "Total",
-  "landscape.enter": "Full screen landscape"
+  "landscape.enter": "Full screen landscape",
+  "description": "Description (optional)",
+  "description.hint": "e.g. U14 league · matchday 3 · home court",
+  "description.edit": "Edit description",
+  "description.private": "Only visible to you and other controllers, never to spectators.",
+  "created": "Created",
+  "scheduled": "Scheduled start",
+  "schedule.choose": "Set start time",
+  "schedule.clear": "Remove start time"
 }

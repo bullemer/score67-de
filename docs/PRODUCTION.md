@@ -73,3 +73,5 @@ Version 0.6 adds private personal fouls, numbered basketball squads, player scor
 Version 0.7 adds private live per-player PTS/REB/AST/STL/BLK/TO/PF tables and event recording/correction for rebounds, assists, steals, blocks and turnovers. Statistics are derived from existing match events. No schema migration is required.
 
 Version 0.8 adds the quick-scoring basketball controller (both teams side by side in landscape, team-foul penalty and fouled-out markers, quarter scores in `period_scores`) and a client tap queue: tallies are shown immediately, sent in order and kept across offline periods and reloads with their original command IDs. Basketball points may now be scored while the clock runs; the 0.6 stopped-clock rule is removed. No schema migration is required.
+
+Migration `0004_board_description` adds a nullable private scoreboard description (max 300 characters); the startup schema check now requires `0004_board_description`. Creation also accepts an optional future `scheduled_at` for the first game. The description is returned only in control state and the dashboard, never in public state.

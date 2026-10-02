@@ -21,6 +21,7 @@ class Board(Base):
     active_match: Mapped[str | None] = mapped_column(String(36), nullable=True)
     created_at: Mapped[float] = mapped_column(Float)
     location: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    description: Mapped[str | None] = mapped_column(String(300), nullable=True)
 
 
 class Admin(Base):
@@ -83,6 +84,6 @@ def database(url: str | None = None):
     else:
         with engine.connect() as connection:
             version = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            if version != "0003_board_location":
+            if version != "0004_board_description":
                 raise RuntimeError("Database schema does not match this release; run migrations first")
     return engine, sessionmaker(engine, expire_on_commit=False)
