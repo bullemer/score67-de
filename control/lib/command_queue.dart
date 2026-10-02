@@ -16,6 +16,9 @@ const tallyActions = {
   'steal',
   'block',
   'turnover',
+  'foul',
+  'free_kick',
+  'penalty',
 };
 
 bool queueable(String action) =>
@@ -90,6 +93,10 @@ Map<String, dynamic> optimisticState(
       _addStat(side, playerId, 'pts', sign * points);
     } else if (kind == 'red_card' || kind == 'yellow_card') {
       counters['${kind}s'] = ((counters['${kind}s'] ?? 0) as num) + sign;
+    } else if (kind == 'free_kick' || kind == 'penalty') {
+      // Logged only; nothing to count on screen.
+    } else if (kind == 'foul') {
+      counters['fouls'] = ((counters['fouls'] ?? 0) as num) + sign;
     } else if (kind == 'team_foul' || kind == 'timeout') {
       final key = kind == 'team_foul' ? 'team_fouls' : 'timeouts';
       counters[key] = ((counters[key] ?? 0) as num) + sign;

@@ -22,7 +22,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
 from .db import Admin, Board, Match, MatchEvent, RateLimit, Receipt, database
-from .domain import FOOTBALL, BASKETBALL, RuleError, apply, initial_state, normalize_clock, foul_mode, BASKETBALL_STATS, player_statistics, SHORT_MAX
+from .domain import FOOTBALL, BASKETBALL, RuleError, apply, initial_state, normalize_clock, foul_mode, BASKETBALL_STATS, player_statistics, SHORT_MAX, FOOTBALL_EVENTS
 
 ROOT = Path(__file__).resolve().parents[2]
 RELEASE = json.loads((ROOT / "shared/release.json").read_text())
@@ -92,8 +92,8 @@ class Command(StrictModel):
     data: dict = Field(default_factory=dict)
 
 
-COUNTED_EVENTS = ("score", "red_card", "yellow_card", "team_foul", "timeout", "personal_foul", "technical_foul") + BASKETBALL_STATS
-PRIVATE_EVENTS = ("personal_foul", "technical_foul", "assign_foul_player", "lineup")
+COUNTED_EVENTS = ("score", "red_card", "yellow_card", "team_foul", "timeout", "personal_foul", "technical_foul") + BASKETBALL_STATS + FOOTBALL_EVENTS
+PRIVATE_EVENTS = ("personal_foul", "technical_foul", "assign_foul_player", "lineup") + FOOTBALL_EVENTS
 CORRECTION_EVENTS = tuple(f"{kind}_correction" for kind in COUNTED_EVENTS)
 
 
@@ -231,7 +231,8 @@ def create_app(db_url=None, secure_cookies=None):
             s[team]["counters"].update(
                 team_fouls=sum(1 for e in available if (e.payload["type"] == "team_foul" or (e.payload["type"] in ("personal_foul", "technical_foul") and e.payload.get("counts_team"))) and e.payload.get("team") == team
                                and min(e.payload["period"], s["period_count"]) == min(s["period"], s["period_count"])),
-                timeouts=sum(1 for e in available if e.payload["type"] == "timeout" and e.payload.get("team") == team))
+                timeouts=sum(1 for e in available if e.payload["type"] == "timeout" and e.payload.get("team") == team),
+                fouls=sum(1 for e in available if e.payload["type"] == "foul" and e.payload.get("team") == team))
             # Points by the period they were scored in; corrections remove their target basket.
             periods = [0] * max(s["period"], s["period_count"], 1)
             for e in available:
@@ -574,7 +575,7 @@ def create_app(db_url=None, secure_cookies=None):
                             raise HTTPException(422, "event_unavailable" if target_id is not None else {"score": "score_zero", "red_card": "red_cards_zero", "yellow_card": "yellow_cards_zero"}.get(kind, "event_unavailable"))
                     else:
                         target = next((e for e in available if e.id == body.data.get("event_id") and e.payload.get("team") == body.data.get("team")
-                                       and (e.payload["type"] == "personal_foul" if body.action == "assign_foul_player" else e.payload["type"] in ("score", "red_card", "yellow_card"))), None)
+                                       and (e.payload["type"] == "personal_foul" if body.action == "assign_foul_player" else e.payload["type"] in ("score", "red_card", "yellow_card") + FOOTBALL_EVENTS)), None)
                         if not target:
                             raise HTTPException(422, "event_unavailable")
                 if body.action == "overtime_start":

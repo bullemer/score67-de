@@ -77,3 +77,5 @@ Version 0.8 adds the quick-scoring basketball controller (both teams side by sid
 Migration `0004_board_description` adds a nullable private scoreboard description (max 300 characters); the startup schema check now requires `0004_board_description`. Creation also accepts an optional future `scheduled_at` for the first game. The description is returned only in control state and the dashboard, never in public state.
 
 Version 0.9 replaces the basketball matrix with the landscape console. New match actions (JSON only, no migration): `technical_foul`(+correction), `possession`, `lineup` (≤5 squad players in `on_court`, private). Short team names are limited to 3 characters; older longer values are trimmed when projected. Undo now also clears fields an action newly introduced.
+
+Version 0.10 moves football to the landscape console. New football actions (JSON only, no migration): `foul`, `free_kick`, `penalty` (+corrections, private), `score` with `detail: penalty`, and lineups of up to 11. Creation skips the PIN page; the PIN is kept in the creating browser's localStorage (`score67-pin:<slug>`) and shown in the Sharing tab.

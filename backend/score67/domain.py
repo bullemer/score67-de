@@ -13,6 +13,8 @@ BASKETBALL = json.loads((Path(__file__).parent / "profiles/basketball.json").rea
 
 
 BASKETBALL_STATS = ("rebound", "assist", "steal", "block", "turnover")
+FOOTBALL_EVENTS = ("foul", "free_kick", "penalty")
+LINEUP_MAX = {"basketball": 5, "football": 11}
 STAT_COLUMNS = {"score": "pts", "rebound": "reb", "assist": "ast",
                 "steal": "stl", "block": "blk", "turnover": "to", "personal_foul": "pf", "technical_foul": "pf"}
 SHORT_MAX = 3
@@ -165,8 +167,18 @@ def apply(state, action, data, now_ms):
         if data.get("team") not in ("home", "away") or points not in values or isinstance(points, bool):
             raise RuleError("invalid_score")
         event.update(team=data["team"], points=int(points))
+        if data.get("detail") is not None:
+            if basketball or action != "score" or data["detail"] != "penalty":
+                raise RuleError("invalid_value")
+            event["detail"] = "penalty"
     elif action.removesuffix("_correction") in BASKETBALL_STATS:
         if not basketball or data.get("team") not in ("home", "away"):
+            raise RuleError("invalid_value")
+        event.update(team=data["team"])
+        if not action.endswith("_correction"):
+            event["player"] = player_snapshot(s, data["team"], data.get("player_id"))
+    elif action.removesuffix("_correction") in FOOTBALL_EVENTS:
+        if basketball or data.get("team") not in ("home", "away"):
             raise RuleError("invalid_value")
         event.update(team=data["team"])
         if not action.endswith("_correction"):
@@ -199,7 +211,7 @@ def apply(state, action, data, now_ms):
         event.update(team=data.get("team"))
     elif action == "lineup":
         team, ids = data.get("team"), data.get("player_ids")
-        if not basketball or team not in ("home", "away") or not isinstance(ids, list) or len(ids) > 5 or len(set(map(str, ids))) != len(ids):
+        if team not in ("home", "away") or not isinstance(ids, list) or len(ids) > LINEUP_MAX[s["sport"]] or len(set(map(str, ids))) != len(ids):
             raise RuleError("invalid_value")
         squad = {p["id"]: p for p in s[team].get("squad", [])}
         if any(i not in squad for i in ids):

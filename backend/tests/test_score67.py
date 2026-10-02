@@ -962,3 +962,31 @@ def test_basketball_technicals_possession_and_lineup(system):
     # Removing a player from the squad also takes them off court.
     s = command(client, slug, 'squad', {'team': 'home', 'players': [{'id': i, 'number': str(n + 4), 'name': ''} for n, i in enumerate(ids) if i != ids[2]]}).json()
     assert ids[2] not in s['home']['on_court']
+
+
+def test_football_console_events_lineup_and_penalty_goal(system):
+    _, client = system
+    slug = create(client)['slug']
+    ids = [str(uuid4()) for _ in range(13)]
+    squad = [{'id': i, 'number': str(n + 1) if n else '', 'name': 'Keeper' if not n else ''} for n, i in enumerate(ids)]
+    command(client, slug, 'squad', {'team': 'home', 'players': squad})
+    s = command(client, slug, 'lineup', {'team': 'home', 'player_ids': ids[:11]}).json()
+    assert s['home']['on_court'] == ids[:11]
+    assert command(client, slug, 'lineup', {'team': 'home', 'player_ids': ids[:12]}).status_code == 422
+    command(client, slug, 'period_start')
+    s = command(client, slug, 'foul', {'team': 'away'}).json()
+    s = command(client, slug, 'foul', {'team': 'home', 'player_id': ids[3]}).json()
+    assert s['home']['counters']['fouls'] == 1 and s['away']['counters']['fouls'] == 1
+    command(client, slug, 'free_kick', {'team': 'home'})
+    command(client, slug, 'penalty', {'team': 'home', 'player_id': ids[9]})
+    s = command(client, slug, 'score', {'team': 'home', 'points': 1, 'player_id': ids[9], 'detail': 'penalty'}).json()
+    assert s['home']['score'] == 1 and s['events'][-1]['detail'] == 'penalty'
+    assert command(client, slug, 'score', {'team': 'home', 'points': 1, 'detail': 'bicycle'}).status_code == 422
+    s = command(client, slug, 'foul_correction', {'team': 'home', 'event_id': s['events'][-4]['id']}).json()
+    assert s['home']['counters']['fouls'] == 0
+    assert command(client, slug, 'rebound', {'team': 'home'}).status_code == 422
+    public = state(client, slug)
+    assert not any(e['type'] in ('foul', 'free_kick', 'penalty', 'lineup') for e in public['events'])
+    assert public['events'][-1]['detail'] == 'penalty'
+    b = client.post('/api/scoreboards', json={'sport': 'basketball'}).json()['slug']
+    assert command(client, b, 'foul', {'team': 'home'}).status_code == 422

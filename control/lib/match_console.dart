@@ -12,7 +12,7 @@ class ConsoleAction {
 /// InGame-style landscape console: header with scores, fouls, timeouts,
 /// possession and clock; team columns left; middle panel; actions right.
 /// Pick an action first, then a player or the team tile.
-class BasketballConsole extends StatefulWidget {
+class MatchConsole extends StatefulWidget {
   final Map<String, dynamic> state;
   final String Function(String) t;
   final String clock, period;
@@ -26,7 +26,7 @@ class BasketballConsole extends StatefulWidget {
   final void Function(String action, String team, String? playerId) onAction;
   final void Function(String team) onPossession;
   final List<(String, Widget)> tabs;
-  const BasketballConsole({
+  const MatchConsole({
     super.key,
     required this.state,
     required this.t,
@@ -49,7 +49,7 @@ class BasketballConsole extends StatefulWidget {
   });
 
   @override
-  State<BasketballConsole> createState() => BasketballConsoleState();
+  State<MatchConsole> createState() => MatchConsoleState();
 }
 
 const consoleBackground = Color(0xff0b1018);
@@ -92,7 +92,7 @@ Color hexColor(String value) =>
   );
 }
 
-class BasketballConsoleState extends State<BasketballConsole> {
+class MatchConsoleState extends State<MatchConsole> {
   String? pending;
   int tab = 0;
   bool hint = false;
@@ -104,22 +104,50 @@ class BasketballConsoleState extends State<BasketballConsole> {
     super.dispose();
   }
 
+  /// Penalty awarded and waiting for its outcome: (team, player).
+  (String, String?)? penalty;
+
   String t(String key) => widget.t(key);
   Map<String, dynamic> get s => widget.state;
+  bool get football => s['sport'] != 'basketball';
 
-  List<ConsoleAction> get actions => [
-    ConsoleAction('ft', t('console.ft'), const Color(0xff22c55e)),
-    ConsoleAction('2pt', t('console.2pt'), const Color(0xff2563eb)),
-    ConsoleAction('3pt', t('console.3pt'), const Color(0xfff97316)),
-    ConsoleAction('foul', t('console.foul'), const Color(0xffdc2626)),
-    ConsoleAction('tech', t('console.tech'), const Color(0xffdc2626)),
-    ConsoleAction('timeout', t('console.timeout'), const Color(0xff94a3b8)),
-    ConsoleAction('subs', t('console.subs'), const Color(0xff94a3b8)),
-  ];
+  List<ConsoleAction> get actions => football
+      ? [
+          ConsoleAction('goal', t('console.goal'), const Color(0xff22c55e)),
+          ConsoleAction('yellow', t('console.yellow'), const Color(0xfffacc15)),
+          ConsoleAction('red', t('console.red'), const Color(0xffef4444)),
+          ConsoleAction(
+            'penalty',
+            t('console.penalty'),
+            const Color(0xfff97316),
+          ),
+          ConsoleAction('foul', t('console.foul'), const Color(0xffdc2626)),
+          ConsoleAction(
+            'free_kick',
+            t('console.free_kick'),
+            const Color(0xff2563eb),
+          ),
+          ConsoleAction('subs', t('console.subs'), const Color(0xff94a3b8)),
+        ]
+      : [
+          ConsoleAction('ft', t('console.ft'), const Color(0xff22c55e)),
+          ConsoleAction('2pt', t('console.2pt'), const Color(0xff2563eb)),
+          ConsoleAction('3pt', t('console.3pt'), const Color(0xfff97316)),
+          ConsoleAction('foul', t('console.foul'), const Color(0xffdc2626)),
+          ConsoleAction('tech', t('console.tech'), const Color(0xffdc2626)),
+          ConsoleAction(
+            'timeout',
+            t('console.timeout'),
+            const Color(0xff94a3b8),
+          ),
+          ConsoleAction('subs', t('console.subs'), const Color(0xff94a3b8)),
+        ];
 
   bool enabled(String id) {
     if (id == 'subs') return widget.canWrite;
-    if (id == 'foul') return widget.canTap && s['foul_mode'] != 'off';
+    if (id == 'foul' && !football) {
+      return widget.canTap && s['foul_mode'] != 'off';
+    }
     return widget.canTap;
   }
 
@@ -140,6 +168,7 @@ class BasketballConsoleState extends State<BasketballConsole> {
       widget.onSubstitutions(team);
     } else {
       widget.onAction(action, team, playerId);
+      if (action == 'penalty') setState(() => penalty = (team, playerId));
     }
   }
 
@@ -176,8 +205,11 @@ class BasketballConsoleState extends State<BasketballConsole> {
   );
 
   Widget teamFouls(String team) {
-    final fouls = (s[team]['counters']?['team_fouls'] ?? 0) as int;
-    final tint = fouls >= 5
+    final fouls =
+        (s[team]['counters']?[football ? 'fouls' : 'team_fouls'] ?? 0) as int;
+    final tint = football
+        ? Colors.white70
+        : fouls >= 5
         ? fouledOut
         : fouls == 4
         ? foulTrouble
@@ -245,6 +277,59 @@ class BasketballConsoleState extends State<BasketballConsole> {
     );
   }
 
+  Widget cards(String team) {
+    Widget card(Color color, int count) => Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 3),
+      child: Row(
+        children: [
+          Container(
+            width: 13,
+            height: 18,
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(width: 3),
+          Text(
+            '$count',
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+          ),
+        ],
+      ),
+    );
+    final counters = s[team]['counters'] ?? {};
+    return Row(
+      children: [
+        card(const Color(0xfffacc15), (counters['yellow_cards'] ?? 0) as int),
+        card(const Color(0xffef4444), (counters['red_cards'] ?? 0) as int),
+      ],
+    );
+  }
+
+  /// Goals and cards per player from active events (football tiles).
+  Map<String, Map<String, int>> footballStats(String team) {
+    final result = <String, Map<String, int>>{};
+    for (final e in s['events'] as List? ?? []) {
+      if (e['team'] != team ||
+          e['cancelled'] == true ||
+          e['corrected'] == true ||
+          e['player'] == null) {
+        continue;
+      }
+      final key = switch (e['type']) {
+        'score' => 'goals',
+        'yellow_card' => 'yellow',
+        'red_card' => 'red',
+        _ => null,
+      };
+      if (key == null) continue;
+      final row = result.putIfAbsent(e['player']['id'], () => {});
+      row[key] = (row[key] ?? 0) + 1;
+    }
+    return result;
+  }
+
   Widget header() {
     Color color(String team) => hexColor(s[team]['color']);
     Widget score(String team) => headerBox(
@@ -266,11 +351,27 @@ class BasketballConsoleState extends State<BasketballConsole> {
               icon: const Icon(Icons.menu, size: 30),
               onPressed: widget.onMenu,
             ),
-            possession('home'),
-            const SizedBox(width: 6),
-            teamFouls('home'),
-            const SizedBox(width: 10),
-            timeouts('home'),
+            if (football) ...[
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                child: Text(
+                  s['home']['short'],
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              cards('home'),
+              const SizedBox(width: 10),
+              teamFouls('home'),
+            ] else ...[
+              possession('home'),
+              const SizedBox(width: 6),
+              teamFouls('home'),
+              const SizedBox(width: 10),
+              timeouts('home'),
+            ],
             const SizedBox(width: 6),
             score('home'),
             const SizedBox(width: 6),
@@ -303,11 +404,27 @@ class BasketballConsoleState extends State<BasketballConsole> {
             ),
             score('away'),
             const SizedBox(width: 6),
-            timeouts('away'),
-            const SizedBox(width: 10),
-            teamFouls('away'),
-            const SizedBox(width: 6),
-            possession('away'),
+            if (football) ...[
+              teamFouls('away'),
+              const SizedBox(width: 10),
+              cards('away'),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                child: Text(
+                  s['away']['short'],
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ] else ...[
+              timeouts('away'),
+              const SizedBox(width: 10),
+              teamFouls('away'),
+              const SizedBox(width: 6),
+              possession('away'),
+            ],
             widget.sync,
             const SizedBox(width: 4),
             SizedBox(
@@ -366,11 +483,22 @@ class BasketballConsoleState extends State<BasketballConsole> {
     return {};
   }
 
-  Widget tile(String team, String? playerId, String label, {int fouls = 0}) {
+  Widget tile(
+    String team,
+    String? playerId,
+    String label, {
+    int fouls = 0,
+    Map<String, int> football = const {},
+  }) {
     final color = hexColor(s[team]['color']);
     final foreground = readableOn(color);
     final armed = pending != null;
-    final points = playerId == null ? null : stats(team, playerId)['pts'];
+    final points = playerId == null
+        ? null
+        : this.football
+        ? football['goals']
+        : stats(team, playerId)['pts'];
+    final yellow = football['yellow'] ?? 0, red = football['red'] ?? 0;
     return Padding(
       padding: const EdgeInsets.all(3),
       child: Material(
@@ -389,7 +517,30 @@ class BasketballConsoleState extends State<BasketballConsole> {
             ),
             child: Row(
               children: [
-                if (playerId != null)
+                if (playerId != null && this.football)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 5),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        for (var i = 0; i < yellow; i++)
+                          Container(
+                            width: 8,
+                            height: 11,
+                            margin: const EdgeInsets.symmetric(vertical: 1),
+                            color: const Color(0xfffacc15),
+                          ),
+                        if (red > 0)
+                          Container(
+                            width: 8,
+                            height: 11,
+                            margin: const EdgeInsets.symmetric(vertical: 1),
+                            color: const Color(0xffef4444),
+                          ),
+                      ],
+                    ),
+                  ),
+                if (playerId != null && !this.football)
                   Padding(
                     padding: const EdgeInsets.only(left: 5),
                     child: Column(
@@ -421,7 +572,7 @@ class BasketballConsoleState extends State<BasketballConsole> {
                           fontSize: 28,
                           fontWeight: FontWeight.w900,
                           color: foreground,
-                          decoration: fouls >= 5
+                          decoration: fouls >= 5 || red > 0
                               ? TextDecoration.lineThrough
                               : null,
                         ),
@@ -451,6 +602,7 @@ class BasketballConsoleState extends State<BasketballConsole> {
 
   Widget teamColumn(String team) {
     final list = players(team);
+    final perPlayer = football ? footballStats(team) : const {};
     final tiles = [
       tile(team, null, s[team]['short']),
       for (final p in list)
@@ -459,6 +611,7 @@ class BasketballConsoleState extends State<BasketballConsole> {
           p['id'],
           (p['number'] ?? '').isNotEmpty ? p['number'] : p['name'],
           fouls: (stats(team, p['id'])['pf'] ?? 0) as int,
+          football: perPlayer[p['id']] ?? const {},
         ),
     ];
     return SizedBox(
@@ -466,7 +619,10 @@ class BasketballConsoleState extends State<BasketballConsole> {
       child: LayoutBuilder(
         builder: (context, constraints) {
           // Up to six tiles share the height; longer squads scroll.
-          final height = (constraints.maxHeight / 6).clamp(48.0, 120.0);
+          // Football: eleven on the pitch, so tiles keep a fixed height and scroll.
+          final height = football
+              ? 52.0
+              : (constraints.maxHeight / 6).clamp(48.0, 120.0);
           return ListView(
             padding: EdgeInsets.zero,
             children: [
@@ -529,6 +685,40 @@ class BasketballConsoleState extends State<BasketballConsole> {
         children: [for (final c in children) Expanded(child: c)],
       ),
     );
+    final undo = Padding(
+      padding: const EdgeInsets.all(3),
+      child: Material(
+        color: const Color(0xff1f2937),
+        borderRadius: BorderRadius.circular(6),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(6),
+          onTap: widget.onUndo,
+          child: Tooltip(
+            message: t('undo'),
+            child: Icon(
+              Icons.undo,
+              size: 30,
+              color: widget.onUndo == null ? Colors.white30 : null,
+            ),
+          ),
+        ),
+      ),
+    );
+    if (football) {
+      return SizedBox(
+        width: 176,
+        child: Column(
+          children: [
+            row([actionButton(a['goal']!)]),
+            row([actionButton(a['yellow']!), actionButton(a['red']!)]),
+            row([actionButton(a['penalty']!)]),
+            row([actionButton(a['foul']!), actionButton(a['free_kick']!)]),
+            row([undo]),
+            row([actionButton(a['subs']!)]),
+          ],
+        ),
+      );
+    }
     return SizedBox(
       width: 176,
       child: Column(
@@ -609,6 +799,46 @@ class BasketballConsoleState extends State<BasketballConsole> {
               ],
             ),
           ),
+          if (penalty != null)
+            Container(
+              color: const Color(0xff3a2a16),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '${t('console.penalty_outcome')} · ${s[penalty!.$1]['short']}',
+                      style: const TextStyle(
+                        color: Colors.orange,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  FilledButton(
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size(72, 40),
+                      backgroundColor: const Color(0xff22c55e),
+                    ),
+                    onPressed: widget.canTap
+                        ? () {
+                            final (team, player) = penalty!;
+                            setState(() => penalty = null);
+                            widget.onAction('penalty_goal', team, player);
+                          }
+                        : null,
+                    child: Text(t('console.goal')),
+                  ),
+                  const SizedBox(width: 6),
+                  OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size(72, 40),
+                    ),
+                    onPressed: () => setState(() => penalty = null),
+                    child: Text(t('console.penalty_missed')),
+                  ),
+                ],
+              ),
+            ),
           if (pendingLabel == null && hint)
             Container(
               color: const Color(0xff3a3216),
