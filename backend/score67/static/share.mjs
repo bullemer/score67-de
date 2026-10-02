@@ -52,3 +52,17 @@ el('share-obs').onclick = async event => {
     el('share-status').textContent = `${words['share.obs_copied']}: ${overlayUrl()}`;
   } catch { el('share-status').textContent = overlayUrl(); }
 };
+
+// Pop-up menu: everything except the score lives here.
+const menu = el('menu');
+function setMenu(open) {
+  menu.hidden = !open;
+  el('menu-button').setAttribute('aria-expanded', String(open));
+  if (open) el('menu-close').focus(); else el('menu-button').focus({preventScroll: true});
+}
+el('menu-button').onclick = () => setMenu(menu.hidden);
+el('menu-close').onclick = () => setMenu(false);
+menu.addEventListener('click', event => { if (event.target === menu) setMenu(false); });
+document.addEventListener('keydown', event => { if (event.key === 'Escape' && !menu.hidden) setMenu(false); });
+// Choosing a view closes the menu so the result is visible at once.
+for (const id of ['view-simple', 'view-extended']) el(id).addEventListener('click', () => setMenu(false));

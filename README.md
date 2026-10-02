@@ -70,7 +70,7 @@ Double-tap a team tile to edit the team name, short name and colour; double-tap 
 
 ### Ticker page views
 
-The public ticker (`/s/<code>`) has a Simple view (score, period and clock) and an Extended view, remembered per device. Extended shows, for football, all goals in chronological order with minute, scorer (or "goal without scorer"), penalty marker, team and running score; for basketball, points per player for both teams (whole squad, sorted by points, with team points without a scorer and totals) plus quarter scores; and the game log. Phones stack everything; from 900 px width the scoreboard and details sit side by side.
+The public ticker (`/s/<code>`) shows only the score, phase, period and time; everything else (Simple/Extended view, share icons, OBS link, take over control, venue, language, live directory, connection and version) is in the ☰ pop-up menu. Scores are sized from the viewport: portrait phones stack the teams as rows with large numbers, landscape and tablets show them side by side; three-digit scores shrink to fit. Simple view fills exactly one screen. The Extended view adds, for football, all goals in chronological order with minute, scorer, penalty marker, team and running score; for basketball, points per player for both teams plus quarter scores; and the game log. A small dot on the menu button signals a lost connection.
 
 ### Private games
 

@@ -217,6 +217,11 @@ function render() {
   el('period').textContent = periodLabel(state, words);
   el('phase').textContent = words[state.phase === 'break' && state.period_count === 2 ? 'halftime' : state.sport === 'basketball' && state.phase === 'pre_game' ? 'basketball.ready' : state.phase] || '';
   if (el('connection')) el('connection').textContent = words[online ? 'connected' : 'offline'];
+  if (!overlay) {
+    document.body.classList.toggle('offline', !online);
+    // Long scores (100+) get a smaller size so both always fit.
+    el('scoreboard').dataset.digits = String(Math.max(String(state.home.score).length, String(state.away.score).length));
+  }
 }
 setInterval(render, 100);
 async function poll() {

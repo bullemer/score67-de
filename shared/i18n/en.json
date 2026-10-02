@@ -408,5 +408,6 @@
   "ticker.no_goals": "No goals yet.",
   "ticker.team_goal": "Goal (no scorer)",
   "ticker.points": "Points per player",
-  "ticker.team_points": "Team (no player)"
+  "ticker.team_points": "Team (no player)",
+  "menu.title": "Menu"
 }
