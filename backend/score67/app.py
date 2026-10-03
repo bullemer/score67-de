@@ -23,7 +23,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 
 from .db import Admin, Asset, Board, Display, DisplayAdmin, Match, MatchEvent, RateLimit, Receipt, database
-from .domain import FOOTBALL, BASKETBALL, RuleError, apply, initial_state, normalize_clock, foul_mode, BASKETBALL_STATS, player_statistics, SHORT_MAX, FOOTBALL_EVENTS
+from .domain import FOOTBALL, BASKETBALL, RuleError, apply, period_ms, initial_state, normalize_clock, foul_mode, BASKETBALL_STATS, player_statistics, SHORT_MAX, FOOTBALL_EVENTS
 
 ROOT = Path(__file__).resolve().parents[2]
 RELEASE = json.loads((ROOT / "shared/release.json").read_text())
@@ -215,6 +215,50 @@ def clean_matches(db, now=None):
     return trashed, purged
 
 
+def finish_overdue_matches(db, now=None):
+    """End started games the user forgot to end.
+
+    A game is due once twice its planned playing time (period_count ×
+    period_length_min, at least AUTO_END_MIN_MINUTES) has passed since kickoff
+    and nothing was entered for AUTO_END_QUIET_MINUTES. A football game of
+    2×45 min therefore ends 180 min after kickoff. Returns the number ended."""
+    now = now or time.time()
+    factor = float(os.getenv("AUTO_END_FACTOR", 2))
+    minimum = float(os.getenv("AUTO_END_MIN_MINUTES", 180)) * 60
+    quiet = float(os.getenv("AUTO_END_QUIET_MINUTES", 15)) * 60
+    ended = 0
+    candidates = db.scalars(select(Match).where(Match.deleted_at.is_(None), Match.trashed_at.is_(None),
+                                                Match.archived_at.is_(None))).all()
+    for m in candidates:
+        if m.state.get("phase") in ("pre_game", "finished"):
+            continue
+        events = [e for e in db.scalars(select(MatchEvent).where(MatchEvent.match_id == m.id).order_by(MatchEvent.id)).all()
+                  if not e.cancelled]
+        kickoff = next((e for e in events if e.payload.get("type") == "period_start"), None)
+        if not kickoff:
+            continue
+        planned = m.state["period_count"] * m.state["period_length_min"] * 60
+        due = kickoff.payload["occurred_at"] / 1000 + max(planned * factor, minimum)
+        last = max(events[-1].payload.get("occurred_at", 0) / 1000, m.touched_at or 0)
+        if now < due or now < last + quiet:
+            continue
+        try:
+            m.state, payload, before = apply(m.state, "game_end", {}, round(now * 1000))
+        except RuleError:
+            continue
+        # A forgotten clock kept running; freeze it at the regular period end.
+        clock = m.state["clock"]
+        if clock["elapsed_ms"] > period_ms(m.state):
+            m.state = {**m.state, "clock": {**clock, "elapsed_ms": period_ms(m.state)}}
+            payload["clock_ms"] = period_ms(m.state)
+        payload["automatic"] = True
+        db.add(MatchEvent(match_id=m.id, admin_id=kickoff.admin_id, payload=payload, before=before))
+        m.revision += 1
+        ended += 1
+    db.commit()
+    return ended
+
+
 def available_events(events):
     available = []
     for event in events:
@@ -242,10 +286,11 @@ def create_app(db_url=None, secure_cookies=None):
 
         def clean():
             with lock, sessions() as db:
+                finish_overdue_matches(db)
                 return clean_matches(db)
 
         async def cleaner():
-            interval = float(os.getenv("TRASH_INTERVAL_SECONDS", 3600))
+            interval = float(os.getenv("TRASH_INTERVAL_SECONDS", 600))
             while interval > 0:
                 try:
                     await asyncio.to_thread(clean)

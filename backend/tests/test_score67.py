@@ -10,7 +10,7 @@ from sqlalchemy.engine import make_url
 from alembic import command as migrations
 from alembic.config import Config
 
-from score67.app import create_app, clean_matches
+from score67.app import create_app, clean_matches, finish_overdue_matches
 from score67.db import Admin, Board, MatchEvent, Base
 from score67.domain import RuleError, apply, elapsed, initial_state
 
@@ -1033,6 +1033,39 @@ def test_cleaner_trashes_abandoned_and_unstarted_games_and_purges(system):
         assert clean_matches(db, t0 + 40 * 24 * hour) == (1, 1)
     boards = client.get('/api/dashboard').json()['boards']
     assert not any(g['match_id'] for b in boards if b['slug'] == fresh for g in b['matches'])
+
+
+def test_overdue_games_end_automatically(system):
+    app, client = system
+    minute = 60
+    football = create(client)['slug']                                # 2×45 → ends 180 min after kickoff
+    command(client, football, 'period_start')
+    command(client, football, 'score', {'team': 'home', 'points': 1})
+    unstarted = create(client)['slug']
+    done = create(client)['slug']
+    command(client, done, 'period_start')
+    command(client, done, 'game_end')
+    t0 = __import__('time').time()
+    with app.state.sessions() as db:
+        assert finish_overdue_matches(db, t0 + 179 * minute) == 0
+        # An entry 10 min ago (e.g. extra time) postpones the end.
+        last = db.scalar(select(MatchEvent).order_by(MatchEvent.id.desc()).where(MatchEvent.payload['type'].as_string() == 'score'))
+        last.payload = {**last.payload, 'occurred_at': (t0 + 171 * minute) * 1000}
+        db.commit()
+        assert finish_overdue_matches(db, t0 + 181 * minute) == 0
+        assert finish_overdue_matches(db, t0 + 187 * minute) == 1
+        assert finish_overdue_matches(db, t0 + 400 * minute) == 0      # only once
+    s = state(client, football)
+    assert s['phase'] == 'finished' and s['home']['score'] == 1
+    assert s['clock']['elapsed_ms'] == 45 * 60000 and not s['clock']['running']   # frozen at 45:00
+    assert state(client, unstarted)['phase'] == 'pre_game'
+    assert state(client, done)['phase'] == 'finished'
+    # The controller can undo the automatic end.
+    with app.state.sessions() as db:
+        end = db.scalar(select(MatchEvent).order_by(MatchEvent.id.desc()))
+        assert end.payload['type'] == 'game_end' and end.payload['automatic']
+        end_id = end.id
+    assert command(client, football, 'undo', {'event_id': end_id}).json()['phase'] == 'period_running'
 
 
 def test_private_board_hides_spectators_but_keeps_controllers_and_obs(system):
