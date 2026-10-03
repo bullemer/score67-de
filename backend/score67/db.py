@@ -26,6 +26,37 @@ class Board(Base):
     # Private boards hide spectator views; the overlay key keeps OBS working.
     private: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     overlay_key: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # Optional email login: the owner gets control on any device after signing in.
+    owner_id: Mapped[str | None] = mapped_column(ForeignKey("account.id"), nullable=True, index=True)
+
+
+class Account(Base):
+    """An email address that signed in once; there are no passwords."""
+    __tablename__ = "account"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    email: Mapped[str] = mapped_column(String(254), unique=True)
+    language: Mapped[str] = mapped_column(String(2))
+    created_at: Mapped[float] = mapped_column(Float)
+
+
+class AccountSession(Base):
+    """A signed-in browser (cookie score67_account); only the token hash is stored."""
+    __tablename__ = "account_session"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    account_id: Mapped[str] = mapped_column(ForeignKey("account.id", ondelete="CASCADE"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    created_at: Mapped[float] = mapped_column(Float)
+    last_seen_at: Mapped[float] = mapped_column(Float)
+
+
+class LoginToken(Base):
+    """Single-use sign-in link sent by email, valid for 30 minutes."""
+    __tablename__ = "login_token"
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    email: Mapped[str] = mapped_column(String(254), index=True)
+    created_at: Mapped[float] = mapped_column(Float)
+    expires_at: Mapped[float] = mapped_column(Float)
+    used_at: Mapped[float | None] = mapped_column(Float, nullable=True)
 
 
 class Asset(Base):
@@ -69,6 +100,8 @@ class Admin(Base):
     label: Mapped[str] = mapped_column(String(60))
     last_seen_at: Mapped[float] = mapped_column(Float)
     revoked: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Set for the admin entry an owner gets through email login (no device cookie).
+    account_id: Mapped[str | None] = mapped_column(ForeignKey("account.id"), nullable=True, index=True)
 
 
 class Match(Base):
@@ -125,6 +158,6 @@ def database(url: str | None = None):
     else:
         with engine.connect() as connection:
             version = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            if version != "0009_assets":
+            if version != "0010_accounts":
                 raise RuntimeError("Database schema does not match this release; run migrations first")
     return engine, sessionmaker(engine, expire_on_commit=False)

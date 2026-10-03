@@ -10,6 +10,12 @@ services:
       PUBLIC_ORIGIN: https://score67.de
       AUTO_CREATE_SCHEMA: "false"
       RELEASE_SHA: ${RELEASE_SHA}
+      # Email sign-in stays hidden until SMTP_HOST is set in the runtime .env.
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:-Score67 <noreply@score67.de>}
     ports:
       - "127.0.0.1:8067:8000"
     depends_on:

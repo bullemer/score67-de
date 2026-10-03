@@ -8,6 +8,7 @@ import 'package:flutter_web_plugins/flutter_web_plugins.dart';
 import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'account.dart';
 import 'dashboard.dart';
 import 'squad.dart';
 import 'match_console.dart';
@@ -59,7 +60,8 @@ class _Score67State extends State<Score67> {
   Map<String, dynamic> words = {}, state = {};
   Map<String, dynamic>? draftLocation;
   String lang = 'en', slug = '', error = '';
-  bool dashboardPage = false;
+  bool dashboardPage = false, loginPage = false;
+  String loginToken = '';
 
   /// The live match console (both sports, landscape only).
   bool get liveConsole =>
@@ -126,6 +128,8 @@ class _Score67State extends State<Score67> {
     super.initState();
     final url = Uri.parse(web.window.location.href);
     dashboardPage = url.path == '/dashboard';
+    loginPage = url.path == '/login';
+    loginToken = Uri.splitQueryString(url.fragment)['t'] ?? '';
     try {
       final preferences = jsonDecode(
         web.window.localStorage.getItem('score67-settings') ?? '{}',
@@ -1714,6 +1718,15 @@ class _Score67State extends State<Score67> {
     field(t('pin'), pinInput, numeric: true, maxLength: 6),
     field(t('device'), deviceName, maxLength: 60),
     action(t('claim'), busy || !connected ? null : claim, primary: true),
+    const Divider(height: 32),
+    Text(t('claim.forgot')),
+    const SizedBox(height: 10),
+    AccountPanel(
+      api: (path, method, body) => api(path, method: method, body: body),
+      t: t,
+      language: lang,
+      intro: false,
+    ),
   ]);
 
   Color teamColor(String value) =>
@@ -2885,6 +2898,14 @@ class _Score67State extends State<Score67> {
         action(t('pin.rotate'), canWrite ? rotatePin : null),
         action(t('admins'), manageAccess),
         const Divider(height: 28),
+        OwnerPanel(
+          api: (path, method, body) => api(path, method: method, body: body),
+          t: t,
+          slug: slug,
+          language: lang,
+          enabled: admin && connected,
+        ),
+        const Divider(height: 28),
         const SizedBox(height: 8),
         ...linkWidgets(),
       ],
@@ -3245,8 +3266,17 @@ class _Score67State extends State<Score67> {
                                       ),
                                     ),
                                   ),
-                                if (dashboardPage)
+                                if (loginPage)
+                                  LoginConfirm(
+                                    api: (path, method, body) =>
+                                        api(path, method: method, body: body),
+                                    t: t,
+                                    token: loginToken,
+                                    navigate: navigate,
+                                  )
+                                else if (dashboardPage)
                                   Dashboard(
+                                    language: lang,
                                     api: (path, method, body) =>
                                         api(path, method: method, body: body),
                                     t: t,

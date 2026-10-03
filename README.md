@@ -43,6 +43,7 @@ The development database is `backend/data/score67.db` when started from `backend
 - Taps never wait for each other: points, fouls, rebounds, timeouts and cards are queued, shown immediately and sent in order. Without a connection they stay on the device (also across reloads) and are sent automatically with their original command IDs, so nothing is counted twice. Clock, period and settings changes still require a live connection. The controller keeps the phone screen awake where the browser supports it.
 - Small, large, hidden, left/right and automatic break/final views; configurable broadcast delay.
 - Shared German and English JSON translations.
+- Email sign-in (optional, no password): "Meine Scoreboards" sends a single-use link (30 min). Signing in links the boards this browser controls to the address; on any other signed-in device those boards appear and can be controlled without the PIN. Boards created while signed in are linked at once. The PIN screen offers the same sign-in ("PIN vergessen"), the Teilen tab shows/links/unlinks the email (unlinking notifies the owner). Hidden until SMTP is configured: `SMTP_HOST`, `SMTP_PORT` (587, STARTTLS), `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM` in the server's runtime `.env`; `MAIL_LOG=true` prints mails locally.
 - Auto end: games that were started but never ended are ended automatically once twice their planned playing time has passed since kickoff (at least 3 h, so a 2×45 football game ends 180 min after kickoff) and nothing was entered for 15 min. The clock freezes at the end of the regular period. Thresholds: `AUTO_END_FACTOR`, `AUTO_END_MIN_MINUTES`, `AUTO_END_QUIET_MINUTES`.
 - Trash (Papierkorb): a cleaner (every 10 min) moves games that were started but not ended and had no activity for 24 h, planned games still not started 24 h after their start time, and unscheduled games untouched for 7 days to the trash. Finished games are never touched. Trashed games leave live views; restore them from the dashboard within 30 days, after which they are deleted. "Move to trash" on the dashboard does the same by hand. Thresholds: `TRASH_STALE_HOURS`, `TRASH_PLANNED_GRACE_HOURS`, `TRASH_UNSCHEDULED_DAYS`, `TRASH_RETENTION_DAYS`, `TRASH_INTERVAL_SECONDS` (0 disables).
 - Device dashboard at `/dashboard`: planned (with or without a date), running, completed and archived games; archive, restore and delete controls.
@@ -125,9 +126,9 @@ Statistics (points, personal fouls, rebounds and hidden AST/STL/BLK/TO history) 
 
 ## Not yet included
 
-Email recovery, QR codes, basketball period summaries, reusable team rosters/lineups, goal banners, match export, custom branding and additional templates. The initial template styling is an interpretation of the textual design document, which contains no visual mockups.
+QR codes, basketball period summaries, reusable team rosters/lineups, goal banners, match export, custom branding and additional templates. The initial template styling is an interpretation of the textual design document, which contains no visual mockups.
 
-Production supports football and a focused basketball pilot. Email recovery, the remaining stage-1 acceptance criteria, mobile/OBS field testing and operator/legal pages are still outstanding. Database migrations and PostgreSQL integration checks are part of every deployment.
+Production supports football and a focused basketball pilot. The remaining stage-1 acceptance criteria, mobile/OBS field testing and operator/legal pages are still outstanding. Database migrations and PostgreSQL integration checks are part of every deployment.
 
 ## Checks
 

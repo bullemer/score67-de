@@ -58,9 +58,13 @@ systemctl status score67-backup.timer certbot.timer
 
 To roll back code, prefer reverting the relevant commit on `main`; the checked deployment flow then rebuilds the reverted code with a new SHA. In an incident an administrator may manually start an existing immutable release using its compose file and SHA, after checking schema compatibility. Do not delete Docker volumes or restore a dump over the live database without an explicit recovery decision.
 
+## Email
+
+Optional email sign-in sends mail over SMTP (STARTTLS). Set `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` and `MAIL_FROM` in `/opt/score67/shared/.env` and redeploy; without `SMTP_HOST` the sign-in is hidden. The sender domain needs SPF/DKIM for the provider.
+
 ## Current product scope
 
-Production contains the football increment and the v0.6 basketball pilot. Email recovery, reusable teams/lineups, goal banners, QR codes and custom design templates remain future work. The latest requested controls are included: timestamp-generated board labels, tap-to-edit team names and colors, and explicit plus/minus goals with audited, nonnegative corrections. Original source documents are retained as historical requirements; these later instructions supersede their conflicting creation/design details.
+Production contains the football increment and the v0.6 basketball pilot. Reusable teams/lineups, goal banners, QR codes and custom design templates remain future work. The latest requested controls are included: timestamp-generated board labels, tap-to-edit team names and colors, and explicit plus/minus goals with audited, nonnegative corrections. Original source documents are retained as historical requirements; these later instructions supersede their conflicting creation/design details.
 
 The device dashboard adds historical results, future-game preparation, archive/restore/delete, visible back navigation and browser-local global defaults. Creation throttling is disabled by default for testing (`SCOREBOARD_CREATE_LIMIT=0`). A positive hourly count can be configured when needed; PIN attempt throttling remains active.
 

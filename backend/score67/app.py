@@ -22,7 +22,8 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 
-from .db import Admin, Asset, Board, Display, DisplayAdmin, Match, MatchEvent, RateLimit, Receipt, database
+from . import mail
+from .db import Account, AccountSession, Admin, Asset, LoginToken, Board, Display, DisplayAdmin, Match, MatchEvent, RateLimit, Receipt, database
 from .domain import FOOTBALL, BASKETBALL, RuleError, apply, period_ms, initial_state, normalize_clock, foul_mode, BASKETBALL_STATS, player_statistics, SHORT_MAX, FOOTBALL_EVENTS
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -158,6 +159,40 @@ class CreateMatch(StrictModel):
 class Claim(StrictModel):
     pin: str = Field(pattern=r"^\d{6}$")
     label: str = Field(default="Browser", min_length=1, max_length=60)
+
+
+class LoginRequest(StrictModel):
+    email: str = Field(min_length=3, max_length=254)
+    language: Literal["de", "en"] = "de"
+
+
+class LoginVerify(StrictModel):
+    token: str = Field(min_length=20, max_length=100)
+
+
+class Ownership(StrictModel):
+    linked: bool
+
+
+EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+ACCOUNT_COOKIE = "score67_account"
+LOGIN_TOKEN_SECONDS = 1800
+SESSION_SECONDS = 180 * 86400
+
+
+def mask_email(email):
+    name, domain = email.split("@", 1)
+    return f"{name[:2]}{'•' * max(1, len(name) - 2)}@{domain}"
+
+
+def login_mail(language, link):
+    texts = json.loads((ROOT / f"shared/i18n/{language}.json").read_text())
+    return texts["email.login.subject"], texts["email.login.body"].replace("{link}", link)
+
+
+def notice_mail(language, key, name):
+    texts = json.loads((ROOT / f"shared/i18n/{language}.json").read_text())
+    return texts[f"{key}.subject"], texts[f"{key}.body"].replace("{name}", name)
 
 
 class Command(StrictModel):
@@ -304,6 +339,7 @@ def create_app(db_url=None, secure_cookies=None):
         engine.dispose()
 
     app = FastAPI(title="Score67", version=RELEASE["version"], lifespan=lifespan)
+    app.state.send_mail = mail.send
     templates = Jinja2Templates(directory=ROOT / "backend/score67/templates")
     templates.env.globals["release_label"] = RELEASE["label"]
     # Footers show the build time in the viewer's time zone (common.mjs).
@@ -343,7 +379,7 @@ def create_app(db_url=None, secure_cookies=None):
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin" if request.url.path == "/location-picker" else "no-referrer"
-        if request.url.path.startswith("/api/") or request.url.path.endswith("/control") or request.url.path in ("/new", "/dashboard"):
+        if request.url.path.startswith("/api/") or request.url.path.endswith("/control") or request.url.path in ("/new", "/dashboard", "/login"):
             response.headers["Cache-Control"] = "no-store"
         return response
 
@@ -361,11 +397,35 @@ def create_app(db_url=None, secure_cookies=None):
             raise HTTPException(404, "not_found")
         return b
 
+    def current_account(db, cookies):
+        token = cookies.get(ACCOUNT_COOKIE, "")
+        session = db.scalar(select(AccountSession).where(AccountSession.token_hash == digest(token))) if token else None
+        if not session or session.last_seen_at < time.time() - SESSION_SECONDS:
+            return None
+        session.last_seen_at = time.time()
+        return db.get(Account, session.account_id)
+
+    def owner_admin(db, b, cookies):
+        """The admin entry of the signed-in owner; access follows ownership."""
+        account = current_account(db, cookies) if b.owner_id else None
+        if not account or account.id != b.owner_id:
+            return None
+        admin = db.scalar(select(Admin).where(Admin.slug == b.slug, Admin.account_id == account.id))
+        if not admin:
+            admin = Admin(id=str(uuid4()), slug=b.slug, token_hash=digest(secrets.token_urlsafe(32)),
+                          label=account.email, last_seen_at=time.time(), account_id=account.id)
+            db.add(admin)
+            db.flush()
+        admin.revoked = False
+        return admin
+
     def authorize(db, slug, request):
         token = request.cookies.get(f"score67_{slug}", "")
-        admin = db.scalar(select(Admin).where(Admin.slug == slug, Admin.token_hash == digest(token)))
+        admin = db.scalar(select(Admin).where(Admin.slug == slug, Admin.token_hash == digest(token))) if token else None
         if not admin or admin.revoked or admin.last_seen_at < time.time() - 180 * 86400:
-            raise HTTPException(401, "admin_required")
+            admin = owner_admin(db, board(db, slug), request.cookies)
+            if not admin:
+                raise HTTPException(401, "admin_required")
         admin.last_seen_at = time.time()
         return admin
 
@@ -374,8 +434,11 @@ def create_app(db_url=None, secure_cookies=None):
         if not b.private or (key and b.overlay_key and hmac.compare_digest(key, b.overlay_key)):
             return True
         token = cookies.get(f"score67_{b.slug}", "")
-        admin = db.scalar(select(Admin).where(Admin.slug == b.slug, Admin.token_hash == digest(token)))
-        return bool(admin and not admin.revoked)
+        admin = db.scalar(select(Admin).where(Admin.slug == b.slug, Admin.token_hash == digest(token))) if token else None
+        if admin and not admin.revoked:
+            return True
+        account = current_account(db, cookies) if b.owner_id else None
+        return bool(account and account.id == b.owner_id)
 
     def public_board(db, slug, request):
         b = board(db, slug)
@@ -522,6 +585,8 @@ def create_app(db_url=None, secure_cookies=None):
                       active_match=match_id, created_at=now, location=body.location.model_dump() if body.location else None,
                       description=clean_description(body.description), overlay_key=secrets.token_urlsafe(12),
                       stream_url=clean_stream_url(body.stream_url))
+            account = current_account(db, request.cookies)
+            b.owner_id = account.id if account else None
             db.add(b)
             db.flush()
             db.add(Match(id=match_id, slug=slug, state=initial_state(body.period_count, body.period_length_min, body.sport),
@@ -648,11 +713,12 @@ def create_app(db_url=None, secure_cookies=None):
     def admins(slug: str, request: Request, response: Response):
         with lock, app.state.sessions() as db:
             a = authorize(db, slug, request)
-            result = [{"id": x.id, "label": x.label, "last_seen_at": x.last_seen_at,
+            result = [{"id": x.id, "label": x.label, "last_seen_at": x.last_seen_at, "email": bool(x.account_id),
                        "current": x.id == a.id} for x in db.scalars(select(Admin).where(Admin.slug == slug, Admin.revoked == False))]
             db.commit()
-            response.set_cookie(f"score67_{slug}", request.cookies[f"score67_{slug}"], httponly=True,
-                                secure=secure, samesite="lax", max_age=180 * 86400, path="/")
+            if f"score67_{slug}" in request.cookies and not a.account_id:
+                response.set_cookie(f"score67_{slug}", request.cookies[f"score67_{slug}"], httponly=True,
+                                    secure=secure, samesite="lax", max_age=180 * 86400, path="/")
             return result
 
     @app.delete("/api/s/{slug}/admins/{admin_id}")
@@ -663,6 +729,11 @@ def create_app(db_url=None, secure_cookies=None):
             if not target or target.slug != slug:
                 raise HTTPException(404, "not_found")
             target.revoked = True
+            if target.account_id:
+                # Removing the signed-in owner's access unlinks the board from that email.
+                b = board(db, slug)
+                if b.owner_id == target.account_id:
+                    b.owner_id = None
             db.commit()
         return {"ok": True}
 
@@ -675,6 +746,133 @@ def create_app(db_url=None, secure_cookies=None):
             b.pin_hash, b.failed_count, b.locked_until = hash_pin(pin), 0, 0
             db.commit()
             return {"pin": pin}
+
+    def limited(db, key, limit, window, now):
+        """Count one attempt; True if the limit for this window is exceeded."""
+        row = db.get(RateLimit, key)
+        if not row:
+            row = RateLimit(key=key, count=0, reset_at=now + window)
+            db.add(row)
+        if row.reset_at <= now:
+            row.count, row.reset_at = 0, now + window
+        row.count += 1
+        return row.count > limit
+
+    @app.get("/api/account")
+    def account_info(request: Request):
+        with lock, app.state.sessions() as db:
+            account = current_account(db, request.cookies)
+            db.commit()
+            return {"mail_enabled": mail.enabled(), "email": account.email if account else None}
+
+    @app.post("/api/account/login")
+    async def request_login(body: LoginRequest, request: Request):
+        """Send a sign-in link. The answer never reveals whether the address is known."""
+        email = body.email.strip().lower()
+        if not EMAIL.match(email):
+            raise HTTPException(422, "email_invalid")
+        if not mail.enabled():
+            raise HTTPException(503, "mail_disabled")
+        now = time.time()
+        token = secrets.token_urlsafe(32)
+        with lock, app.state.sessions() as db:
+            ip = request.client.host if request.client else "unknown"
+            blocked = limited(db, "login-ip:" + digest(ip), 20, 3600, now) | limited(db, "login-mail:" + digest(email), 5, 3600, now)
+            if not blocked:
+                db.add(LoginToken(token_hash=digest(token), email=email, created_at=now, expires_at=now + LOGIN_TOKEN_SECONDS))
+            db.commit()
+        if blocked:
+            raise HTTPException(429, "login_rate_limited")
+        origin = os.getenv("PUBLIC_ORIGIN", str(request.base_url).rstrip("/"))
+        subject, text_body = login_mail(body.language, f"{origin}/login?lang={body.language}#t={token}")
+        try:
+            await asyncio.to_thread(app.state.send_mail, email, subject, text_body)
+        except Exception:  # noqa: BLE001 - report a delivery problem without details
+            raise HTTPException(502, "mail_failed")
+        return {"ok": True}
+
+    @app.post("/api/account/verify")
+    def verify_login(body: LoginVerify, request: Request, response: Response):
+        """Use a sign-in link once. Boards this browser controls become the account's."""
+        with lock, app.state.sessions() as db:
+            now = time.time()
+            login = db.get(LoginToken, digest(body.token))
+            if not login or login.used_at or login.expires_at < now:
+                raise HTTPException(401, "login_invalid")
+            login.used_at = now
+            account = db.scalar(select(Account).where(Account.email == login.email))
+            if not account:
+                account = Account(id=str(uuid4()), email=login.email, language="de", created_at=now)
+                db.add(account)
+                db.flush()
+            token = secrets.token_urlsafe(32)
+            db.add(AccountSession(id=str(uuid4()), account_id=account.id, token_hash=digest(token), created_at=now, last_seen_at=now))
+            linked = 0
+            for cookie in request.cookies:
+                if cookie.startswith("score67_") and len(cookie) == 18:
+                    try:
+                        authorize(db, cookie[8:], request)
+                    except HTTPException:
+                        continue
+                    b = board(db, cookie[8:])
+                    if not b.owner_id:
+                        b.owner_id = account.id
+                        linked += 1
+            db.commit()
+            response.set_cookie(ACCOUNT_COOKIE, token, httponly=True, secure=secure,
+                                samesite="lax", max_age=SESSION_SECONDS, path="/")
+            return {"email": account.email, "linked": linked}
+
+    @app.post("/api/account/logout")
+    def logout(request: Request, response: Response):
+        with lock, app.state.sessions() as db:
+            token = request.cookies.get(ACCOUNT_COOKIE, "")
+            session = db.scalar(select(AccountSession).where(AccountSession.token_hash == digest(token))) if token else None
+            if session:
+                db.delete(session)
+            db.commit()
+        response.delete_cookie(ACCOUNT_COOKIE, path="/")
+        return {"ok": True}
+
+    @app.get("/api/s/{slug}/owner")
+    def get_owner(slug: str, request: Request):
+        with lock, app.state.sessions() as db:
+            authorize(db, slug, request)
+            b = board(db, slug)
+            account = current_account(db, request.cookies)
+            owner = db.get(Account, b.owner_id) if b.owner_id else None
+            db.commit()
+            return {"email": (owner.email if account and owner.id == account.id else mask_email(owner.email)) if owner else None,
+                    "mine": bool(owner and account and owner.id == account.id),
+                    "signed_in": account.email if account else None}
+
+    @app.put("/api/s/{slug}/owner")
+    def set_owner(slug: str, body: Ownership, request: Request):
+        """Link the board to the signed-in email, or remove the link."""
+        with lock, app.state.sessions() as db:
+            authorize(db, slug, request)
+            b = board(db, slug)
+            if body.linked:
+                account = current_account(db, request.cookies)
+                if not account:
+                    raise HTTPException(401, "login_required")
+                if b.owner_id and b.owner_id != account.id:
+                    raise HTTPException(409, "owner_exists")
+                b.owner_id = account.id
+            else:
+                owner = db.get(Account, b.owner_id) if b.owner_id else None
+                account = current_account(db, request.cookies)
+                b.owner_id = None
+                # Tell the owner when someone else removed their email.
+                notify = owner if owner and (not account or account.id != owner.id) else None
+            db.commit()
+        if not body.linked and notify and mail.enabled():
+            subject, text_body = notice_mail(b.language, "email.unlinked", b.name)
+            try:
+                app.state.send_mail(notify.email, subject, text_body)
+            except Exception:  # noqa: BLE001 - the change itself already succeeded
+                pass
+        return {"ok": True}
 
     @app.get("/api/s/{slug}/state")
     def current_state(slug: str, request: Request):
@@ -694,10 +892,12 @@ def create_app(db_url=None, secure_cookies=None):
     def dashboard(request: Request, response: Response):
         with lock, app.state.sessions() as db:
             boards = []
-            for cookie, token in request.cookies.items():
-                if not cookie.startswith("score67_") or len(cookie) != 18:
-                    continue
-                slug = cookie[8:]
+            slugs = [cookie[8:] for cookie in request.cookies if cookie.startswith("score67_") and len(cookie) == 18]
+            account = current_account(db, request.cookies)
+            if account:
+                slugs += [slug for slug in db.scalars(select(Board.slug).where(Board.owner_id == account.id)) if slug not in slugs]
+            for slug in slugs:
+                cookie = f"score67_{slug}"
                 try:
                     authorize(db, slug, request)
                 except HTTPException:
@@ -710,11 +910,14 @@ def create_app(db_url=None, secure_cookies=None):
                     games.append({k: s[k] for k in ("sport", "team_fouls_enabled", "match_id", "revision", "phase", "home", "away", "period_count",
                         "period_length_min", "created_at", "scheduled_at", "archived", "active", "trashed", "trash_reason", "trashed_at")})
                 boards.append({"slug": b.slug, "name": b.name, "active_match": b.active_match, "description": b.description, "stream_url": b.stream_url,
-                               "created_at": round(b.created_at * 1000), "matches": games})
-                response.set_cookie(cookie, token, httponly=True, secure=secure,
-                                    samesite="lax", max_age=180 * 86400, path="/")
+                               "created_at": round(b.created_at * 1000), "matches": games,
+                               "owned": bool(account and b.owner_id == account.id)})
+                if cookie in request.cookies:
+                    response.set_cookie(cookie, request.cookies[cookie], httponly=True, secure=secure,
+                                        samesite="lax", max_age=180 * 86400, path="/")
             db.commit()
-            return {"boards": sorted(boards, key=lambda b: b["created_at"], reverse=True)}
+            return {"boards": sorted(boards, key=lambda b: b["created_at"], reverse=True),
+                    "account": {"email": account.email} if account else None}
 
     @app.get("/api/live")
     def live_games():
@@ -1157,6 +1360,7 @@ def create_app(db_url=None, secure_cookies=None):
                                           context={"slug": slug, "overlay": overlay, "private": hidden})
 
     @app.get("/new")
+    @app.get("/login")
     @app.get("/dashboard")
     @app.get("/s/{slug}/control")
     def control(slug: str | None = None):

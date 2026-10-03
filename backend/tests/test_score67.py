@@ -250,7 +250,7 @@ def test_dashboard_only_lists_authorized_devices_and_existing_games(system):
     a, b = create(client), create(client)
     assert {x['slug'] for x in client.get('/api/dashboard').json()['boards']} == {a['slug'], b['slug']}
     outsider = TestClient(app)
-    assert outsider.get('/api/dashboard').json() == {'boards': []}
+    assert outsider.get('/api/dashboard').json() == {'boards': [], 'account': None}
     outsider.post(f'/api/s/{a["slug"]}/admin/claim', json={'pin': a['pin'], 'label': 'Dashboard device'})
     boards = outsider.get('/api/dashboard').json()['boards']
     assert len(boards) == 1 and boards[0]['slug'] == a['slug']
@@ -1269,3 +1269,72 @@ def test_team_logo_upload_reencodes_and_is_public(system):
     assert command(client, slug, 'settings', {'home': {'logo': 'https://evil.example/x.png'}}).status_code == 422
     assert client.post(url, json={'team': 'home', 'data': None}).json()['home']['logo'] is None
     assert TestClient(client.app).get('/media/' + '0' * 32 + '.png').status_code == 404
+
+
+def test_email_login_restores_boards_on_a_new_device(system, monkeypatch):
+    app, client = system
+    monkeypatch.setenv('MAIL_LOG', 'true')
+    sent = []
+    app.state.send_mail = lambda to, subject, body: sent.append((to, body))
+
+    def sign_in(c, email):
+        assert c.post('/api/account/login', json={'email': email}).status_code == 200
+        token = sent[-1][1].split('#t=')[1].split()[0]
+        return c.post('/api/account/verify', json={'token': token})
+
+    slug = create(client)['slug']
+    assert client.get('/api/account').json() == {'mail_enabled': True, 'email': None}
+    # Signing in on the old phone links the boards it controls.
+    r = sign_in(client, ' Coach@Example.org ')
+    assert r.status_code == 200 and r.json() == {'email': 'coach@example.org', 'linked': 1}
+    assert sent[-1][0] == 'coach@example.org'
+    owner = client.get(f'/api/s/{slug}/owner').json()
+    assert owner == {'email': 'coach@example.org', 'mine': True, 'signed_in': 'coach@example.org'}
+    # The link works only once.
+    token = sent[-1][1].split('#t=')[1].split()[0]
+    assert client.post('/api/account/verify', json={'token': token}).status_code == 401
+    # New phone: no board cookie, nothing to control until signed in.
+    phone = TestClient(app)
+    assert phone.get('/api/dashboard').json()['boards'] == []
+    assert phone.get(f'/api/s/{slug}/control-state').status_code == 401
+    assert sign_in(phone, 'coach@example.org').json()['linked'] == 0
+    boards = phone.get('/api/dashboard').json()
+    assert boards['account'] == {'email': 'coach@example.org'}
+    assert [b['slug'] for b in boards['boards']] == [slug] and boards['boards'][0]['owned']
+    s = phone.get(f'/api/s/{slug}/control-state').json()
+    r = phone.post(f'/api/s/{slug}/matches/{s["match_id"]}/commands', json={
+        'command_id': str(uuid4()), 'expected_revision': s['revision'], 'action': 'period_start', 'data': {}})
+    assert r.status_code == 200, r.text
+    # Boards created while signed in belong to the account at once.
+    own = phone.post('/api/scoreboards', json={}).json()['slug']
+    assert phone.get(f'/api/s/{own}/owner').json()['mine']
+    # A different person sees a masked address and cannot take over the board.
+    stranger = TestClient(app)
+    pin = client.post(f'/api/s/{slug}/pin', json={}).json()['pin']
+    assert stranger.post(f'/api/s/{slug}/admin/claim', json={'pin': pin}).status_code == 200
+    assert stranger.get(f'/api/s/{slug}/owner').json()['email'] == 'co•••@example.org'
+    sign_in(stranger, 'other@example.org')
+    assert stranger.put(f'/api/s/{slug}/owner', json={'linked': True}).status_code == 409
+    # Unlinking by someone else notifies the owner; then the email no longer gives access.
+    assert stranger.put(f'/api/s/{slug}/owner', json={'linked': False}).status_code == 200
+    assert sent[-1][0] == 'coach@example.org'
+    phone.cookies.clear()
+    sign_in(phone, 'coach@example.org')
+    assert [b['slug'] for b in phone.get('/api/dashboard').json()['boards']] == [own]
+    # Logout ends the session.
+    assert phone.post('/api/account/logout', json={}).status_code == 200
+    assert phone.get('/api/account').json()['email'] is None
+
+
+def test_email_login_rules(system, monkeypatch):
+    app, client = system
+    sent = []
+    app.state.send_mail = lambda to, subject, body: sent.append(to)
+    assert client.post('/api/account/login', json={'email': 'a@b.de'}).json()['error'] == 'mail_disabled'
+    monkeypatch.setenv('MAIL_LOG', 'true')
+    assert client.post('/api/account/login', json={'email': 'not-an-email'}).status_code == 422
+    for _ in range(5):
+        assert client.post('/api/account/login', json={'email': 'a@b.de'}).status_code == 200
+    assert client.post('/api/account/login', json={'email': 'a@b.de'}).status_code == 429
+    assert len(sent) == 5
+    assert client.post('/api/account/verify', json={'token': 'x' * 40}).status_code == 401

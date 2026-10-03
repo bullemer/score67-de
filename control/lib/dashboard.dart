@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 
+import 'account.dart';
 import 'game_editor.dart';
 
 typedef DashboardApi =
@@ -14,6 +15,7 @@ class Dashboard extends StatefulWidget {
   final String Function(String) t;
   final void Function(String) navigate;
   final int periods, minutes;
+  final String language;
 
   /// Image picker for team logos (browser only; null hides logo upload).
   final Future<String?> Function() pickLogo;
@@ -25,6 +27,7 @@ class Dashboard extends StatefulWidget {
     required this.navigate,
     required this.periods,
     required this.minutes,
+    this.language = 'de',
   });
   @override
   State<Dashboard> createState() => _DashboardState();
@@ -580,6 +583,13 @@ class _DashboardState extends State<Dashboard> {
       Text(
         t('dashboard.device'),
         style: const TextStyle(color: Color(0xffb5c2d4)),
+      ),
+      AccountPanel(
+        api: widget.api,
+        t: widget.t,
+        language: widget.language,
+        onChanged: refresh,
+        card: true,
       ),
       const SizedBox(height: 18),
       FilledButton(
