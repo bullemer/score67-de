@@ -10,6 +10,7 @@ import 'package:uuid/uuid.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'account.dart';
 import 'dashboard.dart';
+import 'dates.dart';
 import 'squad.dart';
 import 'match_console.dart';
 import 'team_editor.dart';
@@ -34,9 +35,7 @@ Future<void> main() async {
 String localReleaseLabel(Map<String, dynamic> release) {
   final built = DateTime.tryParse(release['built_at'] ?? '')?.toLocal();
   if (built == null) return release['label'] ?? '';
-  String two(int value) => value.toString().padLeft(2, '0');
-  return 'v${release['version']} · ${two(built.day)}.${two(built.month)}.${built.year} '
-      '${two(built.hour)}:${two(built.minute)}';
+  return 'v${release['version']} · ${europeanDate(built)} ${europeanTime(built)}';
 }
 
 class ApiError implements Exception {
@@ -1374,9 +1373,10 @@ class _Score67State extends State<Score67> {
   }
 
   String dateLabel(int milliseconds) {
-    final value = DateTime.fromMillisecondsSinceEpoch(milliseconds);
-    final l = MaterialLocalizations.of(navigator.currentContext!);
-    return '${l.formatMediumDate(value)} · ${l.formatTimeOfDay(TimeOfDay.fromDateTime(value), alwaysUse24HourFormat: true)}';
+    return europeanDateTime(
+      DateTime.fromMillisecondsSinceEpoch(milliseconds),
+      lang,
+    );
   }
 
   Future<DateTime?> chooseStart(DateTime? current) async {
@@ -1391,6 +1391,10 @@ class _Score67State extends State<Score67> {
     if (date == null || !mounted) return null;
     final time = await showTimePicker(
       context: navigator.currentContext!,
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+        child: child!,
+      ),
       initialTime: TimeOfDay.fromDateTime(initial),
     );
     if (time == null) return null;
@@ -1677,6 +1681,11 @@ class _Score67State extends State<Score67> {
     Text(
       '${t('scheduled')}: ${draftStart == null ? t('game.unscheduled') : dateLabel(draftStart!.millisecondsSinceEpoch)}',
     ),
+    if (draftStart == null)
+      Text(
+        t('schedule.hint'),
+        style: const TextStyle(fontSize: 14, color: Color(0xfffbbf24)),
+      ),
     Wrap(
       spacing: 8,
       children: [
@@ -3144,8 +3153,10 @@ class _Score67State extends State<Score67> {
     scaffoldMessengerKey: messenger,
     debugShowCheckedModeBanner: false,
     title: 'Score67',
-    locale: Locale(lang),
-    supportedLocales: const [Locale('de'), Locale('en')],
+    // English uses the British locale: day-first date picker, weeks
+    // starting Monday and a 24-hour time picker (European defaults).
+    locale: lang == 'en' ? const Locale('en', 'GB') : Locale(lang),
+    supportedLocales: const [Locale('de'), Locale('en', 'GB'), Locale('en')],
     localizationsDelegates: GlobalMaterialLocalizations.delegates,
     theme: ThemeData(
       brightness: Brightness.dark,

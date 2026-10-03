@@ -64,14 +64,25 @@ export function eventTime(event, state, words) {
   return `${Math.floor(event.clock_ms / 60000) + (event.period - 1) * event.period_length_min + 1}′`;
 }
 
+// European date/time in every language: "Sa., 03.10.2026 · 19:57", 24-hour clock.
+const pad = value => String(value).padStart(2, '0');
+export function europeanDate(when, lang, {weekday = false, year = true} = {}) {
+  const day = `${pad(when.getDate())}.${pad(when.getMonth() + 1)}.${year ? when.getFullYear() : ''}`;
+  if (!weekday) return day;
+  const name = new Intl.DateTimeFormat(lang === 'en' ? 'en-GB' : 'de-DE', {weekday: 'short'}).format(when);
+  return `${name} ${day}`;
+}
+export function europeanTime(when) {
+  return `${pad(when.getHours())}:${pad(when.getMinutes())}`;
+}
+
 // Build time in the viewer's own time zone instead of UTC.
 export function localizeVersionFooter() {
   document.querySelectorAll('.version-footer[data-built]').forEach(node => {
     const built = new Date(node.dataset.built);
     if (Number.isNaN(built.getTime())) return;
-    const lang = preferredLanguage() === 'en' ? 'en-GB' : 'de-DE';
-    const when = new Intl.DateTimeFormat(lang, {day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short'}).format(built);
-    node.textContent = `v${node.dataset.version} · ${when}`;
+    const zone = new Intl.DateTimeFormat('de-DE', {timeZoneName: 'short'}).formatToParts(built).find(part => part.type === 'timeZoneName')?.value;
+    node.textContent = `v${node.dataset.version} · ${europeanDate(built)} ${europeanTime(built)}${zone ? ` ${zone}` : ''}`;
   });
 }
 if (typeof document !== 'undefined') localizeVersionFooter();

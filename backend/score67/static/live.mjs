@@ -1,4 +1,4 @@
-import {preferredLanguage, saveLanguage, translations, clockText, periodLabel} from './common.mjs';
+import {preferredLanguage, saveLanguage, translations, clockText, periodLabel, europeanDate, europeanTime} from './common.mjs';
 const el = id => document.getElementById(id);
 let lang = preferredLanguage(), words = {}, games = [], upcoming = [], loaded = false, online = true, busy = false;
 let tab = location.hash === '#upcoming' ? 'upcoming' : 'live';
@@ -36,8 +36,8 @@ function extras(card, game) {
 function upcomingCard(game) {
   const card = cardShell(`/s/${encodeURIComponent(game.scoreboard)}?${game.active ? '' : `match=${encodeURIComponent(game.match_id)}&`}lang=${lang}`, 'upcoming');
   const when = new Date(game.scheduled_at);
-  const day = new Intl.DateTimeFormat(lang, {weekday: 'short', day: '2-digit', month: '2-digit'}).format(when);
-  const time = new Intl.DateTimeFormat(lang, {hour: '2-digit', minute: '2-digit'}).format(when);
+  const day = europeanDate(when, lang, {weekday: true, year: false});
+  const time = europeanTime(when);
   const meta = document.createElement('div'); meta.className = 'live-meta';
   meta.append(textNode('span', `${words[game.sport || 'football']} · ${game.period_count} × ${game.period_length_min} min`), textNode('span', `${day} · ${time}`, 'live-when'));
   card.append(meta);

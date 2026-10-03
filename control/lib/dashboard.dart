@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 
 import 'account.dart';
+import 'dates.dart';
 import 'game_editor.dart';
 
 typedef DashboardApi =
@@ -170,9 +171,10 @@ class _DashboardState extends State<Dashboard> {
   }
 
   String dateLabel(int milliseconds) {
-    final value = DateTime.fromMillisecondsSinceEpoch(milliseconds);
-    final l = MaterialLocalizations.of(context);
-    return '${l.formatMediumDate(value)} · ${l.formatTimeOfDay(TimeOfDay.fromDateTime(value), alwaysUse24HourFormat: true)}';
+    return europeanDateTime(
+      DateTime.fromMillisecondsSinceEpoch(milliseconds),
+      widget.language,
+    );
   }
 
   Future<bool> confirm(String text) async =>
@@ -205,6 +207,10 @@ class _DashboardState extends State<Dashboard> {
     if (date == null || !mounted) return null;
     final time = await showTimePicker(
       context: context,
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+        child: child!,
+      ),
       initialTime: TimeOfDay.fromDateTime(current),
     );
     return time == null
@@ -292,6 +298,14 @@ class _DashboardState extends State<Dashboard> {
                     value: scheduled,
                     onChanged: (v) => update(() => scheduled = v),
                   ),
+                  if (!scheduled)
+                    Text(
+                      t('schedule.hint'),
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Color(0xfffbbf24),
+                      ),
+                    ),
                   if (scheduled)
                     OutlinedButton(
                       onPressed: () async {
@@ -422,6 +436,11 @@ class _DashboardState extends State<Dashboard> {
             '${t('scheduled')}: ${game['scheduled_at'] == null ? t('game.unscheduled') : dateLabel(game['scheduled_at'])}',
             style: const TextStyle(fontSize: 14, color: Color(0xffb5c2d4)),
           ),
+          if (game['scheduled_at'] == null && status == 'planned')
+            Text(
+              t('schedule.hint'),
+              style: const TextStyle(fontSize: 14, color: Color(0xfffbbf24)),
+            ),
           Text(
             '${t('created')}: ${dateLabel(game['created_at'])}',
             style: const TextStyle(fontSize: 13, color: Color(0xff8d9bb0)),

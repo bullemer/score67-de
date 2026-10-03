@@ -451,5 +451,6 @@
   "error.login_rate_limited": "Too many sign-in links requested. Please try again in an hour.",
   "error.login_invalid": "This link has expired or was already used. Request a new sign-in link.",
   "error.login_required": "Please sign in with email first.",
-  "error.owner_exists": "This scoreboard is already linked to another email."
+  "error.owner_exists": "This scoreboard is already linked to another email.",
+  "schedule.hint": "Without a start time the game does not appear under \"Upcoming\" in the live directory."
 }

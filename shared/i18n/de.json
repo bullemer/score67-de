@@ -451,5 +451,6 @@
   "error.login_rate_limited": "Zu viele Anmeldelinks angefordert. Bitte in einer Stunde erneut versuchen.",
   "error.login_invalid": "Dieser Link ist abgelaufen oder wurde schon benutzt. Fordere einen neuen Anmeldelink an.",
   "error.login_required": "Bitte zuerst mit E-Mail anmelden.",
-  "error.owner_exists": "Dieses Scoreboard ist schon mit einer anderen E-Mail verbunden."
+  "error.owner_exists": "Dieses Scoreboard ist schon mit einer anderen E-Mail verbunden.",
+  "schedule.hint": "Ohne Termin erscheint das Spiel nicht unter „Demnächst“ in den Livetickern."
 }
