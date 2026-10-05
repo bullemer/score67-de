@@ -962,7 +962,33 @@ def create_app(db_url=None, secure_cookies=None):
                     "away": {**{k: m.state["away"][k] for k in ("name", "color")}, "logo": m.state["away"].get("logo")},
                     "location": {k: location[k] for k in ("lat", "lng", "label")} if location else None,
                     "description": b.description, "stream_url": b.stream_url})
-            return {"games": games, "upcoming": upcoming, "server_now": round(now * 1000)}
+            # Just finished: public games that ended within LIVE_FINISHED_HOURS, so a
+            # game does not vanish silently at the final whistle (or its automatic end).
+            since = now - hours_env("LIVE_FINISHED_HOURS", 6)
+            finished = []
+            ended = db.scalars(select(Match).join(Board, Board.slug == Match.slug).where(
+                Board.private.is_(False), Match.deleted_at.is_(None), Match.archived_at.is_(None),
+                Match.trashed_at.is_(None), Match.created_at >= since - 3 * 86400,
+                Match.state["phase"].as_string() == "finished"))
+            for m in ended:
+                end = next((e for e in db.scalars(select(MatchEvent).where(MatchEvent.match_id == m.id)
+                                                  .order_by(MatchEvent.id.desc()).limit(20))
+                            if not e.cancelled and e.payload.get("type") == "game_end"), None)
+                if not end or end.payload["occurred_at"] / 1000 < since:
+                    continue
+                b = db.get(Board, m.slug)
+                s = state(db, b, m.id)
+                location = b.location if b.location and b.location.get("visible") else None
+                finished.append({
+                    "scoreboard": b.slug, "match_id": m.id, "active": b.active_match == m.id,
+                    "sport": s["sport"], "period": s["period"], "period_count": s["period_count"],
+                    "ended_at": end.payload["occurred_at"], "automatic": bool(end.payload.get("automatic")),
+                    "home": {k: s["home"].get(k) for k in ("name", "color", "logo", "score", "counters")},
+                    "away": {k: s["away"].get(k) for k in ("name", "color", "logo", "score", "counters")},
+                    "location": {k: location[k] for k in ("lat", "lng", "label")} if location else None,
+                    "description": b.description, "stream_url": b.stream_url})
+            finished.sort(key=lambda g: g["ended_at"], reverse=True)
+            return {"games": games, "upcoming": upcoming, "finished": finished[:30], "server_now": round(now * 1000)}
 
     @app.post("/api/s/{slug}/matches", status_code=201)
     def create_match(slug: str, body: CreateMatch, request: Request):

@@ -1463,3 +1463,21 @@ def test_link_previews_for_whatsapp_and_facebook(system):
     # The OBS overlay needs no tags; site pages get the generic card.
     assert 'og:title' not in client.get(f'/s/{slug}/overlay').text
     assert '/preview.png' in client.get('/').text and '/preview.png' in client.get('/forum').text
+
+
+def test_live_list_keeps_just_finished_games(system, monkeypatch):
+    app, client = system
+    slug = create(client)['slug']
+    command(client, slug, 'settings', {'home': {'name': 'Bramfeld'}, 'away': {'name': 'Scaletta'}})
+    command(client, slug, 'period_start')
+    command(client, slug, 'score', {'team': 'home', 'points': 1})
+    live = client.get('/api/live').json()
+    assert [g['scoreboard'] for g in live['games']] == [slug] and live['finished'] == []
+    command(client, slug, 'game_end')
+    live = client.get('/api/live').json()
+    assert live['games'] == []
+    [game] = live['finished']
+    assert game['home']['name'] == 'Bramfeld' and game['home']['score'] == 1 and not game['automatic']
+    # After the window the game leaves the list.
+    monkeypatch.setenv('LIVE_FINISHED_HOURS', '0')
+    assert client.get('/api/live').json()['finished'] == []

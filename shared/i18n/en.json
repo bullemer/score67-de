@@ -558,5 +558,9 @@
   "console.book_anyway": "Book without clock",
   "settings.format": "Game format",
   "settings.teams": "Teams",
-  "location.edit_map": "Edit venue on the map"
+  "location.edit_map": "Edit venue on the map",
+  "live.finished_title": "Just finished",
+  "live.final": "Final score",
+  "live.ended_at": "ended {time}",
+  "live.auto_ended": "Ended automatically – no more entries after the playing time."
 }

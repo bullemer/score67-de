@@ -1,6 +1,6 @@
 import {preferredLanguage, saveLanguage, translations, clockText, periodLabel, europeanDate, europeanTime} from './common.mjs';
 const el = id => document.getElementById(id);
-let lang = preferredLanguage(), words = {}, games = [], upcoming = [], loaded = false, online = true, busy = false;
+let lang = preferredLanguage(), words = {}, games = [], upcoming = [], finished = [], loaded = false, online = true, busy = false;
 let tab = location.hash === '#upcoming' ? 'upcoming' : 'live';
 let serverAt = Date.now(), receivedAt = performance.now(), languageVersion = 0;
 function textNode(tag, value, className) {
@@ -51,6 +51,26 @@ function upcomingCard(game) {
   extras(card, game);
   return card;
 }
+// Ended games stay listed for a few hours with the final score.
+function finishedCard(game) {
+  const card = cardShell(`/s/${encodeURIComponent(game.scoreboard)}?${game.active ? '' : `match=${encodeURIComponent(game.match_id)}&`}lang=${lang}`, 'finished');
+  const meta = document.createElement('div'); meta.className = 'live-meta';
+  const ended = new Date(game.ended_at);
+  meta.append(textNode('span', `${words[game.sport || 'football']} · ${words['live.final']}`, 'live-final'),
+    textNode('span', (words['live.ended_at'] || '{time}').replace('{time}', europeanTime(ended))));
+  card.append(meta);
+  for (const side of ['home', 'away']) {
+    const team = game[side];
+    const row = document.createElement('div'); row.className = 'live-team'; row.style.borderColor = team.color;
+    const name = textNode('span', team.name, 'live-name');
+    if (team.logo) { const img = document.createElement('img'); img.src = team.logo; img.alt = ''; img.className = 'live-logo'; name.prepend(img); }
+    row.append(name, textNode('strong', team.score, 'live-score'));
+    card.append(row);
+  }
+  if (game.automatic) card.append(textNode('p', words['live.auto_ended'], 'live-auto'));
+  extras(card, game);
+  return card;
+}
 function render() {
   el('status').textContent = words[!loaded && online ? 'connecting' : online ? 'live.updating' : 'live.offline'];
   el('tab-live').textContent = `${words['live.tab_live'] || 'Live'} (${games.length})`;
@@ -61,6 +81,8 @@ function render() {
   el('games').hidden = tab !== 'live';
   el('upcoming').hidden = tab !== 'upcoming';
   el('empty').hidden = tab !== 'live' || !loaded || games.length !== 0;
+  el('finished-section').hidden = tab !== 'live' || finished.length === 0;
+  el('finished').replaceChildren(...finished.map(finishedCard));
   el('empty-upcoming').hidden = tab !== 'upcoming' || !loaded || upcoming.length !== 0;
   el('upcoming').replaceChildren(...upcoming.map(upcomingCard));
   const cards = games.map(game => {
@@ -128,7 +150,7 @@ async function poll() {
     const response = await fetch('/api/live', {cache:'no-store', signal:AbortSignal.timeout(5000)});
     if (!response.ok) throw new Error('live');
     const data = await response.json();
-    games = data.games; upcoming = data.upcoming || []; serverAt = data.server_now + (performance.now() - start) / 2;
+    games = data.games; upcoming = data.upcoming || []; finished = data.finished || []; serverAt = data.server_now + (performance.now() - start) / 2;
     receivedAt = performance.now(); loaded = true; online = true;
   } catch { online = false; }
   finally { busy = false; render(); }

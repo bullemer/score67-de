@@ -558,5 +558,9 @@
   "console.book_anyway": "Ohne Uhr buchen",
   "settings.format": "Spielformat",
   "settings.teams": "Teams",
-  "location.edit_map": "Spielort auf der Karte bearbeiten"
+  "location.edit_map": "Spielort auf der Karte bearbeiten",
+  "live.finished_title": "Gerade beendet",
+  "live.final": "Endstand",
+  "live.ended_at": "beendet {time}",
+  "live.auto_ended": "Automatisch beendet – nach der Spielzeit kamen keine Eingaben mehr."
 }

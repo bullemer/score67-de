@@ -128,6 +128,10 @@ In Settings → Anzeigetafeln, up to two LED displays can be driven directly by 
 
 Shared ticker links show a real preview in WhatsApp, Facebook, Signal, Telegram etc.: `/s/<code>` renders Open Graph tags server-side (title "Bramfeld 74 : 70 Scaletta · LIVE" / "· ENDSTAND", or "Bramfeld – Scaletta · <kick-off>" before the game; description with sport, period, venue, the game description) and `og:image` points to `/s/<code>/preview.png` — a 1200 × 630 PNG card drawn with Pillow (team colours, logos, score, status, period; `backend/score67/preview.py`, bundled DejaVu fonts). The image URL carries the revision, so a new score is a new image; `?match=` links preview that game. Private games show only "Privates Spiel". Site pages use the generic card `/preview.png`. Apps cache previews: Facebook's Sharing Debugger (developers.facebook.com/tools/debug) re-scrapes a link on demand.
 
+### Just finished in the live directory
+
+`/live` keeps public games that ended within `LIVE_FINISHED_HOURS` (default 6) in a "Gerade beendet" section under the running games: final score, end time, "ended automatically" when the auto end closed it, venue, description and livestream link. The card opens that game's ticker (`?match=` when the board has moved on to another game).
+
 ### Console menu
 
 The ☰ menu starts with Edit teams (opens the Team tab), Pause game (stops a running basketball clock and returns to the start page; the game stays open and can be resumed from My scoreboards) and Close game (confirms the final result, ends the game, returns to the start page), followed by My scoreboards, links, sharing, venue, description and language.
