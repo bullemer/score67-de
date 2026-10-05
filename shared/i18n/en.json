@@ -578,5 +578,22 @@
   "game.restart": "Restart (same teams)",
   "game.correct": "Correct result in the Controller",
   "error.game_running": "A game is running on this scoreboard. Finish it first.",
-  "viewer": "Viewer"
+  "viewer": "Viewer",
+  "seo.landing.title": "Score67 – live score & live ticker for basketball and football",
+  "seo.landing.description": "Keep the score on your phone and share it live: free live ticker for basketball and (youth) football, display on a TV or LED board, OBS overlay for live streams. No app, no account.",
+  "seo.features.title": "Features: live ticker, game clock, WhatsApp sharing, OBS overlay · Score67",
+  "seo.features.description": "Everything Score67 does: points, fouls, cards and game clock from your phone, box score per player, share the live ticker via WhatsApp, OBS overlay, scoreboard displays.",
+  "seo.about.title": "About Score67 – built by a basketball parent and football coach",
+  "seo.about.description": "Why Score67 exists: at youth games nobody knows the exact score. Score67 makes it visible live for parents, fans and teams.",
+  "seo.live.title": "Live games – basketball and football live scores · Score67",
+  "seo.live.description": "Basketball and football games in progress and coming up, with live score, game clock and livestream links.",
+  "seo.forum.title": "Forum – questions, wishes and experiences · Score67",
+  "seo.forum.description": "Questions, feature requests and experiences around Score67, the live ticker for basketball and football.",
+  "seo.datenschutz.title": "Privacy policy (German) · Score67",
+  "seo.datenschutz.description": "What data Score67 processes: no tracking, no ads, only technically necessary cookies.",
+  "seo.impressum.title": "Legal notice (German) · Score67",
+  "seo.impressum.description": "Legal notice of Score67, operated by Navisense GmbH, Hamburg.",
+  "landing.seo.title": "Live ticker and scoreboard for basketball and football",
+  "landing.seo.text": "With Score67 you record points, goals, fouls, cards and the game clock right on your phone – for basketball (including youth formats such as 8 × 5 minutes) and football from kids' games to 11-a-side. Parents, fans and teammates follow the score live through a link, e.g. via WhatsApp, with no app and no sign-up.",
+  "landing.seo.text2": "For live streams there is a transparent OBS overlay, for the gym a large display on a TV or projector and LED displays over Bluetooth. After the game, the final score, the game log and a box score per player are ready."
 }

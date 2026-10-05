@@ -1530,3 +1530,24 @@ def test_viewer_offers_controller_only_to_controllers(system):
     stranger = TestClient(app)
     page = stranger.get(f'/s/{slug}').text
     assert 'id="controller-button"' not in page and 'data-i18n="share.take_control"' in page
+
+
+def test_pages_are_readable_without_javascript_and_listed_for_search(system):
+    import re as regex
+    app, client = system
+    landing = client.get('/').text
+    assert regex.search(r'<h1 data-i18n="landing.title">[^<]+</h1>', landing), 'texts are rendered on the server'
+    assert '<title>Score67 – Live-Spielstand' in landing and 'data-server-lang="de"' in landing
+    assert '<link rel="canonical" href="http://testserver/">' in landing and 'hreflang="en"' in landing
+    assert 'application/ld+json' in landing and 'Navisense GmbH' in landing
+    english = client.get('/features?lang=en').text
+    assert 'lang="en"' in english and 'Features: live ticker' in english and '?lang=en">' in english
+    # Games, the Flutter app and moderation stay out of search results.
+    slug = create(client)['slug']
+    assert '<meta name="robots" content="noindex">' in client.get(f'/s/{slug}').text
+    assert client.get(f'/s/{slug}').headers['x-robots-tag'] == 'noindex'
+    robots = client.get('/robots.txt').text
+    assert 'Disallow: /api/' in robots and 'Sitemap: http://testserver/sitemap.xml' in robots
+    sitemap = client.get('/sitemap.xml')
+    assert sitemap.headers['content-type'].startswith('application/xml')
+    assert '<loc>http://testserver/features?lang=en</loc>' in sitemap.text and 'hreflang="x-default"' in sitemap.text

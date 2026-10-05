@@ -22,7 +22,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 
-from . import forum, mail, preview
+from . import forum, mail, preview, seo
 from .db import Account, AccountSession, Admin, Asset, LoginToken, Board, Display, DisplayAdmin, Match, MatchEvent, RateLimit, Receipt, database
 from .domain import FOOTBALL, BASKETBALL, RuleError, apply, period_ms, initial_state, normalize_clock, foul_mode, BASKETBALL_STATS, player_statistics, SHORT_MAX, FOOTBALL_EVENTS
 
@@ -345,6 +345,7 @@ def create_app(db_url=None, secure_cookies=None):
     templates = Jinja2Templates(directory=ROOT / "backend/score67/templates")
     templates.env.globals["release_label"] = RELEASE["label"]
     templates.env.globals["public_origin"] = os.getenv("PUBLIC_ORIGIN", "")
+    templates.env.globals["ms_date"] = lambda ms: datetime.fromtimestamp(ms / 1000, timezone.utc).strftime("%d.%m.%Y") if ms else ""
     # Footers show the build time in the viewer's time zone (common.mjs).
     templates.env.globals["release_version"] = RELEASE["version"]
     templates.env.globals["release_built_at"] = RELEASE["built_at"]
@@ -1383,13 +1384,29 @@ def create_app(db_url=None, secure_cookies=None):
         except (WebSocketDisconnect, RuntimeError):
             pass
 
+    def page(request, name, context=None, *, language=None, index=True, title=None):
+        """A server-rendered page with all texts filled in for crawlers (seo.fill).
+        Site pages take their title/description from seo.<page>.* unless given."""
+        language = language or seo.language(request)
+        words = seo.words(language)
+        context = {"request": request, "lang": language, "index": index, **(context or {})}
+        key = context.get("page")
+        if key and not context.get("og") and words.get(f"seo.{key}.title"):
+            context["og"] = {"title": words[f"seo.{key}.title"], "description": words.get(f"seo.{key}.description"),
+                             "language": language}
+        title = title or (context.get("og") or {}).get("title")
+        response = HTMLResponse(seo.fill(templates.get_template(name).render(context), language, title))
+        if not index:
+            response.headers["X-Robots-Tag"] = "noindex"
+        return response
+
     @app.get("/", response_class=HTMLResponse)
     def landing(request: Request):
-        return templates.TemplateResponse(request=request, name="landing.html")
+        return page(request, "landing.html", {"page": "landing"})
 
     @app.get("/live", response_class=HTMLResponse)
     def live_page(request: Request):
-        return templates.TemplateResponse(request=request, name="live.html")
+        return page(request, "live.html", {"page": "live"})
 
     forum.register(app, lock=lock, current_account=current_account, limited=limited, sign_in=sign_in)
 
@@ -1399,28 +1416,46 @@ def create_app(db_url=None, secure_cookies=None):
         # Operator details live in shared/legal.json (one place for both pages).
         legal = json.loads((ROOT / "shared/legal.json").read_text())
         name = request.url.path.strip("/")
-        return templates.TemplateResponse(request=request, name=f"{name}.html", context={"page": name, "legal": legal})
+        return page(request, f"{name}.html", {"page": name, "legal": legal}, index=name == "datenschutz")
 
     @app.get("/about", response_class=HTMLResponse)
     @app.get("/features", response_class=HTMLResponse)
     def info_page(request: Request):
         name = request.url.path.strip("/")
-        return templates.TemplateResponse(request=request, name=f"{name}.html", context={"page": name})
+        return page(request, f"{name}.html", {"page": name})
 
     @app.get("/forum", response_class=HTMLResponse)
     @app.get("/forum/{thread_id:int}", response_class=HTMLResponse)
     def forum_page(request: Request, thread_id: int | None = None):
-        return templates.TemplateResponse(request=request, name="forum.html",
-                                          context={"page": "forum", "thread_id": thread_id})
+        # Topics and posts are rendered on the server too, so they can be found.
+        with lock, app.state.sessions() as db:
+            topic = forum.thread_page(db, thread_id) if thread_id else None
+            topics = None if thread_id else forum.thread_list(db)
+        context = {"page": "forum", "thread_id": thread_id, "topic": topic, "topics": topics}
+        if topic:
+            context["og"] = {"title": f"{topic['thread']['title']} · Forum · Score67",
+                             "description": topic["thread"]["body"][:200], "language": seo.language(request)}
+        return page(request, "forum.html", context, index=thread_id is None or topic is not None)
 
     @app.get("/forum/moderate/{post_id:int}", response_class=HTMLResponse)
     def forum_moderation_page(request: Request, post_id: int):
-        return templates.TemplateResponse(request=request, name="forum-moderate.html",
-                                          context={"page": "forum", "post_id": post_id})
+        return page(request, "forum-moderate.html", {"page": "moderate", "post_id": post_id}, index=False)
 
     @app.get("/location-picker", response_class=HTMLResponse)
     def location_picker(request: Request):
-        return templates.TemplateResponse(request=request, name="location-picker.html")
+        return page(request, "location-picker.html", index=False)
+
+    @app.get("/robots.txt")
+    def robots_txt(request: Request):
+        return Response(seo.robots(origin(request)), media_type="text/plain")
+
+    @app.get("/sitemap.xml")
+    def sitemap_xml(request: Request):
+        with lock, app.state.sessions() as db:
+            threads = [(t["id"], datetime.fromtimestamp(t["last_at"] / 1000, timezone.utc).strftime("%Y-%m-%d"))
+                       for t in forum.thread_list(db)]
+        pages = ["/", "/features", "/about", "/live", "/forum", "/datenschutz"]
+        return Response(seo.sitemap(origin(request), pages, threads), media_type="application/xml")
 
     @app.get("/s/{slug}", response_class=HTMLResponse)
     @app.get("/s/{slug}/overlay", response_class=HTMLResponse)
@@ -1439,9 +1474,10 @@ def create_app(db_url=None, secure_cookies=None):
                     controller = True
                 except HTTPException:
                     pass
-        return templates.TemplateResponse(request=request, name="display.html",
-                                          context={"slug": slug, "overlay": overlay, "private": hidden, "og": og,
-                                                   "controller": controller})
+            language = seo.language(request, b.language if b.language in seo.LANGUAGES else "de")
+        # Single games are short-lived and thin: shared, but not indexed.
+        return page(request, "display.html", {"slug": slug, "overlay": overlay, "private": hidden, "og": og,
+                                              "controller": controller}, language=language, index=False)
 
     def origin(request):
         return os.getenv("PUBLIC_ORIGIN", str(request.base_url).rstrip("/"))
@@ -1500,7 +1536,8 @@ def create_app(db_url=None, secure_cookies=None):
     def control(slug: str | None = None):
         if not (build / "index.html").exists():
             raise HTTPException(503, "control_build_missing")
-        return FileResponse(build / "index.html")
+        # The Flutter app (create, My scoreboards, Controller) is not for search results.
+        return FileResponse(build / "index.html", headers={"X-Robots-Tag": "noindex"})
 
     return app
 

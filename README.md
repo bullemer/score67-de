@@ -140,6 +140,10 @@ The console's sixth tab "BS" lists the selected team's statistics for the whole 
 
 The two roles are always called **Controller** (the scoring console, `/s/<code>/control`) and **Viewer** (the public scoreboard page, `/s/<code>`), in German too. A browser that already controls a board (PIN cookie or signed-in owner) sees a **Controller** button in the Viewer's top bar and "Controller" in its menu; everybody else gets "Controller (mit PIN)". The Controller's ☰ menu has **Viewer** (opens in a new tab), and every game in My scoreboards has a **Viewer** button.
 
+### Search engines (SEO basics)
+
+All server pages (start, Funktionen, Über, Forum incl. every topic, Live list, Impressum, Datenschutz, Viewer) are rendered with their texts already in the HTML (`backend/score67/seo.py` fills every `data-i18n` element from shared/i18n); the page scripts still switch language in place. The URL decides the language: German by default, English with `?lang=en`; only a visitor's own choice (stored) overrides it, not the browser locale. Each page has its own title/description (`seo.<page>.*`), canonical and hreflang (de / en / x-default) links; the start page carries schema.org `WebApplication` + `Organization` (Navisense GmbH) JSON-LD (deliberately no FAQ markup). `robots.txt` blocks the API, the Flutter app (create, My scoreboards, Controller), overlays and moderation and points to `sitemap.xml` (site pages in both languages plus forum topics). Single games (`/s/<code>`) and the Flutter routes are `noindex` (meta + `X-Robots-Tag`): shared, but not search results.
+
 ### Console menu
 
 The ☰ menu only leaves the console: **Start** (start page), **Meine Scoreboards**, **Viewer** and **Verlassen** (stops a running basketball clock first; the game stays open and can be resumed from My scoreboards). Everything else is in the console itself: teams in the Team tab, all settings in Einstellungen, PIN/links/sharing in Teilen, ending the game via 🏁 / the Period tab.

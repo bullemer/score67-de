@@ -1,11 +1,13 @@
 <!doctype html>
 <html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Score67</title>
-{% include "_og.html" %}<link rel="stylesheet" href="/static/display.css"><link rel="stylesheet" href="/static/site.css"></head>
+{% include "_og.html" %}<link rel="stylesheet" href="/static/display.css"><link rel="stylesheet" href="/static/site.css"><script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebApplication","name":"Score67","url":"https://score67.de/","applicationCategory":"SportsApplication","operatingSystem":"Web browser (Android, iOS, desktop)","inLanguage":["de","en"],"description":"Live-Scoreboard und Liveticker für Basketball und Fußball: Spielstand vom Handy erfassen, per Link teilen, als OBS-Overlay streamen.","offers":{"@type":"Offer","price":"0","priceCurrency":"EUR"},"publisher":{"@id":"https://navisense.de/#org"}},{"@type":"Organization","@id":"https://navisense.de/#org","name":"Navisense GmbH","url":"https://navisense.de/","address":{"@type":"PostalAddress","streetAddress":"Dorothea-Bernstein-Weg 28","postalCode":"22081","addressLocality":"Hamburg","addressCountry":"DE"}}]}</script>
+</head>
 <body class="landing">{% include "_site_header.html" %}
 <main><p class="eyebrow" data-i18n="create.scope"></p><h1 data-i18n="landing.title"></h1><p data-i18n="landing.body"></p>
 <div class="landing-actions"><a class="primary" href="/new" data-i18n="create" data-link="/new"></a><a class="primary secondary" href="/dashboard" data-i18n="dashboard" data-link="/dashboard"></a><a class="primary secondary" href="/live" data-i18n="live.title" data-link="/live"></a></div>
 <p class="landing-more"><a href="/features" data-i18n="landing.more_features" data-link="/features"></a> · <a href="/about" data-i18n="landing.more_about" data-link="/about"></a> · <a href="/forum" data-i18n="landing.more_forum" data-link="/forum"></a></p>
+<section class="landing-seo"><h2 data-i18n="landing.seo.title"></h2><p data-i18n="landing.seo.text"></p><p data-i18n="landing.seo.text2"></p></section>
 <p class="dev-note"><span data-i18n="landing.dev"></span> <a href="https://navisense.de" target="_blank" rel="noopener">Navisense</a> · navisense.de</p></main>
 <footer class="version-footer site-footer"><span>{% include "_legal_links.html" %}</span> · <span class="version-footer" data-version="{{ release_version }}" data-built="{{ release_built_at }}">{{ release_label }}</span></footer>
 <script type="module" src="/static/site.mjs"></script></body></html>

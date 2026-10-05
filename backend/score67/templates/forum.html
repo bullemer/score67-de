@@ -4,10 +4,13 @@
 {% include "_og.html" %}<link rel="stylesheet" href="/static/display.css"><link rel="stylesheet" href="/static/site.css"></head>
 <body class="site-page forum-page" data-thread="{{ thread_id or '' }}">{% include "_site_header.html" %}
 <main>
-<p class="crumb" id="crumb" hidden><a href="/forum" data-i18n="forum.back" data-link="/forum"></a></p>
-<p class="eyebrow" data-i18n="forum.eyebrow"></p><h1 id="heading" data-i18n="forum.title"></h1><p id="intro" data-i18n="forum.intro"></p>
+<p class="crumb" id="crumb"{% if not topic %} hidden{% endif %}><a href="/forum" data-i18n="forum.back" data-link="/forum"></a></p>
+<p class="eyebrow" data-i18n="forum.eyebrow"></p><h1 id="heading"{% if not topic %} data-i18n="forum.title"{% endif %}>{% if topic %}{{ topic.thread.title }}{% endif %}</h1><p id="intro" data-i18n="forum.intro"{% if topic %} hidden{% endif %}></p>
 <p id="status" role="status" aria-live="polite"></p>
-<div id="posts" class="forum-list"></div>
+<div id="posts" class="forum-list">{# server-rendered for crawlers; forum.mjs re-renders #}
+{%- if topic %}{% for p in [topic.thread] + topic.replies %}<article class="forum-post{{ ' forum-first' if loop.first }}"><p class="forum-meta">{{ p.author }} · {{ ms_date(p.published_at) }}</p><p class="forum-body">{{ p.body }}</p></article>{% endfor %}
+{%- elif topics %}{% for t in topics %}<a class="forum-post forum-thread" href="/forum/{{ t.id }}{{ '?lang=en' if lang == 'en' }}"><h2>{{ t.title }}</h2><p class="forum-body">{{ t.body }}</p><p class="forum-meta">{{ t.author }} · {{ ms_date(t.published_at) }}</p></a>{% endfor %}{% endif -%}
+</div>
 <section class="forum-form" id="compose">
 <h2 id="compose-title"></h2>
 <p id="mail-off" class="forum-note" data-i18n="forum.mail_off" hidden></p>

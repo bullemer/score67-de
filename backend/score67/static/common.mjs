@@ -7,7 +7,11 @@ export function preferredLanguage() {
   const explicit = new URLSearchParams(location.search).get('lang');
   let saved;
   try { saved = localStorage.getItem('score67-language'); } catch { /* OBS can disable storage. */ }
-  const lang = explicit || saved || navigator.language.slice(0, 2);
+  // The server renders the URL's language (?lang=, German by default); only a
+  // choice the visitor made overrides it, not the browser locale (crawlers
+  // render in English and would otherwise index English text on German URLs).
+  const server = typeof document !== 'undefined' ? document.documentElement.dataset.serverLang : undefined;
+  const lang = explicit || saved || server || navigator.language.slice(0, 2);
   return lang === 'de' ? 'de' : 'en';
 }
 export function saveLanguage(lang) {

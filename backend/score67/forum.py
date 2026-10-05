@@ -73,6 +73,31 @@ def visible():
     return (ForumPost.published_at.is_not(None), ForumPost.hidden_at.is_(None))
 
 
+def thread_list(db):
+    """Published topics, most recent activity first (for the API and the server-rendered page)."""
+    rows = db.scalars(select(ForumPost).where(ForumPost.thread_id.is_(None), *visible())).all()
+    stats = {t: (n, last) for t, n, last in db.execute(
+        select(ForumPost.thread_id, func.count(), func.max(ForumPost.published_at))
+        .where(ForumPost.thread_id.is_not(None), *visible()).group_by(ForumPost.thread_id))}
+    result = []
+    for post in rows:
+        replies, last = stats.get(post.id, (0, None))
+        result.append({**public(post), "body": post.body[:240], "replies": replies,
+                       "last_at": ms(max(post.published_at, last or 0))})
+    result.sort(key=lambda r: r["last_at"], reverse=True)
+    return result[:200]
+
+
+def thread_page(db, thread_id):
+    """A published topic with its replies, or None."""
+    post = db.get(ForumPost, thread_id)
+    if not post or post.thread_id is not None or not post.published_at or post.hidden_at:
+        return None
+    replies = db.scalars(select(ForumPost).where(ForumPost.thread_id == thread_id, *visible())
+                         .order_by(ForumPost.published_at)).all()
+    return {"thread": public(post), "replies": [public(r) for r in replies]}
+
+
 def register(app, *, lock, current_account, limited, sign_in):
     """Adds the forum API. ``sign_in(db, email, response)`` starts an account
     session for a confirmed address (the same as an email sign-in link)."""
@@ -103,17 +128,7 @@ def register(app, *, lock, current_account, limited, sign_in):
     @app.get("/api/forum")
     def threads():
         with lock, app.state.sessions() as db:
-            rows = db.scalars(select(ForumPost).where(ForumPost.thread_id.is_(None), *visible())).all()
-            stats = dict(((t, (n, last)) for t, n, last in db.execute(
-                select(ForumPost.thread_id, func.count(), func.max(ForumPost.published_at))
-                .where(ForumPost.thread_id.is_not(None), *visible()).group_by(ForumPost.thread_id))))
-            result = []
-            for post in rows:
-                replies, last = stats.get(post.id, (0, None))
-                result.append({**public(post), "body": post.body[:240], "replies": replies,
-                               "last_at": ms(max(post.published_at, last or 0))})
-            result.sort(key=lambda r: r["last_at"], reverse=True)
-            return {"threads": result[:200]}
+            return {"threads": thread_list(db)}
 
     @app.get("/api/forum/me")
     def forum_me(request: Request):
@@ -125,12 +140,10 @@ def register(app, *, lock, current_account, limited, sign_in):
     @app.get("/api/forum/{thread_id}")
     def thread(thread_id: int):
         with lock, app.state.sessions() as db:
-            post = db.get(ForumPost, thread_id)
-            if not post or post.thread_id is not None or not post.published_at or post.hidden_at:
+            page = thread_page(db, thread_id)
+            if not page:
                 raise HTTPException(404, "thread_not_found")
-            replies = db.scalars(select(ForumPost).where(ForumPost.thread_id == thread_id, *visible())
-                                 .order_by(ForumPost.published_at)).all()
-            return {"thread": public(post), "replies": [public(r) for r in replies]}
+            return page
 
     @app.post("/api/forum/posts")
     async def write(body: ForumWrite, request: Request):

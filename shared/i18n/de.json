@@ -578,5 +578,22 @@
   "game.restart": "Neu starten (gleiche Teams)",
   "game.correct": "Ergebnis im Controller korrigieren",
   "error.game_running": "Auf diesem Scoreboard läuft gerade ein Spiel. Beende es zuerst.",
-  "viewer": "Viewer"
+  "viewer": "Viewer",
+  "seo.landing.title": "Score67 – Live-Spielstand & Liveticker für Basketball und Fußball",
+  "seo.landing.description": "Spielstand vom Handy erfassen und live teilen: kostenloser Liveticker für Basketball und (Jugend-)Fußball, Anzeige auf TV oder LED-Tafel, OBS-Overlay für Livestreams. Ohne App, ohne Konto.",
+  "seo.features.title": "Funktionen: Liveticker, Spielzeit, WhatsApp-Teilen, OBS-Overlay · Score67",
+  "seo.features.description": "Alle Funktionen von Score67: Punkte, Fouls, Karten und Spielzeit vom Handy erfassen, Box Score je Spieler, Liveticker per WhatsApp teilen, OBS-Overlay, Anzeigetafeln.",
+  "seo.about.title": "Über Score67 – von einem Basketball-Vater und Fußballtrainer",
+  "seo.about.description": "Warum es Score67 gibt: Bei Jugendspielen weiß oft niemand den genauen Spielstand. Score67 macht ihn für Eltern, Fans und Teams live sichtbar.",
+  "seo.live.title": "Aktuelle Liveticker – Basketball und Fußball live · Score67",
+  "seo.live.description": "Laufende und demnächst geplante Basketball- und Fußballspiele mit Live-Spielstand, Spielzeit und Livestream-Links.",
+  "seo.forum.title": "Forum – Fragen, Wünsche und Erfahrungen · Score67",
+  "seo.forum.description": "Fragen, Feature-Wünsche und Erfahrungen rund um Score67, den Liveticker für Basketball und Fußball.",
+  "seo.datenschutz.title": "Datenschutzerklärung · Score67",
+  "seo.datenschutz.description": "Welche Daten Score67 verarbeitet: ohne Tracking, ohne Werbung, nur technisch notwendige Cookies.",
+  "seo.impressum.title": "Impressum · Score67",
+  "seo.impressum.description": "Impressum von Score67, betrieben von der Navisense GmbH, Hamburg.",
+  "landing.seo.title": "Liveticker und Anzeigetafel für Basketball und Fußball",
+  "landing.seo.text": "Mit Score67 erfasst du Punkte, Tore, Fouls, Karten und die Spielzeit direkt auf dem Handy – für Basketball (auch Jugendformate wie 8 × 5 Minuten) und Fußball vom Kinderfußball bis 11 gegen 11. Eltern, Fans und Mitspieler verfolgen den Spielstand live über einen Link, etwa per WhatsApp, ohne App und ohne Anmeldung.",
+  "landing.seo.text2": "Für Livestreams gibt es ein transparentes OBS-Overlay, für die Halle eine große Anzeige auf TV oder Beamer und LED-Displays per Bluetooth. Nach dem Spiel stehen Endstand, Spielverlauf und ein Box Score je Spieler bereit."
 }
