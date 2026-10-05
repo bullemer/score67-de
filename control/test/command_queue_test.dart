@@ -103,4 +103,29 @@ void main() {
     expect(shown['home']['statistics']['players'][0]['pf'], 0);
     expect(shown['home']['counters']['team_fouls'], 2);
   });
+
+  test('lineup taps are shown at once and build on each other', () {
+    expect(queueable('lineup'), isTrue);
+    final shown = optimisticState(server(), [
+      {
+        'match_id': 'm1',
+        'action': 'lineup',
+        'data': {
+          'team': 'home',
+          'player_ids': ['p7'],
+        },
+      },
+      {
+        'match_id': 'm1',
+        'action': 'lineup',
+        'data': {
+          'team': 'home',
+          'player_ids': ['p7', 'p9'],
+        },
+      },
+    ]);
+    expect(shown['home']['on_court'], ['p7', 'p9']);
+    expect(shown['away']['on_court'], isNull);
+    expect(shown['home']['score'], 5);
+  });
 }

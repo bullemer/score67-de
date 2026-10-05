@@ -62,11 +62,11 @@ Scoring supports +1/+2/+3 whether the clock runs or not; made baskets do not sto
 
 ### Football console (landscape)
 
-Football uses the same landscape console. Header: menu, short name, yellow/red card and foul counts, scores, half, running clock and a Play button that kicks off each half (the football clock is not stopped). Team columns show the team tile plus the players on the pitch (lineup of up to 11, otherwise the squad) and scroll vertically; tiles show goals and yellow/red cards. Actions: GOAL, YELLOW, RED, PENALTY, FOUL, FREE KICK, Undo, SUBSTITUTIONS — action first, then player or team tile. PENALTY records the awarded penalty and offers an inline Goal/Missed bar; Goal records a goal marked "penalty". The Period tab has kick-off/half-time/final whistle and clock corrections. Fouls, free kicks, penalties awarded and lineups stay private to controllers.
+Football uses the same landscape console. Header: menu, short name, yellow/red card and foul counts, scores, half, running clock and a Play button that kicks off each half (the football clock is not stopped). Team columns show the team tile plus the whole squad, players on the pitch first (see On court below), and scroll vertically; tiles show goals and yellow/red cards. Actions: GOAL, YELLOW, RED, PENALTY, FOUL, FREE KICK, Undo, SUBSTITUTIONS — action first, then player or team tile. PENALTY records the awarded penalty and offers an inline Goal/Missed bar; Goal records a goal marked "penalty". The Period tab has kick-off/half-time/final whistle and clock corrections. Fouls, free kicks, penalties awarded and lineups stay private to controllers.
 
 ### Team tab
 
-The console's middle panel has the tabs Spielverlauf (game flow), Team, Periods, Einstellungen and Teilen. Team edits both rosters inline: shirt number, optional name (basketball requires numbers) and an on-court checkbox (max. 5 in basketball, 11 in football). A new empty row appears automatically; a pasted list ("7 Alex" per line) can be imported. Save sends the squad, then the lineup; ticked players appear in the left columns and can be selected for actions. Unsaved edits are kept per team while switching teams or tabs (marked with •).
+The console's middle panel has the tabs Spielverlauf (game flow), Team, Periods, Einstellungen and Teilen. Team edits both rosters inline: shirt number, optional name (basketball requires numbers) and an on-court checkbox (max. 5 in basketball, 11 in football). A new empty row appears automatically; a pasted list ("7 Alex" per line) can be imported. Save sends the squad, then the lineup; ticked players appear bright at the top of the left columns. Unsaved edits are kept per team while switching teams or tabs (marked with •).
 
 Double-tap a team tile to edit the team name, short name and colour; double-tap a player tile to change number or name (only while no action is selected, so scoring taps stay instant). In basketball, Play also opens the next period or overtime and starts the clock in one tap.
 
@@ -94,7 +94,7 @@ The create form has free controls for the number of periods (1–12) and the len
 
 Tap a score in the console header to correct it (− / + or type the right score). The change is stored as an admin correction (`score_adjust`, any non-zero delta), shown in the game flow and to spectators as "Score corrected", and can be undone.
 
-When the basketball clock reaches 0:00 the Play button turns into ⏭: one tap ends the period. During the break the console already shows the next period (e.g. Q2 10:00, or 2nd half 45:00 in football) and Play starts it. Ending the last basketball period ends the match automatically unless it is tied (then overtime is offered); the automatic game end is marked `automatic` and can be undone. Clock start/stop/set/adjust entries are hidden from the game flow.
+When the basketball clock reaches 0:00 the Play button turns into ⏭: one tap ends the period. While a period runs with the clock stopped (basketball) or at any time in a football half, a second ⏭ button next to Play ends the period early — tap, then tap "End?" within 3 s (a clock that was never started no longer blocks the next period). In the last period that button is a 🏁 and opens the final-result confirmation instead. During the break the console already shows the next period (e.g. Q2 10:00, or 2nd half 45:00 in football) and Play starts it. Ending the last basketball period ends the match automatically unless it is tied (then overtime is offered); the automatic game end is marked `automatic` and can be undone. Clock start/stop/set/adjust entries are hidden from the game flow.
 
 ### Displays (Anzeigetafeln)
 
@@ -104,13 +104,20 @@ Settings → Anzeigetafeln (also in the console menu) connects physical scoreboa
 
 In Settings → Anzeigetafeln, up to two LED displays can be driven directly by the phone via Web Bluetooth (Chrome on Android or desktop; not iPhone). Per display: name, LED size in pixels (presets or free width × height; 6 × 8 px per character), content (score and time / score / time), time updates (whole minutes – default, every second, none) and protocol, with a live preview. The console header shows connected displays (tap to connect the next one) and sends a frame on every change plus a 5-second heartbeat. Implemented protocols: plain text over common serial BLE modules (Nordic UART, HM-10/BT05 FFE0, FFF0) and a `S67;…` data line for custom firmware. Vendor drivers (e.g. CoolLED1248 / iPixel Color panels) are added per device model.
 
+### Periods, free throws, on court, final result (v0.26)
+
+- **Entries outside a period.** Before kickoff an entry opens the first period by itself. In a break an inline bar asks once: book to the period that just ended (e.g. free throws after the buzzer; later entries in the same break follow without asking) or ▶ start the next period and book there. The header shows the period larger, orange with PAUSE in breaks and ENDE/FINAL once finished.
+- **Free throws.** FREE THROW → player → Hit/Miss records one shot and closes the bar; the next free throw is entered with FREE THROW again, so a double tap cannot add points.
+- **On court.** With no action selected, tapping a player moves them on court or back to the bench (max. 5 basketball, 11 football; youth formats with 4 or 7 simply activate fewer). Players on court are bright and on top, the bench is dimmed below; the team tile shows how many are on court. Without any lineup all players are bright. Actions still accept bench players (forgotten substitution). Each change is a substitution entry in the game flow, queued and shown at once like a score.
+- **Final result.** Ending the match (🏁 in the last period, Play at 0:00 of the last period, Period tab, menu Close game) shows one confirmation with the final score and the score per period.
+
 ### Console menu
 
-The ☰ menu starts with Edit teams (opens the Team tab), Pause game (stops a running basketball clock and returns to the start page; the game stays open and can be resumed from My scoreboards) and Close game (confirms, ends the game, returns to the start page), followed by My scoreboards, links, sharing, venue, description and language.
+The ☰ menu starts with Edit teams (opens the Team tab), Pause game (stops a running basketball clock and returns to the start page; the game stays open and can be resumed from My scoreboards) and Close game (confirms the final result, ends the game, returns to the start page), followed by My scoreboards, links, sharing, venue, description and language.
 
 ### Typing on a phone
 
-While a text field in the console's middle panel has focus, the header, team columns and actions hide so the panel uses the full screen above the phone keyboard; the edited row scrolls to the top. Edit dialogs (team, player, description, settings, clock, squad) open at the top of the screen.
+While a text field in the console's middle panel has focus, the header, team columns and actions hide so the panel uses the full screen above the phone keyboard; the edited row scrolls to the top; the panel's tab bar hides too. The page declares `interactive-widget=resizes-content`, so Android Chrome shrinks the app to the space above the keyboard instead of covering it. Edit dialogs (team, player, description, settings, clock, squad) open at the top of the screen.
 
 ### Sharing tab and creation
 

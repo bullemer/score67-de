@@ -22,9 +22,13 @@ const tallyActions = {
   'penalty',
 };
 
+/// Lineup changes (a player tapped on court / to the bench) are queued too:
+/// each carries the whole lineup, so taps in quick succession build on the
+/// optimistic one before.
 bool queueable(String action) =>
     tallyActions.contains(action.replaceFirst(RegExp(r'_correction$'), '')) ||
-    action == 'assign_player';
+    action == 'assign_player' ||
+    action == 'lineup';
 
 const _statColumns = {
   'score': 'pts',
@@ -56,6 +60,10 @@ Map<String, dynamic> optimisticState(
     final data = Map<String, dynamic>.from(command['data'] ?? {});
     final team = data['team'];
     if (team != 'home' && team != 'away') continue;
+    if (action == 'lineup') {
+      (s[team] as Map)['on_court'] = data['player_ids'];
+      continue;
+    }
     final correcting = action.endsWith('_correction');
     final kind = action.replaceFirst(RegExp(r'_correction$'), '');
     if (!tallyActions.contains(kind)) continue;

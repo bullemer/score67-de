@@ -2215,7 +2215,7 @@ class _Score67State extends State<Score67> {
     final upcoming =
         (basketball ? nextPeriod != null : false) ||
         (!basketball &&
-            phase == 'break' &&
+            (phase == 'pre_game' || phase == 'break') &&
             state['period'] < state['period_count']);
     final nextNumber = (state['period'] as int) + 1;
     final nextMinutes =
@@ -2227,6 +2227,18 @@ class _Score67State extends State<Score67> {
         !basketball &&
         (phase == 'pre_game' || phase == 'break') &&
         state['period'] < state['period_count'];
+    // The period an entry would open before kickoff or in a break.
+    final opening = basketball ? nextPeriod : (kickOff ? 'period_start' : null);
+    final tied = state['home']['score'] == state['away']['score'];
+    final lastPeriod =
+        (state['period'] as int) >= (state['period_count'] as int);
+    // ⏭ ends a period whose clock was stopped (or never started) before 0:00;
+    // in the last period, and after it when not tied, it ends the match.
+    final canSkip =
+        canWrite &&
+        ((phase == 'period_running' &&
+                (!basketball || (!running && !periodOver))) ||
+            (basketball && finalBreak && !tied));
     return MatchConsole(
       key: consoleKey,
       state: state,
@@ -2236,12 +2248,24 @@ class _Score67State extends State<Score67> {
                 ? mmss(nextMinutes * 60000)
                 : mmss((nextNumber - 1) * nextMinutes * 60000)
           : clockText(),
-      period: upcoming && phase != 'pre_game'
+      period: upcoming
           ? periodLabel({...state, 'period': nextNumber})
           : periodLabel().isEmpty
           ? '–'
           : periodLabel(),
       periodOver: periodOver,
+      nextPeriod: opening == null
+          ? null
+          : periodLabel({...state, 'period': nextNumber}).isEmpty
+          ? '$nextNumber'
+          : periodLabel({...state, 'period': nextNumber}),
+      endedPeriod: periodLabel().isEmpty ? null : periodLabel(),
+      onStartNext: () =>
+          opening == null ? Future.value(true) : command(opening),
+      onSkipPeriod: canSkip ? endPeriod : null,
+      skipEndsGame: lastPeriod && !(basketball && tied),
+      onToggleActive: toggleActive,
+      lineupMax: basketball ? 5 : 11,
       running: running,
       canToggleClock: basketball
           ? canWrite &&
@@ -2257,7 +2281,7 @@ class _Score67State extends State<Score67> {
       ),
       onMenu: openMenu,
       onToggleClock: periodOver
-          ? () => command('period_end')
+          ? endPeriod
           : basketball
           ? () async {
               // Play also opens the next period (or overtime), then starts the clock.
@@ -2289,6 +2313,77 @@ class _Score67State extends State<Score67> {
         (t('console.sharing'), sharingPanel()),
       ],
     );
+  }
+
+  /// Ends the running period. The last one (and a final break that is not
+  /// tied) ends the match after the final result is confirmed; a tied last
+  /// basketball period leads to overtime instead.
+  Future<void> endPeriod() async {
+    final last = (state['period'] as int) >= (state['period_count'] as int);
+    final tied = state['home']['score'] == state['away']['score'];
+    if (state['phase'] == 'break') {
+      if (await confirmFinal()) await command('game_end');
+      return;
+    }
+    if (basketball) {
+      // The server ends the match after the last period unless tied.
+      if (last && !tied && !await confirmFinal()) return;
+      await command('period_end');
+    } else if (last) {
+      if (await confirmFinal()) await command('game_end');
+    } else {
+      await command('period_end');
+    }
+  }
+
+  /// The match's end: the final result (and per-period scores) to confirm.
+  Future<bool> confirmFinal() async =>
+      await showDialog<bool>(
+        context: navigator.currentContext!,
+        builder: (context) => AlertDialog(
+          alignment: Alignment.topCenter,
+          insetPadding: const EdgeInsets.fromLTRB(24, 12, 24, 12),
+          title: Text(t('final.title')),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    '${state['home']['name']}  ${state['home']['score']} : ${state['away']['score']}  ${state['away']['name']}',
+                    style: const TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                periodScores(),
+                const SizedBox(height: 8),
+                Text(t('final.note'), style: const TextStyle(fontSize: 13)),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: Text(t('cancel')),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: Text(t('final.confirm')),
+            ),
+          ],
+        ),
+      ) ??
+      false;
+
+  /// A player tapped without an action: on court or back to the bench.
+  void toggleActive(String team, String playerId) {
+    final court = [...(state[team]['on_court'] as List? ?? []).cast<String>()];
+    court.contains(playerId) ? court.remove(playerId) : court.add(playerId);
+    command('lineup', {'team': team, 'player_ids': court});
   }
 
   /// Action first, then a player; a team tile records for the team only.
@@ -2763,7 +2858,7 @@ class _Score67State extends State<Score67> {
             label: '${t('game_end')} · ${t('hold')}',
             enabled: canWrite,
             onActivate: () async {
-              if (await confirm(t('finish.confirm'))) {
+              if (await confirmFinal()) {
                 await command('game_end');
               }
             },
@@ -2833,7 +2928,7 @@ class _Score67State extends State<Score67> {
             t('game_end'),
             canWrite
                 ? () async {
-                    if (await confirm(t('finish.confirm'))) {
+                    if (await confirmFinal()) {
                       await command('game_end');
                     }
                   }
@@ -3046,7 +3141,7 @@ class _Score67State extends State<Score67> {
         }
         navigate('/');
       case 'close':
-        if (!await confirm(t('finish.confirm'))) return;
+        if (!await confirmFinal()) return;
         if (await command('game_end')) navigate('/');
       case 'dashboard':
         navigate('/dashboard');

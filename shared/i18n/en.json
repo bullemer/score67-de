@@ -287,7 +287,7 @@
   "console.subs_short": "Sub",
   "console.menu": "Menu",
   "console.pick_player": "tap a player or the team",
-  "console.pick_action": "Pick an action first (right), then the player.",
+  "console.pick_action": "Pick an action first (right), then the player. Tap a player without an action: on court / to the bench.",
   "console.flow": "Game flow",
   "console.period": "Periods",
   "console.settings": "Game settings",
@@ -452,5 +452,14 @@
   "error.login_invalid": "This link has expired or was already used. Request a new sign-in link.",
   "error.login_required": "Please sign in with email first.",
   "error.owner_exists": "This scoreboard is already linked to another email.",
-  "schedule.hint": "Without a start time the game does not appear under \"Upcoming\" in the live directory."
+  "schedule.hint": "Without a start time the game does not appear under \"Upcoming\" in the live directory.",
+  "console.court_full": "Already {n} on court – tap a player to the bench first.",
+  "console.which_period": "Break – which period?",
+  "console.break_short": "BREAK",
+  "console.skip_period": "End this period now",
+  "console.skip_confirm": "End?",
+  "final.title": "Confirm the final result",
+  "final.note": "The match will be finished. You can undo this in the log.",
+  "final.confirm": "Confirm final result",
+  "console.final_short": "FINAL"
 }

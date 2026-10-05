@@ -20,6 +20,23 @@ class MatchConsole extends StatefulWidget {
 
   /// Basketball clock at 0:00: the Play button ends the period instead.
   final bool periodOver;
+
+  /// Before kickoff or in a break: the period an entry would open (label),
+  /// and the period that just ended. Null while a period is running.
+  final String? nextPeriod, endedPeriod;
+
+  /// Opens [nextPeriod]; completes false when the server refused it.
+  final Future<bool> Function() onStartNext;
+
+  /// Ends the running period early (clock stopped before 0:00, or forgotten).
+  /// [skipEndsGame]: the button ends the match and confirms the final result
+  /// itself, so no second tap is asked for.
+  final VoidCallback? onSkipPeriod;
+  final bool skipEndsGame;
+
+  /// Tap on a player without an armed action: on court / on the bench.
+  final void Function(String team, String playerId) onToggleActive;
+  final int lineupMax;
   final Widget sync;
   final VoidCallback onMenu, onToggleClock, onClockTap;
   final VoidCallback? onUndo;
@@ -45,6 +62,13 @@ class MatchConsole extends StatefulWidget {
     required this.period,
     required this.running,
     this.periodOver = false,
+    this.nextPeriod,
+    this.endedPeriod,
+    required this.onStartNext,
+    this.onSkipPeriod,
+    this.skipEndsGame = false,
+    required this.onToggleActive,
+    required this.lineupMax,
     required this.canToggleClock,
     required this.canTap,
     required this.canWrite,
@@ -115,19 +139,44 @@ class MatchConsoleState extends State<MatchConsole> {
   /// everything else hides so the edited row stays visible above the keyboard.
   bool editing = false;
   final middleKey = GlobalKey();
-  bool hint = false;
-  Timer? hintTimer;
+  String? hint;
+  Timer? hintTimer, skipTimer;
+
+  /// ⏭ waits for a second tap before it ends the period.
+  bool skipArmed = false;
+
+  /// An entry tapped in a break, waiting for "book to the ended period" or
+  /// "start the next one".
+  (String, String, String?)? deferred;
+
+  /// The ended period the user chose to keep booking to during this break
+  /// (free throws after the buzzer).
+  int? stayPeriod;
 
   @override
   void dispose() {
     hintTimer?.cancel();
+    skipTimer?.cancel();
     super.dispose();
   }
+
+  void showHint(String text) {
+    hintTimer?.cancel();
+    setState(() => hint = text);
+    hintTimer = Timer(
+      const Duration(milliseconds: 2400),
+      () => mounted ? setState(() => hint = null) : null,
+    );
+  }
+
+  List<String> onCourt(String team) =>
+      (s[team]['on_court'] as List? ?? []).cast<String>();
 
   /// Penalty awarded and waiting for its outcome: (team, player).
   (String, String?)? penalty;
 
-  /// Free throws in progress: (team, player). Stays open for the 2nd/3rd shot.
+  /// A free throw waiting for hit or miss: (team, player). Closes after each
+  /// shot, so every free throw is tapped anew (no extra points by mistake).
   (String, String?)? freeThrows;
 
   /// Switch the middle panel, e.g. from the menu ("Edit teams").
@@ -184,27 +233,124 @@ class MatchConsoleState extends State<MatchConsole> {
   void target(String team, String? playerId) {
     final action = pending;
     if (action == null) {
-      // Inline hint instead of a banner.
-      hintTimer?.cancel();
-      setState(() => hint = true);
-      hintTimer = Timer(
-        const Duration(milliseconds: 1800),
-        () => mounted ? setState(() => hint = false) : null,
-      );
+      if (playerId != null && widget.canTap) {
+        // No action armed: a player tap moves them on court / to the bench.
+        final court = onCourt(team);
+        if (!court.contains(playerId) && court.length >= widget.lineupMax) {
+          showHint(
+            t('console.court_full').replaceAll('{n}', '${widget.lineupMax}'),
+          );
+          return;
+        }
+        widget.onToggleActive(team, playerId);
+        return;
+      }
+      showHint(t('console.pick_action')); // inline, instead of a banner
       return;
     }
     setState(() => pending = null);
     if (action == 'subs') {
       widget.onSubstitutions(team);
     } else {
-      if (action == 'ft') {
-        // Hit or miss is chosen in the inline bar.
-        setState(() => freeThrows = (team, playerId));
+      perform(action, team, playerId);
+    }
+  }
+
+  /// Records an entry. Before kickoff the first period opens by itself; in a
+  /// break the user decides once whether entries still belong to the period
+  /// that just ended (free throws after the buzzer) or open the next one.
+  Future<void> perform(String action, String team, String? playerId) async {
+    if (widget.nextPeriod != null) {
+      if (s['phase'] == 'pre_game') {
+        if (!await widget.onStartNext() || !mounted) return;
+      } else if (stayPeriod != s['period']) {
+        setState(() => deferred = (action, team, playerId));
         return;
       }
-      widget.onAction(action, team, playerId);
-      if (action == 'penalty') setState(() => penalty = (team, playerId));
     }
+    if (action == 'ft') {
+      // Hit or miss is chosen in the inline bar.
+      setState(() => freeThrows = (team, playerId));
+      return;
+    }
+    widget.onAction(action, team, playerId);
+    if (action == 'penalty') setState(() => penalty = (team, playerId));
+  }
+
+  Widget deferredBar() {
+    final (action, team, player) = deferred!;
+    final label =
+        actions.where((a) => a.id == action).map((a) => a.label).firstOrNull ??
+        '';
+    return Container(
+      color: const Color(0xff3a2a16),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              '$label · ${targetLabel(team, player)} · ${t('console.which_period')}',
+              style: const TextStyle(
+                color: Colors.orange,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          OutlinedButton(
+            style: OutlinedButton.styleFrom(minimumSize: const Size(72, 40)),
+            onPressed: () {
+              setState(() {
+                stayPeriod = s['period'] as int;
+                deferred = null;
+              });
+              perform(action, team, player);
+            },
+            child: Text(widget.endedPeriod ?? ''),
+          ),
+          const SizedBox(width: 6),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              minimumSize: const Size(72, 40),
+              backgroundColor: const Color(0xff16a34a),
+            ),
+            onPressed: widget.canWrite
+                ? () async {
+                    setState(() => deferred = null);
+                    if (await widget.onStartNext() && mounted) {
+                      perform(action, team, player);
+                    }
+                  }
+                : null,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.play_arrow, size: 20),
+                Text(widget.nextPeriod ?? ''),
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: t('close'),
+            onPressed: () => setState(() => deferred = null),
+            icon: const Icon(Icons.close),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void skip() {
+    if (widget.skipEndsGame || skipArmed) {
+      skipTimer?.cancel();
+      setState(() => skipArmed = false);
+      widget.onSkipPeriod?.call();
+      return;
+    }
+    setState(() => skipArmed = true);
+    skipTimer = Timer(
+      const Duration(seconds: 3),
+      () => mounted ? setState(() => skipArmed = false) : null,
+    );
   }
 
   Widget headerBox(
@@ -414,7 +560,33 @@ class MatchConsoleState extends State<MatchConsole> {
             Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text(widget.period, style: const TextStyle(fontSize: 14)),
+                if ((widget.nextPeriod != null && s['phase'] == 'break') ||
+                    s['phase'] == 'finished')
+                  Text(
+                    t(
+                      s['phase'] == 'finished'
+                          ? 'console.final_short'
+                          : 'console.break_short',
+                    ),
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: s['phase'] == 'finished'
+                          ? const Color(0xff22c55e)
+                          : Colors.orange,
+                      height: 1,
+                    ),
+                  ),
+                Text(
+                  widget.period,
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                    height: 1.1,
+                    color: widget.nextPeriod != null
+                        ? Colors.orange
+                        : Colors.white,
+                  ),
+                ),
                 Icon(
                   widget.connected ? Icons.wifi : Icons.wifi_off,
                   size: 16,
@@ -494,28 +666,71 @@ class MatchConsoleState extends State<MatchConsole> {
                 ),
               ),
             ),
+            if (widget.onSkipPeriod != null) ...[
+              const SizedBox(width: 6),
+              Tooltip(
+                message: t(
+                  widget.skipEndsGame ? 'game_end' : 'console.skip_period',
+                ),
+                child: SizedBox(
+                  height: 44,
+                  child: FilledButton(
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      minimumSize: const Size(52, 44),
+                      backgroundColor: skipArmed || widget.skipEndsGame
+                          ? const Color(0xffd97706)
+                          : const Color(0xff374151),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    onPressed: skip,
+                    child: skipArmed
+                        ? Text(
+                            '${t('console.skip_confirm')} ⏭',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          )
+                        : Icon(
+                            widget.skipEndsGame
+                                ? Icons.sports_score
+                                : Icons.skip_next,
+                            size: 30,
+                          ),
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),
     );
   }
 
-  /// On-court players when a lineup is set, otherwise the whole squad.
-  List<Map<String, dynamic>> players(String team) {
+  /// The whole squad: players on court first (bright), the bench below
+  /// (dimmed), each group by shirt number. Without a lineup all are bright.
+  (List<Map<String, dynamic>>, List<Map<String, dynamic>>) players(
+    String team,
+  ) {
     final squad = [
       for (final p in s[team]['squad'] as List? ?? [])
         Map<String, dynamic>.from(p),
     ];
-    final onCourt = (s[team]['on_court'] as List? ?? []).cast<String>();
-    final shown = onCourt.isEmpty
-        ? squad
-        : [for (final id in onCourt) ...squad.where((p) => p['id'] == id)];
-    shown.sort(
+    squad.sort(
       (a, b) => (int.tryParse(a['number'] ?? '') ?? 999).compareTo(
         int.tryParse(b['number'] ?? '') ?? 999,
       ),
     );
-    return shown;
+    final court = onCourt(team);
+    if (court.isEmpty) return (squad, <Map<String, dynamic>>[]);
+    return (
+      squad.where((p) => court.contains(p['id'])).toList(),
+      squad.where((p) => !court.contains(p['id'])).toList(),
+    );
   }
 
   Map<String, dynamic> stats(String team, String id) {
@@ -531,15 +746,24 @@ class MatchConsoleState extends State<MatchConsole> {
     String label, {
     int fouls = 0,
     Map<String, int> football = const {},
+    bool bench = false,
+    String? badge,
   }) {
-    final color = hexColor(s[team]['color']);
-    final foreground = readableOn(color);
+    final teamColor = hexColor(s[team]['color']);
+    // Bench players: the team colour faded into the console background.
+    final color = bench
+        ? Color.alphaBlend(teamColor.withValues(alpha: .3), consoleBackground)
+        : teamColor;
+    final foreground = bench
+        ? Colors.white.withValues(alpha: .6)
+        : readableOn(color);
     final armed = pending != null;
     final points = playerId == null
         ? null
         : this.football
         ? football['goals']
         : stats(team, playerId)['pts'];
+    final corner = badge ?? (points == null || points == 0 ? null : '$points');
     final yellow = football['yellow'] ?? 0, red = football['red'] ?? 0;
     return Padding(
       padding: const EdgeInsets.all(3),
@@ -627,11 +851,11 @@ class MatchConsoleState extends State<MatchConsole> {
                     ),
                   ),
                 ),
-                if (points != null && points != 0)
+                if (corner != null)
                   Padding(
                     padding: const EdgeInsets.only(right: 5),
                     child: Text(
-                      '$points',
+                      corner,
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
@@ -648,19 +872,17 @@ class MatchConsoleState extends State<MatchConsole> {
   }
 
   Widget teamColumn(String team) {
-    final list = players(team);
+    final (court, bench) = players(team);
     final perPlayer = football ? footballStats(team) : const {};
-    final tiles = [
-      tile(team, null, s[team]['short']),
-      for (final p in list)
-        tile(
-          team,
-          p['id'],
-          (p['number'] ?? '').isNotEmpty ? p['number'] : p['name'],
-          fouls: (stats(team, p['id'])['pf'] ?? 0) as int,
-          football: perPlayer[p['id']] ?? const {},
-        ),
-    ];
+    Widget player(Map<String, dynamic> p, {bool bench = false}) => tile(
+      team,
+      p['id'],
+      (p['number'] ?? '').isNotEmpty ? p['number'] : p['name'],
+      fouls: (stats(team, p['id'])['pf'] ?? 0) as int,
+      football: perPlayer[p['id']] ?? const {},
+      bench: bench,
+    );
+    final lineup = onCourt(team);
     return SizedBox(
       width: 84,
       child: LayoutBuilder(
@@ -673,7 +895,22 @@ class MatchConsoleState extends State<MatchConsole> {
           return ListView(
             padding: EdgeInsets.zero,
             children: [
-              for (final tile in tiles) SizedBox(height: height, child: tile),
+              SizedBox(
+                height: height,
+                child: tile(
+                  team,
+                  null,
+                  s[team]['short'],
+                  badge: lineup.isEmpty ? null : '${lineup.length}',
+                ),
+              ),
+              for (final p in court) SizedBox(height: height, child: player(p)),
+              if (bench.isNotEmpty) const SizedBox(height: 8),
+              for (final p in bench)
+                SizedBox(
+                  height: (height * .75).clamp(40.0, 72.0),
+                  child: player(p, bench: true),
+                ),
             ],
           );
         },
@@ -816,7 +1053,11 @@ class MatchConsoleState extends State<MatchConsole> {
               backgroundColor: const Color(0xff22c55e),
             ),
             onPressed: widget.canTap
-                ? () => widget.onAction('ft_hit', team, player)
+                ? () {
+                    // One shot per FT tap: the next free throw is entered anew.
+                    setState(() => freeThrows = null);
+                    widget.onAction('ft_hit', team, player);
+                  }
                 : null,
             child: Text(t('console.ft_hit')),
           ),
@@ -824,7 +1065,10 @@ class MatchConsoleState extends State<MatchConsole> {
           OutlinedButton(
             style: OutlinedButton.styleFrom(minimumSize: const Size(80, 40)),
             onPressed: widget.canTap
-                ? () => widget.onAction('ft_miss', team, player)
+                ? () {
+                    setState(() => freeThrows = null);
+                    widget.onAction('ft_miss', team, player);
+                  }
                 : null,
             child: Text(t('console.ft_miss')),
           ),
@@ -852,36 +1096,38 @@ class MatchConsoleState extends State<MatchConsole> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          SizedBox(
-            height: 44,
-            child: Row(
-              children: [
-                for (var i = 0; i < widget.tabs.length; i++)
-                  Expanded(
-                    child: TextButton(
-                      style: TextButton.styleFrom(
-                        minimumSize: const Size(40, 44),
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
-                        backgroundColor: tab == i
-                            ? const Color(0xff2b3a4d)
-                            : null,
-                        shape: const RoundedRectangleBorder(),
-                      ),
-                      onPressed: () => setState(() => tab = i),
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Text(
-                          widget.tabs[i].$1,
-                          style: TextStyle(
-                            fontWeight: tab == i ? FontWeight.w800 : null,
+          // Hidden while typing: in landscape the keyboard leaves little room.
+          if (!editing)
+            SizedBox(
+              height: 44,
+              child: Row(
+                children: [
+                  for (var i = 0; i < widget.tabs.length; i++)
+                    Expanded(
+                      child: TextButton(
+                        style: TextButton.styleFrom(
+                          minimumSize: const Size(40, 44),
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          backgroundColor: tab == i
+                              ? const Color(0xff2b3a4d)
+                              : null,
+                          shape: const RoundedRectangleBorder(),
+                        ),
+                        onPressed: () => setState(() => tab = i),
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            widget.tabs[i].$1,
+                            style: TextStyle(
+                              fontWeight: tab == i ? FontWeight.w800 : null,
+                            ),
                           ),
                         ),
                       ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
-          ),
           if (penalty != null)
             Container(
               color: const Color(0xff3a2a16),
@@ -923,12 +1169,13 @@ class MatchConsoleState extends State<MatchConsole> {
               ),
             ),
           if (freeThrows != null) freeThrowBar(),
-          if (pendingLabel == null && hint)
+          if (deferred != null) deferredBar(),
+          if (pendingLabel == null && hint != null)
             Container(
               color: const Color(0xff3a3216),
               padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
               child: Text(
-                t('console.pick_action'),
+                hint!,
                 style: const TextStyle(
                   color: Colors.orange,
                   fontWeight: FontWeight.w700,
