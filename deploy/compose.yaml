@@ -16,6 +16,8 @@ services:
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       MAIL_FROM: ${MAIL_FROM:-Score67 <noreply@score67.de>}
+      # Every published forum post is mailed here with a hide link (unset = no mails).
+      FORUM_MODERATOR_EMAIL: ${FORUM_MODERATOR_EMAIL:-}
     ports:
       - "127.0.0.1:8067:8000"
     depends_on:
