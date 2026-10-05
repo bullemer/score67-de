@@ -1,0 +1,42 @@
+{% extends "guides/_base.html" %}{% block content %}
+<p class="eyebrow">Bauanleitung · Entwurf</p>
+<h1>LED-Anzeigetafel selbst bauen: 64 × 32 LED-Panel mit ESP32 für Score67</h1>
+<p>Mit einem fertigen LED-Panel, einem steckbaren ESP32-Controller und einem Netzteil baust du in einer halben Stunde eine Anzeigetafel, die den Spielstand aus Score67 zeigt – ohne Löten. Die Tafel verbindet sich per WLAN mit score67.de und folgt dem Scoreboard, das du ihr in der App zuweist.</p>
+<p class="guide-note"><strong>Stand:</strong> Bestellliste und Aufbau sind fertig. Die Score67-Firmware für den Controller ist <strong>in Arbeit</strong>; sobald sie bereitsteht, spielst du sie mit einem Klick im Browser auf. Die Gegenstelle auf score67.de (Kopplung per Code, Live-Daten) läuft bereits.</p>
+<figure class="guide-shot"><img src="/static/guides/led-mockup.webp" width="778" height="401" alt="Entwurf der LED-Anzeige: oben die Teamkürzel HOM und GUE, groß der Spielstand 34:32 in Orange, unten die Spielzeit 12:34 in Grün" loading="lazy"><figcaption>So soll die Anzeige aussehen: Teamkürzel, Spielstand und Zeit auf 64 × 32 Pixeln.</figcaption></figure>
+
+<h2>Bestellliste</h2>
+<div class="guide-table"><table>
+<thead><tr><th>Teil</th><th>Wofür</th><th>Preis ca.</th></tr></thead>
+<tbody>
+<tr><td><strong>Waveshare RGB-Matrix P5 64×32</strong><br><a href="https://www.waveshare.com/product/rgb-matrix-p5-64x32.htm" target="_blank" rel="noopener">Herstellerseite</a></td><td>Das LED-Panel: 64 × 32 RGB-LEDs im 5-mm-Raster, 320 × 160 mm, HUB75-Anschluss, 5 V / max. 20 W</td><td>30–40 €</td></tr>
+<tr><td><strong>Adafruit Matrix Portal S3</strong> (Art.-Nr. 5778)<br><a href="https://www.adafruit.com/product/5778" target="_blank" rel="noopener">Herstellerseite</a>, in Deutschland z. B. bei Eckstein</td><td>Der Controller: ESP32-S3 mit WLAN, wird direkt auf das Panel gesteckt</td><td>25–30 €</td></tr>
+<tr><td><strong>5-V-Netzteil, mindestens 4 A</strong> (besser 6 A)</td><td>Stromversorgung des Panels – Reserve schadet nicht</td><td>ca. 15 €</td></tr>
+<tr><td><strong>USB-C-Kabel mit Datenleitungen</strong></td><td>Firmware aufspielen und den Controller versorgen; reine Ladekabel funktionieren nicht</td><td>falls nicht vorhanden</td></tr>
+</tbody></table></div>
+<p><strong>Achte beim Controller auf „S3“ im Namen.</strong> Das ältere Modell „Matrix Portal M4“ hat einen anderen Prozessor und passt nicht zu dieser Anleitung. Ein Stromkabel für den Anschluss am Panel liegt in der Regel bei – prüfe den Lieferumfang.</p>
+
+<h2>Aufbau</h2>
+<ol>
+<li><strong>Controller aufstecken:</strong> Der Matrix Portal S3 wird direkt auf die <strong>Eingangsbuchse (HUB75 „In“)</strong> auf der Rückseite des Panels gesteckt – die Pfeile auf der Platine zeigen die Datenrichtung, der Controller sitzt am Anfang. Kein Flachbandkabel, kein Löten. Die Lötbrücke für die Adressleitung „E“ brauchst du nur bei 64 × 64-Panels, beim 64 × 32-Panel nicht.</li>
+<li><strong>Strom fürs Panel:</strong> Schließe das Stromkabel des Panels an das 5-V-Netzteil an (rot = +5 V, schwarz = Masse). Das Panel zieht bis zu 20 W – versorge es <strong>nicht</strong> über den USB-C-Anschluss des Controllers, der ist dafür zu knapp bemessen.</li>
+<li><strong>Controller anschließen:</strong> Den Matrix Portal S3 per USB-C mit dem Rechner (zum Aufspielen) bzw. später mit einem USB-Netzteil verbinden.</li>
+<li><strong>Firmware aufspielen</strong> <em>(sobald verfügbar)</em>: In Chrome oder Edge die Score67-Flashseite öffnen, den Controller auswählen, fertig.</li>
+<li><strong>Mit Score67 koppeln</strong> <em>(sobald verfügbar)</em>: Die Tafel öffnet beim ersten Start ein eigenes WLAN. Mit dem Handy verbinden, das Hallen-WLAN und den <strong>Kopplungscode</strong> eingeben. Den Code erzeugst du im Controller unter <strong>Einstellungen → Anzeigetafeln → Anzeigetafel verbinden</strong> (10 Minuten gültig).</li>
+<li><strong>Scoreboard zuweisen:</strong> In derselben Liste wählst du, welches Scoreboard die Tafel zeigt – auch während des Spiels umschaltbar. Die Tafel folgt automatisch dem aktuellen Spiel dieses Scoreboards.</li>
+</ol>
+
+<h2>Sicherheit</h2>
+<ul>
+<li>Nur ein geprüftes 5-V-Netzteil (CE) verwenden; nicht selbst an 230 V arbeiten.</li>
+<li>Auf die Polung achten: +5 V und Masse vertauscht kann Panel und Controller zerstören.</li>
+<li>Das Panel wird im Betrieb warm – frei aufstellen, nicht abdecken.</li>
+</ul>
+
+<h2>Größer bauen</h2>
+<p>Mehrere Panels lassen sich über die Ausgangsbuchse (HUB75 „Out“) hintereinanderschalten, etwa zwei oder vier Panels für eine größere Hallentafel (128 × 64 Pixel). Der Matrix Portal S3 hat dafür genug Leistung; die Firmware soll das von Anfang an unterstützen. Das Netzteil muss dann entsprechend mehr liefern (je Panel bis zu 4 A).</p>
+
+<h2>Für Bastler: die Schnittstelle</h2>
+<p>Die Firmware nutzt die Bibliothek ESP32-HUB75-MatrixPanel-DMA für das Panel. Mit Score67 spricht sie über zwei Wege: einmalig <code>POST /api/display/pair</code> mit dem Kopplungscode (liefert ein Geräte-Token), danach ein WebSocket <code>wss://score67.de/ws/display?token=…</code>, der bei jeder Änderung den aktuellen Spielstand schickt – Teams und Kürzel, Farben, Punkte, Periode und Uhr (die Zeit rechnet die Tafel lokal weiter). Wer eine eigene Firmware schreiben möchte: Melde dich im <a href="/forum">Forum</a>, wir schicken die vollständige Beschreibung.</p>
+<p>Fragen, Erfahrungen, Fotos deiner Tafel? Ab ins <a href="/forum">Forum</a>.</p>
+{% endblock %}

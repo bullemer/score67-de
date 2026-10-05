@@ -8,4 +8,5 @@ GUIDES = {
     "/obs-scoreboard-overlay": "obs",
     "/anzeigetafel": "display",
     "/anleitung/spielstand-whatsapp-teilen": "whatsapp",
+    "/anzeigetafel/led-bauanleitung": "led",
 }

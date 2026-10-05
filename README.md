@@ -146,7 +146,7 @@ All server pages (start, Funktionen, Über, Forum incl. every topic, Live list, 
 
 ### Guide pages (search content)
 
-Five server-rendered pages answer what people search for, each in German (default) and English (`?lang=en`), with real app screenshots (`static/guides/*.webp`): `/basketball-liveticker`, `/fussball-liveticker`, `/obs-scoreboard-overlay`, `/anzeigetafel`, `/anleitung/spielstand-whatsapp-teilen`. Registry in `backend/score67/guides.py`, one template per page and language in `templates/guides/<key>.<lang>.html`, titles/descriptions in `seo.guide.<key>.*`. They are in the sitemap and linked from the footers of the start page, Funktionen and Über. Only describe what the app really does.
+Five server-rendered pages answer what people search for, each in German (default) and English (`?lang=en`), with real app screenshots (`static/guides/*.webp`): `/basketball-liveticker`, `/fussball-liveticker`, `/obs-scoreboard-overlay`, `/anzeigetafel`, `/anleitung/spielstand-whatsapp-teilen`, plus the DIY build guide `/anzeigetafel/led-bauanleitung` (Waveshare P5 64×32 panel + Adafruit Matrix Portal S3 + 5 V/≥4 A supply, parts list; marked as draft: the ESP32 firmware is still to be written, the server side — pairing and `/ws/display` — already runs). Registry in `backend/score67/guides.py`, one template per page and language in `templates/guides/<key>.<lang>.html`, titles/descriptions in `seo.guide.<key>.*`. They are in the sitemap and linked from the footers of the start page, Funktionen and Über. Only describe what the app really does.
 
 ### Console menu
 
