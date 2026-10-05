@@ -16,6 +16,9 @@ class Dashboard extends StatefulWidget {
   final String Function(String) t;
   final void Function(String) navigate;
   final int periods, minutes;
+
+  /// The saved basketball default format (e.g. 8 × 5).
+  final int basketballPeriods, basketballMinutes;
   final String language;
 
   /// Image picker for team logos (browser only; null hides logo upload).
@@ -28,6 +31,8 @@ class Dashboard extends StatefulWidget {
     required this.navigate,
     required this.periods,
     required this.minutes,
+    this.basketballPeriods = 4,
+    this.basketballMinutes = 10,
     this.language = 'de',
   });
   @override
@@ -248,8 +253,12 @@ class _DashboardState extends State<Dashboard> {
                     ],
                     onChanged: (value) => update(() {
                       sport = value!;
-                      periods = sport == 'basketball' ? 4 : widget.periods;
-                      minutes = sport == 'basketball' ? 10 : widget.minutes;
+                      periods = sport == 'basketball'
+                          ? widget.basketballPeriods
+                          : widget.periods;
+                      minutes = sport == 'basketball'
+                          ? widget.basketballMinutes
+                          : widget.minutes;
                     }),
                   ),
                   if (sport == 'basketball')

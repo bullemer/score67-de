@@ -71,6 +71,19 @@ class _Score67State extends State<Score67> {
       slug.isNotEmpty &&
       state['match_id'] != null;
   int defaultPeriods = 2, defaultMinutes = 45;
+  // Basketball has its own default format (e.g. 8 × 5 for youth games).
+  int basketballPeriods = 4, basketballMinutes = 10;
+  (int, int) defaultFormat(String sport) => sport == 'basketball'
+      ? (basketballPeriods, basketballMinutes)
+      : (defaultPeriods, defaultMinutes);
+
+  /// Puts a sport's default format into the create form.
+  void applyDefaultFormat(String sport) {
+    final (count, length) = defaultFormat(sport);
+    draftPeriods = count;
+    draftMinutes = length;
+  }
+
   // Create form: football defaults to 2 × 45, basketball to 4 × 10.
   String draftSport = 'football';
   final periodsInput = TextEditingController(text: '2');
@@ -145,6 +158,13 @@ class _Score67State extends State<Score67> {
       );
       defaultPeriods = (preferences['periods'] as int? ?? 2).clamp(1, 12);
       defaultMinutes = (preferences['minutes'] as int? ?? 45).clamp(1, 120);
+      basketballPeriods = (preferences['basketball_periods'] as int? ?? 4)
+          .clamp(1, 12);
+      basketballMinutes = (preferences['basketball_minutes'] as int? ?? 10)
+          .clamp(1, 120);
+      // The create form starts with the saved football format.
+      draftPeriods = defaultPeriods;
+      draftMinutes = defaultMinutes;
     } catch (_) {}
     final segments = url.pathSegments;
     if (segments.length == 3 &&
@@ -244,6 +264,29 @@ class _Score67State extends State<Score67> {
     String chosenLanguage = lang;
     final periods = TextEditingController(text: '$defaultPeriods');
     final minutes = TextEditingController(text: '$defaultMinutes');
+    final bPeriods = TextEditingController(text: '$basketballPeriods');
+    final bMinutes = TextEditingController(text: '$basketballMinutes');
+    Widget presets(
+      List<List<int>> formats,
+      TextEditingController count,
+      TextEditingController length,
+      void Function(VoidCallback) update,
+    ) => Wrap(
+      spacing: 8,
+      runSpacing: 4,
+      children: [
+        for (final format in formats)
+          ChoiceChip(
+            label: Text('${format[0]} × ${format[1]}'),
+            selected:
+                count.text == '${format[0]}' && length.text == '${format[1]}',
+            onSelected: (_) => update(() {
+              count.text = '${format[0]}';
+              length.text = '${format[1]}';
+            }),
+          ),
+      ],
+    );
     await showDialog<void>(
       context: navigator.currentContext!,
       builder: (context) => StatefulBuilder(
@@ -267,8 +310,44 @@ class _Score67State extends State<Score67> {
                   ),
                   const SizedBox(height: 18),
                   Text(t('app.defaults')),
+                  const SizedBox(height: 8),
+                  Text(
+                    t('football'),
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  presets(
+                    const [
+                      [2, 45],
+                      [2, 40],
+                      [2, 35],
+                      [2, 30],
+                      [2, 20],
+                      [1, 10],
+                    ],
+                    periods,
+                    minutes,
+                    update,
+                  ),
                   field(t('period_count'), periods, numeric: true),
                   field(t('period_length'), minutes, numeric: true),
+                  const SizedBox(height: 12),
+                  Text(
+                    t('basketball'),
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  presets(
+                    const [
+                      [4, 10],
+                      [4, 12],
+                      [8, 5],
+                      [2, 20],
+                    ],
+                    bPeriods,
+                    bMinutes,
+                    update,
+                  ),
+                  field(t('period_count'), bPeriods, numeric: true),
+                  field(t('period_length'), bMinutes, numeric: true),
                   Text(t('app.local'), style: const TextStyle(fontSize: 14)),
                   const Divider(height: 28),
                   OutlinedButton.icon(
@@ -288,13 +367,17 @@ class _Score67State extends State<Score67> {
             FilledButton(
               onPressed: () async {
                 final p = int.tryParse(periods.text),
-                    m = int.tryParse(minutes.text);
-                if (p == null ||
-                    p < 1 ||
-                    p > 12 ||
-                    m == null ||
-                    m < 1 ||
-                    m > 120) {
+                    m = int.tryParse(minutes.text),
+                    bp = int.tryParse(bPeriods.text),
+                    bm = int.tryParse(bMinutes.text);
+                bool valid(int? count, int? length) =>
+                    count != null &&
+                    count >= 1 &&
+                    count <= 12 &&
+                    length != null &&
+                    length >= 1 &&
+                    length <= 120;
+                if (!valid(p, m) || !valid(bp, bm)) {
                   notify(t('error.invalid_value'));
                   return;
                 }
@@ -302,7 +385,12 @@ class _Score67State extends State<Score67> {
                   final translated = await api('/i18n/$chosenLanguage.json');
                   web.window.localStorage.setItem(
                     'score67-settings',
-                    jsonEncode({'periods': p, 'minutes': m}),
+                    jsonEncode({
+                      'periods': p,
+                      'minutes': m,
+                      'basketball_periods': bp,
+                      'basketball_minutes': bm,
+                    }),
                   );
                   web.window.localStorage.setItem(
                     'score67-language',
@@ -310,8 +398,11 @@ class _Score67State extends State<Score67> {
                   );
                   if (!mounted || !context.mounted) return;
                   setState(() {
-                    defaultPeriods = p;
-                    defaultMinutes = m;
+                    defaultPeriods = p!;
+                    defaultMinutes = m!;
+                    basketballPeriods = bp!;
+                    basketballMinutes = bm!;
+                    applyDefaultFormat(draftSport);
                     lang = chosenLanguage;
                     words = Map<String, dynamic>.from(translated);
                   });
@@ -1631,8 +1722,7 @@ class _Score67State extends State<Score67> {
                 ? null
                 : (_) => setState(() {
                     draftSport = sport;
-                    draftPeriods = sport == 'basketball' ? 4 : 2;
-                    draftMinutes = sport == 'basketball' ? 10 : 45;
+                    applyDefaultFormat(sport);
                     lineupInput.text = sport == 'basketball' ? '5' : '11';
                   }),
           ),
@@ -3924,6 +4014,8 @@ class _Score67State extends State<Score67> {
                                     navigate: navigate,
                                     periods: defaultPeriods,
                                     minutes: defaultMinutes,
+                                    basketballPeriods: basketballPeriods,
+                                    basketballMinutes: basketballMinutes,
                                     pickLogo: pickLogo,
                                   )
                                 else if (slug.isEmpty)

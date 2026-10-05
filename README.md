@@ -50,7 +50,7 @@ The development database is `backend/data/score67.db` when started from `backend
 - Public `/live` directory with two tabs: Live (running games, including breaks, with automatically updated scores, clocks and cards) and Upcoming (public games scheduled within the next 72 hours, `LIVE_UPCOMING_HOURS`, soonest first, with date, time, format and venue). Private, trashed and archived games are never listed. No sign-in required.
 - WhatsApp, Facebook, copy-link and native sharing for spectator links from the public view and controller.
 - Future games can be prepared without interrupting the live game. Opening their controls activates them; kickoff remains manual.
-- Visible back navigation and global language/default game-format settings, saved on this browser.
+- Visible back navigation and global language/default game-format settings (⚙, saved on this browser): one default format for football and one for basketball, each with one-tap presets (basketball 4×10, 4×12, 8×5, 2×20). Creating a scoreboard and preparing a game start with the chosen sport's default.
 
 ### Website pages and forum (v0.27)
 
