@@ -357,6 +357,10 @@ class _DashboardState extends State<Dashboard> {
                   'sport': sport,
                   'period_count': periods,
                   'period_length_min': minutes,
+                  // The next game keeps the team's format (players on the field).
+                  if (previous?['sport'] == sport &&
+                      previous?['lineup_size'] != null)
+                    'lineup_size': previous!['lineup_size'],
                 };
                 Navigator.pop(context);
                 write('/api/s/${board['slug']}/matches', body);

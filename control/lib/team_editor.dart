@@ -60,7 +60,8 @@ class _TeamEditorState extends State<TeamEditor> {
 
   String t(String key) => widget.t(key);
   bool get basketball => widget.state['sport'] == 'basketball';
-  int get limit => basketball ? 5 : 11;
+  int get limit =>
+      (widget.state['lineup_size'] as int?) ?? (basketball ? 5 : 11);
 
   String signatureOf(String team) =>
       '${widget.state[team]['squad']}|${widget.state[team]['on_court']}';

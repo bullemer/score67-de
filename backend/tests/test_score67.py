@@ -1419,3 +1419,25 @@ def test_forum_codes_expire_lock_and_bots_are_ignored(system, monkeypatch):
     monkeypatch.setenv('MAIL_LOG', 'true')
     codes = [client.post('/api/forum/posts', json=new).status_code for _ in range(5)]
     assert codes[-1] == 429
+
+
+def test_players_on_court_setting(system):
+    app, client = system
+    r = client.post('/api/scoreboards', json={'sport': 'basketball', 'lineup_size': 4})
+    slug = r.json()['slug']
+    s = state(client, slug)
+    assert s['lineup_size'] == 4
+    players = [{'id': str(uuid4()), 'number': str(n), 'name': ''} for n in range(4, 11)]
+    assert command(client, slug, 'squad', {'team': 'home', 'players': players}).status_code == 200
+    ids = [p['id'] for p in players]
+    assert command(client, slug, 'lineup', {'team': 'home', 'player_ids': ids[:5]}).status_code == 422
+    assert command(client, slug, 'lineup', {'team': 'home', 'player_ids': ids[:4]}).status_code == 200
+    # Shrinking below the players on court is refused; growing up to the sport's maximum works.
+    assert command(client, slug, 'settings', {'lineup_size': 3}).json()['error'] == 'lineup_too_large'
+    assert command(client, slug, 'settings', {'lineup_size': 6}).status_code == 422
+    assert command(client, slug, 'settings', {'lineup_size': 5}).json()['lineup_size'] == 5
+    assert command(client, slug, 'lineup', {'team': 'home', 'player_ids': ids[:5]}).status_code == 200
+    # Default: the sport's maximum; a too large value at creation is capped.
+    assert state(client, create(client)['slug'])['lineup_size'] == 11
+    big = client.post('/api/scoreboards', json={'sport': 'basketball', 'lineup_size': 11}).json()['slug']
+    assert state(client, big)['lineup_size'] == 5

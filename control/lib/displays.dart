@@ -16,7 +16,15 @@ typedef Api =
 class DisplaysDialog extends StatefulWidget {
   final Api api;
   final String Function(String) t;
-  const DisplaysDialog({super.key, required this.api, required this.t});
+
+  /// Shown as a section of the console's Settings tab instead of a dialog.
+  final bool inline;
+  const DisplaysDialog({
+    super.key,
+    required this.api,
+    required this.t,
+    this.inline = false,
+  });
 
   @override
   State<DisplaysDialog> createState() => _DisplaysDialogState();
@@ -281,64 +289,76 @@ class _DisplaysDialogState extends State<DisplaysDialog> {
     );
   }
 
+  List<Widget> body() => [
+    Text(t('display.intro'), style: const TextStyle(fontSize: 14)),
+    const SizedBox(height: 12),
+    if (error.isNotEmpty)
+      Text(error, style: const TextStyle(color: Colors.orange)),
+    for (final d in displays) card(d),
+    Row(
+      children: [
+        Expanded(
+          child: TextField(
+            controller: name,
+            maxLength: 60,
+            decoration: InputDecoration(
+              labelText: t('display.name'),
+              counterText: '',
+              isDense: true,
+              border: const OutlineInputBorder(),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        FilledButton.icon(
+          onPressed: busy || name.text.trim().isEmpty
+              ? null
+              : () => run(
+                  () => widget.api('/api/displays', 'POST', {
+                    'name': name.text.trim(),
+                  }),
+                ),
+          icon: const Icon(Icons.add_link),
+          label: Text(t('display.connect')),
+        ),
+      ],
+    ),
+    const Divider(height: 32),
+    BleDisplaysSection(t: widget.t),
+  ];
+
   @override
-  Widget build(BuildContext context) => AlertDialog(
-    alignment: Alignment.topCenter,
-    insetPadding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-    title: Text(t('display.title')),
-    content: SizedBox(
-      width: 520,
-      child: loading
-          ? const SizedBox(
-              height: 120,
+  Widget build(BuildContext context) {
+    if (widget.inline) {
+      return loading
+          ? const Padding(
+              padding: EdgeInsets.all(16),
               child: Center(child: CircularProgressIndicator()),
             )
-          : ListView(
-              shrinkWrap: true,
-              children: [
-                Text(t('display.intro'), style: const TextStyle(fontSize: 14)),
-                const SizedBox(height: 12),
-                if (error.isNotEmpty)
-                  Text(error, style: const TextStyle(color: Colors.orange)),
-                for (final d in displays) card(d),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: name,
-                        maxLength: 60,
-                        decoration: InputDecoration(
-                          labelText: t('display.name'),
-                          counterText: '',
-                          isDense: true,
-                          border: const OutlineInputBorder(),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    FilledButton.icon(
-                      onPressed: busy || name.text.trim().isEmpty
-                          ? null
-                          : () => run(
-                              () => widget.api('/api/displays', 'POST', {
-                                'name': name.text.trim(),
-                              }),
-                            ),
-                      icon: const Icon(Icons.add_link),
-                      label: Text(t('display.connect')),
-                    ),
-                  ],
-                ),
-                const Divider(height: 32),
-                BleDisplaysSection(t: widget.t),
-              ],
-            ),
-    ),
-    actions: [
-      TextButton(
-        onPressed: () => Navigator.pop(context),
-        child: Text(t('close')),
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: body(),
+            );
+    }
+    return AlertDialog(
+      alignment: Alignment.topCenter,
+      insetPadding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      title: Text(t('display.title')),
+      content: SizedBox(
+        width: 520,
+        child: loading
+            ? const SizedBox(
+                height: 120,
+                child: Center(child: CircularProgressIndicator()),
+              )
+            : ListView(shrinkWrap: true, children: body()),
       ),
-    ],
-  );
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text(t('close')),
+        ),
+      ],
+    );
+  }
 }

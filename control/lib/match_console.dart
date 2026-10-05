@@ -25,8 +25,14 @@ class MatchConsole extends StatefulWidget {
   /// and the period that just ended. Null while a period is running.
   final String? nextPeriod, endedPeriod;
 
-  /// Opens [nextPeriod]; completes false when the server refused it.
+  /// Opens [nextPeriod] (and starts its clock); false when refused.
   final Future<bool> Function() onStartNext;
+
+  /// The running period, spelled out ("2. Viertel"), and whether its clock
+  /// has never run (prepared, Play not pressed yet).
+  final String currentPeriod;
+  final bool clockNotStarted;
+  final Future<bool> Function() onStartClock;
 
   /// Ends the running period early (clock stopped before 0:00, or forgotten).
   /// [skipEndsGame]: the button ends the match and confirms the final result
@@ -65,6 +71,9 @@ class MatchConsole extends StatefulWidget {
     this.nextPeriod,
     this.endedPeriod,
     required this.onStartNext,
+    this.currentPeriod = '',
+    this.clockNotStarted = false,
+    required this.onStartClock,
     this.onSkipPeriod,
     this.skipEndsGame = false,
     required this.onToggleActive,
@@ -152,6 +161,9 @@ class MatchConsoleState extends State<MatchConsole> {
   /// The ended period the user chose to keep booking to during this break
   /// (free throws after the buzzer).
   int? stayPeriod;
+
+  /// The period whose clock the user chose not to start for entries.
+  int? stayClock;
 
   @override
   void dispose() {
@@ -256,17 +268,24 @@ class MatchConsoleState extends State<MatchConsole> {
     }
   }
 
-  /// Records an entry. Before kickoff the first period opens by itself; in a
-  /// break the user decides once whether entries still belong to the period
-  /// that just ended (free throws after the buzzer) or open the next one.
-  Future<void> perform(String action, String team, String? playerId) async {
-    if (widget.nextPeriod != null) {
-      if (s['phase'] == 'pre_game') {
-        if (!await widget.onStartNext() || !mounted) return;
-      } else if (stayPeriod != s['period']) {
-        setState(() => deferred = (action, team, playerId));
-        return;
-      }
+  /// Records an entry. Outside a running period (before kickoff, in a
+  /// break) or while a prepared period's clock never ran, the entry waits for
+  /// an inline answer: start the period/clock, or book it anyway (e.g. free
+  /// throws after the buzzer). The answer holds for that period.
+  Future<void> perform(
+    String action,
+    String team,
+    String? playerId, {
+    bool answered = false,
+  }) async {
+    final period = s['period'] as int;
+    final outside =
+        widget.nextPeriod != null &&
+        (s['phase'] == 'pre_game' || stayPeriod != period);
+    if (!answered &&
+        (outside || (widget.clockNotStarted && stayClock != period))) {
+      setState(() => deferred = (action, team, playerId));
+      return;
     }
     if (action == 'ft') {
       // Hit or miss is chosen in the inline bar.
@@ -282,57 +301,87 @@ class MatchConsoleState extends State<MatchConsole> {
     final label =
         actions.where((a) => a.id == action).map((a) => a.label).firstOrNull ??
         '';
+    final preGame = s['phase'] == 'pre_game';
+    final clockOnly = widget.nextPeriod == null;
+    final question = clockOnly
+        ? t('console.clock_not_started').replaceAll('{p}', widget.currentPeriod)
+        : preGame
+        ? t('console.not_started').replaceAll('{p}', widget.nextPeriod!)
+        : t('console.break_question')
+              .replaceAll('{ended}', widget.endedPeriod ?? '')
+              .replaceAll('{p}', widget.nextPeriod!);
+    Future<void> start() async {
+      setState(() => deferred = null);
+      final ok = clockOnly
+          ? await widget.onStartClock()
+          : await widget.onStartNext();
+      // Booked at once: the console has not rebuilt with the new period yet.
+      if (ok && mounted) perform(action, team, player, answered: true);
+    }
+
     return Container(
       color: const Color(0xff3a2a16),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(
-            child: Text(
-              '$label · ${targetLabel(team, player)} · ${t('console.which_period')}',
-              style: const TextStyle(
-                color: Colors.orange,
-                fontWeight: FontWeight.w700,
+          Text(
+            '⚠ $question  ($label · ${targetLabel(team, player)})',
+            style: const TextStyle(
+              color: Colors.orange,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(72, 40),
+                  backgroundColor: const Color(0xff16a34a),
+                ),
+                onPressed: widget.canWrite ? start : null,
+                icon: const Icon(Icons.play_arrow, size: 20),
+                label: Text(
+                  clockOnly
+                      ? t('console.start_clock')
+                      : t(
+                          'console.start_period',
+                        ).replaceAll('{p}', widget.nextPeriod!),
+                ),
               ),
-            ),
-          ),
-          OutlinedButton(
-            style: OutlinedButton.styleFrom(minimumSize: const Size(72, 40)),
-            onPressed: () {
-              setState(() {
-                stayPeriod = s['period'] as int;
-                deferred = null;
-              });
-              perform(action, team, player);
-            },
-            child: Text(widget.endedPeriod ?? ''),
-          ),
-          const SizedBox(width: 6),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              minimumSize: const Size(72, 40),
-              backgroundColor: const Color(0xff16a34a),
-            ),
-            onPressed: widget.canWrite
-                ? () async {
-                    setState(() => deferred = null);
-                    if (await widget.onStartNext() && mounted) {
-                      perform(action, team, player);
-                    }
-                  }
-                : null,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.play_arrow, size: 20),
-                Text(widget.nextPeriod ?? ''),
-              ],
-            ),
-          ),
-          IconButton(
-            tooltip: t('close'),
-            onPressed: () => setState(() => deferred = null),
-            icon: const Icon(Icons.close),
+              if (!preGame)
+                OutlinedButton(
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(72, 40),
+                  ),
+                  onPressed: () {
+                    setState(() {
+                      if (clockOnly) {
+                        stayClock = s['period'] as int;
+                      } else {
+                        stayPeriod = s['period'] as int;
+                      }
+                      deferred = null;
+                    });
+                    perform(action, team, player, answered: true);
+                  },
+                  child: Text(
+                    clockOnly
+                        ? t('console.book_anyway')
+                        : t(
+                            'console.book_to',
+                          ).replaceAll('{p}', widget.endedPeriod ?? ''),
+                  ),
+                ),
+              TextButton(
+                onPressed: () => setState(() => deferred = null),
+                child: Text(t('cancel')),
+              ),
+            ],
           ),
         ],
       ),

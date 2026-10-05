@@ -82,7 +82,7 @@ async function post(url, body) {
   const response = await fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
   const result = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const code = typeof result.detail === 'string' ? result.detail : (response.status === 422 ? 'forum_incomplete' : '');
+    const code = typeof result.error === 'string' && result.error !== 'invalid_request' ? result.error : (response.status === 422 ? 'forum_incomplete' : '');
     throw new Error(t[errors[code]] || t['forum.error.generic'] || 'Error');
   }
   return result;

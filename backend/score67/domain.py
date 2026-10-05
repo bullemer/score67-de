@@ -15,6 +15,12 @@ BASKETBALL = json.loads((Path(__file__).parent / "profiles/basketball.json").rea
 BASKETBALL_STATS = ("rebound", "assist", "steal", "block", "turnover", "free_throw_missed")
 FOOTBALL_EVENTS = ("foul", "free_kick", "penalty")
 LINEUP_MAX = {"basketball": 5, "football": 11}
+
+
+def lineup_size(state):
+    """Players on court/pitch at once: the game's setting (youth formats play
+    4 or 5 in basketball, 5/7/9/11 in football), else the sport's maximum."""
+    return state.get("lineup_size") or LINEUP_MAX[state["sport"]]
 STAT_COLUMNS = {"score": "pts", "rebound": "reb", "assist": "ast",
                 "steal": "stl", "block": "blk", "turnover": "to", "personal_foul": "pf", "technical_foul": "pf",
                 "free_throw_missed": "ftx"}
@@ -58,12 +64,12 @@ class RuleError(Exception):
     pass
 
 
-def initial_state(period_count=None, period_length_min=None, sport="football"):
+def initial_state(period_count=None, period_length_min=None, sport="football", lineup_size=None):
     basketball = sport == "basketball"
     period_count = period_count if period_count is not None else (4 if basketball else 2)
     period_length_min = period_length_min if period_length_min is not None else (10 if basketball else 45)
     return {
-        "sport": sport, "foul_mode": ("personal" if period_count == 8 else "team") if basketball else "off", "team_fouls_enabled": basketball and period_count != 8, "overtime_length_min": 5, "phase": "pre_game", "period": 0,
+        "sport": sport, "lineup_size": min(lineup_size or LINEUP_MAX[sport], LINEUP_MAX[sport]), "foul_mode": ("personal" if period_count == 8 else "team") if basketball else "off", "team_fouls_enabled": basketball and period_count != 8, "overtime_length_min": 5, "phase": "pre_game", "period": 0,
         "period_count": period_count, "period_length_min": period_length_min,
         "clock": {"enabled": True, "direction": "down" if basketball else "up", "running": False,
                   "started_at": None, "elapsed_ms": 0},
@@ -225,7 +231,7 @@ def apply(state, action, data, now_ms):
         event.update(team=data.get("team"))
     elif action == "lineup":
         team, ids = data.get("team"), data.get("player_ids")
-        if team not in ("home", "away") or not isinstance(ids, list) or len(ids) > LINEUP_MAX[s["sport"]] or len(set(map(str, ids))) != len(ids):
+        if team not in ("home", "away") or not isinstance(ids, list) or len(ids) > lineup_size(s) or len(set(map(str, ids))) != len(ids):
             raise RuleError("invalid_value")
         squad = {p["id"]: p for p in s[team].get("squad", [])}
         if any(i not in squad for i in ids):
@@ -330,7 +336,7 @@ def apply(state, action, data, now_ms):
         c.update(elapsed_ms=max(0, round(elapsed(s, now_ms) + seconds * 1000 * (-1 if basketball else 1))),
                  started_at=now_ms if c["running"] else None)
     elif action == "settings":
-        allowed = {"period_count", "period_length_min", "clock_enabled", "clock_elapsed_ms", "home", "away", "team_fouls_enabled", "foul_mode"}
+        allowed = {"period_count", "period_length_min", "clock_enabled", "clock_elapsed_ms", "home", "away", "team_fouls_enabled", "foul_mode", "lineup_size"}
         if set(data) - allowed:
             raise RuleError("invalid_value")
         if "foul_mode" in data:
@@ -348,6 +354,11 @@ def apply(state, action, data, now_ms):
             s["period_count"] = integer(data["period_count"], max(1, min(s["period"], s["period_count"]) if basketball else s["period"]), 12)
         if "period_length_min" in data:
             s["period_length_min"] = integer(data["period_length_min"], 1, 120)
+        if "lineup_size" in data:
+            size = integer(data["lineup_size"], 1, LINEUP_MAX[s["sport"]])
+            if any(len(s[team].get("on_court", [])) > size for team in ("home", "away")):
+                raise RuleError("lineup_too_large")  # bench players first, then shrink
+            s["lineup_size"] = size
         for team in ("home", "away"):
             if team in data:
                 t = data[team]

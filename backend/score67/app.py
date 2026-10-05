@@ -143,6 +143,7 @@ class CreateBoard(StrictModel):
     scheduled_at: int | None = Field(default=None, ge=0)
     period_count: int | None = Field(default=None, ge=1, le=12)
     period_length_min: int | None = Field(default=None, ge=1, le=120)
+    lineup_size: int | None = Field(default=None, ge=1, le=11)
     location: Location | None = None
 
 
@@ -154,6 +155,7 @@ class CreateMatch(StrictModel):
     scheduled_at: int | None = Field(default=None, ge=0)
     period_count: int | None = Field(default=None, ge=1, le=12)
     period_length_min: int | None = Field(default=None, ge=1, le=120)
+    lineup_size: int | None = Field(default=None, ge=1, le=11)
 
 
 class Claim(StrictModel):
@@ -589,7 +591,7 @@ def create_app(db_url=None, secure_cookies=None):
             b.owner_id = account.id if account else None
             db.add(b)
             db.flush()
-            db.add(Match(id=match_id, slug=slug, state=initial_state(body.period_count, body.period_length_min, body.sport),
+            db.add(Match(id=match_id, slug=slug, state=initial_state(body.period_count, body.period_length_min, body.sport, body.lineup_size),
                          created_at=now, scheduled_at=body.scheduled_at / 1000 if body.scheduled_at else None))
             grant(db, slug, response, "Browser")
             db.commit()
@@ -914,8 +916,9 @@ def create_app(db_url=None, secure_cookies=None):
                 for m in db.scalars(select(Match).where(Match.slug == slug, Match.deleted_at.is_(None))
                                     .order_by(Match.created_at.desc())):
                     s = state(db, b, m.id)
-                    games.append({k: s[k] for k in ("sport", "team_fouls_enabled", "match_id", "revision", "phase", "home", "away", "period_count",
-                        "period_length_min", "created_at", "scheduled_at", "archived", "active", "trashed", "trash_reason", "trashed_at")})
+                    games.append({**{k: s[k] for k in ("sport", "team_fouls_enabled", "match_id", "revision", "phase", "home", "away", "period_count",
+                        "period_length_min", "created_at", "scheduled_at", "archived", "active", "trashed", "trash_reason", "trashed_at")},
+                        "lineup_size": s.get("lineup_size")})
                 boards.append({"slug": b.slug, "name": b.name, "active_match": b.active_match, "description": b.description, "stream_url": b.stream_url,
                                "created_at": round(b.created_at * 1000), "matches": games,
                                "owned": bool(account and b.owner_id == account.id)})
@@ -976,7 +979,7 @@ def create_app(db_url=None, secure_cookies=None):
                 raise HTTPException(422, "schedule_future")
             if not body.home.strip() or not body.away.strip():
                 raise HTTPException(422, "invalid_value")
-            s = initial_state(body.period_count, body.period_length_min, body.sport)
+            s = initial_state(body.period_count, body.period_length_min, body.sport, body.lineup_size)
             for team in ("home", "away"):
                 name = getattr(body, team).strip()
                 s[team].update(name=name, short="".join(name.split())[:SHORT_MAX].upper())
@@ -1053,7 +1056,7 @@ def create_app(db_url=None, secure_cookies=None):
                 if m.state["phase"] != "finished":
                     raise HTTPException(409, "finish_first")
                 new = Match(id=str(uuid4()), slug=slug,
-                            state=initial_state(m.state["period_count"], m.state["period_length_min"], m.state["sport"]))
+                            state=initial_state(m.state["period_count"], m.state["period_length_min"], m.state["sport"], m.state.get("lineup_size")))
                 new.state["team_fouls_enabled"] = m.state.get("team_fouls_enabled", False)
                 new.state["foul_mode"] = foul_mode(m.state)
                 db.add(new)

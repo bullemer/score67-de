@@ -16,6 +16,7 @@ import 'match_console.dart';
 import 'team_editor.dart';
 import 'displays.dart';
 import 'logo_picker.dart';
+import 'location_frame.dart';
 import 'led_display.dart';
 import 'command_queue.dart';
 import 'package:web/web.dart' as web;
@@ -74,11 +75,20 @@ class _Score67State extends State<Score67> {
   String draftSport = 'football';
   final periodsInput = TextEditingController(text: '2');
   final minutesInput = TextEditingController(text: '45');
+  // Players on the pitch/court at once (youth formats: 4 or 5; 5, 7, 9 or 11).
+  final lineupInput = TextEditingController(text: '11');
+  int get draftLineup => (int.tryParse(lineupInput.text) ?? 11).clamp(
+    1,
+    draftSport == 'basketball' ? 5 : 11,
+  );
   int get draftPeriods => (int.tryParse(periodsInput.text) ?? 2).clamp(1, 12);
   int get draftMinutes => (int.tryParse(minutesInput.text) ?? 45).clamp(1, 120);
   set draftPeriods(int value) => periodsInput.text = '$value';
   set draftMinutes(int value) => minutesInput.text = '$value';
   bool get basketball => state['sport'] == 'basketball';
+
+  /// Players on court/pitch at once: the game's setting, else the maximum.
+  int get lineupSize => (state['lineup_size'] as int?) ?? (basketball ? 5 : 11);
   int get periodLengthMs =>
       ((state['period'] > state['period_count']
               ? state['overtime_length_min'] ?? 5
@@ -718,6 +728,7 @@ class _Score67State extends State<Score67> {
           'language': lang,
           'period_count': draftPeriods,
           'period_length_min': draftMinutes,
+          'lineup_size': draftLineup,
           'location': draftLocation,
           'description': draftDescription.text.trim().isEmpty
               ? null
@@ -772,6 +783,22 @@ class _Score67State extends State<Score67> {
     if (count == 2) return t('half').replaceAll('{n}', '$period');
     if (count == 4) return t('quarter').replaceAll('{n}', '$period');
     return '$period/$count';
+  }
+
+  /// Spelled-out period for buttons and the game flow: "2. Viertel",
+  /// "1. Halbzeit", "Periode 5/8", "Verlängerung 1".
+  String periodName(int period) {
+    final count = state['period_count'] as int;
+    if (period > count && basketball) {
+      return t('period.name.ot').replaceAll('{n}', '${period - count}');
+    }
+    if (count == 1) return t('period.name.game');
+    final key = count == 2
+        ? 'period.name.half'
+        : count == 4
+        ? 'period.name.quarter'
+        : 'period.name.generic';
+    return t(key).replaceAll('{n}', '$period').replaceAll('{count}', '$count');
   }
 
   int elapsed() {
@@ -1606,6 +1633,7 @@ class _Score67State extends State<Score67> {
                     draftSport = sport;
                     draftPeriods = sport == 'basketball' ? 4 : 2;
                     draftMinutes = sport == 'basketball' ? 10 : 45;
+                    lineupInput.text = sport == 'basketball' ? '5' : '11';
                   }),
           ),
       ],
@@ -1648,6 +1676,26 @@ class _Score67State extends State<Score67> {
       style: const TextStyle(color: Color(0xffb6f36e)),
     ),
     if (draftSport == 'basketball') Text(t('basketball.pilot')),
+    const SizedBox(height: 12),
+    numberStepper(
+      t('lineup_size'),
+      lineupInput,
+      1,
+      draftSport == 'basketball' ? 5 : 11,
+    ),
+    Wrap(
+      spacing: 8,
+      children: [
+        for (final size
+            in draftSport == 'basketball' ? const [4, 5] : const [5, 7, 9, 11])
+          ChoiceChip(
+            label: Text('$size'),
+            selected: draftLineup == size,
+            onSelected: (_) => setState(() => lineupInput.text = '$size'),
+          ),
+      ],
+    ),
+    Text(t('lineup_size.note')),
     const SizedBox(height: 12),
     Text(t('create.note')),
     const SizedBox(height: 16),
@@ -2254,18 +2302,31 @@ class _Score67State extends State<Score67> {
           ? '–'
           : periodLabel(),
       periodOver: periodOver,
-      nextPeriod: opening == null
+      nextPeriod: opening == null ? null : periodName(nextNumber),
+      endedPeriod: (state['period'] as int) == 0
           ? null
-          : periodLabel({...state, 'period': nextNumber}).isEmpty
-          ? '$nextNumber'
-          : periodLabel({...state, 'period': nextNumber}),
-      endedPeriod: periodLabel().isEmpty ? null : periodLabel(),
-      onStartNext: () =>
-          opening == null ? Future.value(true) : command(opening),
+          : periodName(state['period'] as int),
+      currentPeriod: periodName(state['period'] as int),
+      // Prepared (Play not pressed yet): the clock still shows the full period.
+      clockNotStarted:
+          basketball &&
+          phase == 'period_running' &&
+          state['clock']['enabled'] == true &&
+          !running &&
+          elapsed() == 0,
+      onStartClock: () => command('clock_start'),
+      // Starting a forgotten period also starts its clock, like Play.
+      onStartNext: () async {
+        if (opening == null) return true;
+        if (!await command(opening)) return false;
+        return !basketball || state['clock']['enabled'] != true
+            ? true
+            : command('clock_start');
+      },
       onSkipPeriod: canSkip ? endPeriod : null,
       skipEndsGame: lastPeriod && !(basketball && tied),
       onToggleActive: toggleActive,
-      lineupMax: basketball ? 5 : 11,
+      lineupMax: lineupSize,
       running: running,
       canToggleClock: basketball
           ? canWrite &&
@@ -2481,6 +2542,14 @@ class _Score67State extends State<Score67> {
         return t('console.timeout_short');
       case 'possession':
         return '${t('possession')} ${e['team'] == null ? '–' : state[e['team']]['short']}';
+      case 'period_start' || 'overtime_start':
+        return t(
+          'flow.period_started',
+        ).replaceAll('{p}', periodName((e['period'] ?? 1) as int));
+      case 'period_end':
+        return t(
+          'flow.period_ended',
+        ).replaceAll('{p}', periodName((e['period'] ?? 1) as int));
       default:
         return t(e['type']);
     }
@@ -2843,13 +2912,16 @@ class _Score67State extends State<Score67> {
         ),
         if ((phase == 'pre_game' || phase == 'break') && !last)
           action(
-            t(phase == 'break' ? 'resume' : 'period_start'),
+            t(
+              'period.start_named',
+            ).replaceAll('{p}', periodName((state['period'] as int) + 1)),
             canWrite ? () => command('period_start') : null,
             primary: true,
           ),
         if (phase == 'period_running' && !last)
           HoldAction(
-            label: '${t('period_end')} · ${t('hold')}',
+            label:
+                '${t('period.end_named').replaceAll('{p}', periodName(state['period'] as int))} · ${t('hold')}',
             enabled: canWrite,
             onActivate: () => command('period_end'),
           ),
@@ -2907,7 +2979,9 @@ class _Score67State extends State<Score67> {
         Center(child: periodScores()),
         if (phase == 'pre_game' || (phase == 'break' && !finalBreak))
           action(
-            t('basketball.period_start'),
+            t(
+              'period.prepare_named',
+            ).replaceAll('{p}', periodName((state['period'] as int) + 1)),
             canWrite ? () => command('period_start') : null,
             primary: true,
           ),
@@ -2919,7 +2993,8 @@ class _Score67State extends State<Score67> {
           ),
         if (phase == 'period_running')
           HoldAction(
-            label: '${t('period_end')} · ${t('hold')}',
+            label:
+                '${t('period.end_named').replaceAll('{p}', periodName(state['period'] as int))} · ${t('hold')}',
             enabled: canWrite,
             onActivate: () => command('period_end'),
           ),
@@ -3027,69 +3102,523 @@ class _Score67State extends State<Score67> {
     }
   }
 
-  Widget settingsPanel() => ListView(
+  // Settings tab: every game setting inline (no dialogs). Drafts follow the
+  // game until edited; a section with unsaved edits keeps them (Save/Reset).
+  final setPeriods = TextEditingController(),
+      setMinutes = TextEditingController(),
+      setLineup = TextEditingController(),
+      setSeconds = TextEditingController(text: '0'),
+      setDelay = TextEditingController(),
+      setDescription = TextEditingController(),
+      setStream = TextEditingController();
+  final setName = {
+        'home': TextEditingController(),
+        'away': TextEditingController(),
+      },
+      setShort = {
+        'home': TextEditingController(),
+        'away': TextEditingController(),
+      };
+  final setColor = <String, String>{};
+  bool setClock = true;
+  String settingsSeen = '';
+  Map<String, Object?> formatSynced = {}, teamsSynced = {}, textsSynced = {};
+  bool showMap = false;
+  Map<String, dynamic>? mapLocation;
+  String? venueLabel;
+
+  Map<String, Object?> formatDraft() => {
+    'count': setPeriods.text,
+    'minutes': setMinutes.text,
+    'lineup': setLineup.text,
+    'clock': setClock,
+    'delay': setDelay.text,
+  };
+  Map<String, Object?> teamsDraft() => {
+    for (final team in ['home', 'away']) ...{
+      '$team.name': setName[team]!.text,
+      '$team.short': setShort[team]!.text,
+      '$team.color': setColor[team],
+    },
+  };
+  Map<String, Object?> textsDraft() => {
+    'description': setDescription.text,
+    'stream': setStream.text,
+  };
+  bool same(Map a, Map b) =>
+      a.length == b.length && a.keys.every((k) => a[k] == b[k]);
+
+  /// Loads the game's values into every section that has no unsaved edits.
+  void syncSettings({bool force = false}) {
+    final seen = '${state['match_id']}:${state['revision']}';
+    if (!force && seen == settingsSeen) return;
+    settingsSeen = seen;
+    if (force || formatSynced.isEmpty || same(formatDraft(), formatSynced)) {
+      setPeriods.text = '${state['period_count']}';
+      setMinutes.text = '${state['period_length_min']}';
+      setLineup.text = '$lineupSize';
+      setClock = state['clock']['enabled'] == true;
+      setDelay.text = '${state['overlay']['delay_ms']}';
+      formatSynced = formatDraft();
+    }
+    if (force || teamsSynced.isEmpty || same(teamsDraft(), teamsSynced)) {
+      for (final team in ['home', 'away']) {
+        setName[team]!.text = state[team]['name'];
+        setShort[team]!.text = state[team]['short'];
+        setColor[team] = state[team]['color'];
+      }
+      teamsSynced = teamsDraft();
+    }
+    if (force || textsSynced.isEmpty || same(textsDraft(), textsSynced)) {
+      setDescription.text = state['description'] ?? '';
+      setStream.text = state['stream_url'] ?? '';
+      textsSynced = textsDraft();
+    }
+  }
+
+  Widget settingsCard(
+    String title,
+    List<Widget> children, {
+    bool dirty = false,
+    VoidCallback? onSave,
+    VoidCallback? onReset,
+  }) => Container(
+    margin: const EdgeInsets.only(bottom: 12),
     padding: const EdgeInsets.all(12),
-    children: [
-      matchInfo(),
-      const SizedBox(height: 8),
-      Wrap(
-        spacing: 8,
-        children: [
-          action(t('settings'), canWrite ? editSettings : null),
-          for (final team in ['home', 'away']) ...[
-            action(
-              '${t('team.edit')} · ${state[team]['short']}',
-              canWrite ? () => editTeam(team) : null,
-            ),
-            action(
-              '${t('squad')} · ${state[team]['short']}',
-              canWrite ? () => editSquad(team) : null,
-            ),
-          ],
-        ],
+    decoration: BoxDecoration(
+      color: const Color(0xff111a26),
+      borderRadius: BorderRadius.circular(10),
+      border: Border.all(
+        color: dirty ? const Color(0xffb6f36e) : const Color(0xff2a3647),
       ),
-      if (basketball) ...[
-        const SizedBox(height: 8),
-        Text(t('foul.mode')),
-        Wrap(
-          spacing: 8,
-          children: [
-            for (final mode in ['team', 'personal', 'both', 'off'])
-              ChoiceChip(
-                label: Text(t('foul.mode.$mode')),
-                selected: state['foul_mode'] == mode,
-                onSelected: canWrite
-                    ? (_) => command('settings', {'foul_mode': mode})
-                    : null,
-              ),
-          ],
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          dirty ? '$title •' : title,
+          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
         ),
+        const SizedBox(height: 6),
+        ...children,
+        if (onSave != null)
+          Wrap(
+            spacing: 8,
+            children: [
+              FilledButton(
+                onPressed: dirty && canWrite ? onSave : null,
+                child: Text(t('save')),
+              ),
+              if (dirty)
+                TextButton(onPressed: onReset, child: Text(t('reset'))),
+            ],
+          ),
       ],
-      const SizedBox(height: 8),
-      Text(t('overlay')),
-      Wrap(
-        spacing: 8,
-        children: [
-          for (final entry in {
-            'small': 'scoreboard',
-            'big': 'score_big',
-            'hidden': 'hidden',
-          }.entries)
-            action(
-              t(entry.key),
-              canWrite
-                  ? () => command('overlay', {
-                      'view': entry.value,
-                      'auto_big': false,
-                    })
-                  : null,
-              primary: state['overlay']['view'] == entry.value,
-            ),
-        ],
-      ),
-      Text(widget.releaseLabel, style: const TextStyle(fontSize: 12)),
-    ],
+    ),
   );
+
+  Future<void> saveFormat() async {
+    final c = int.tryParse(setPeriods.text),
+        l = int.tryParse(setMinutes.text),
+        n = int.tryParse(setLineup.text),
+        d = int.tryParse(setDelay.text),
+        e = int.tryParse(setSeconds.text);
+    if (c == null || l == null || n == null || d == null || e == null) {
+      notify(t('error.invalid_value'));
+      return;
+    }
+    final payload = <String, dynamic>{
+      'period_count': c,
+      'period_length_min': l,
+      'lineup_size': n,
+    };
+    if (setClock != (state['clock']['enabled'] == true)) {
+      payload['clock_enabled'] = setClock;
+      if (setClock) payload['clock_elapsed_ms'] = e * 1000;
+    }
+    final draft = formatDraft();
+    if (await command('settings', payload) &&
+        (d == state['overlay']['delay_ms'] ||
+            await command('overlay', {'delay_ms': d}))) {
+      formatSynced = draft;
+      syncSettings(force: true);
+      if (mounted) setState(() {});
+    }
+  }
+
+  Future<void> saveTeams() async {
+    final payload = <String, dynamic>{
+      for (final team in ['home', 'away'])
+        team: {
+          'name': setName[team]!.text,
+          'short': setShort[team]!.text,
+          'color': setColor[team],
+        },
+    };
+    final draft = teamsDraft();
+    if (await command('settings', payload)) {
+      teamsSynced = draft;
+      syncSettings(force: true);
+      if (mounted) setState(() {});
+    }
+  }
+
+  Future<void> saveTexts() async {
+    final (text, link) = (setDescription.text.trim(), setStream.text.trim());
+    try {
+      await api(
+        '/api/s/$slug/description',
+        method: 'PUT',
+        body: {'description': text.isEmpty ? null : text},
+      );
+      await api(
+        '/api/s/$slug/stream',
+        method: 'PUT',
+        body: {'stream_url': link.isEmpty ? null : link},
+      );
+      textsSynced = textsDraft();
+      await refresh();
+      notify(t('saved'));
+    } on ApiError catch (e) {
+      notify(t('error.${e.code}'));
+    } catch (_) {
+      notify(t('error.network'));
+    }
+  }
+
+  Future<void> toggleMap() async {
+    if (showMap) {
+      setState(() => showMap = false);
+      return;
+    }
+    try {
+      final result = await api('/api/s/$slug/location');
+      mapLocation = result['location'] == null
+          ? null
+          : Map<String, dynamic>.from(result['location']);
+      if (mounted) setState(() => showMap = true);
+    } catch (_) {
+      notify(t('error.network'));
+    }
+  }
+
+  Widget settingsPanel() {
+    syncSettings();
+    final formatDirty = !same(formatDraft(), formatSynced);
+    final teamsDirty = !same(teamsDraft(), teamsSynced);
+    final textsDirty = !same(textsDraft(), textsSynced);
+    const palette = [
+      '#c8102e',
+      '#ef4444',
+      '#f97316',
+      '#facc15',
+      '#16a34a',
+      '#14b8a6',
+      '#1d4ed8',
+      '#38bdf8',
+      '#7c3aed',
+      '#ec4899',
+      '#ffffff',
+      '#111827',
+    ];
+    void edited() => setState(() {});
+    return ListView(
+      padding: const EdgeInsets.all(12),
+      children: [
+        matchInfo(),
+        const SizedBox(height: 8),
+        settingsCard(
+          t('settings.format'),
+          [
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                for (final format
+                    in basketball
+                        ? const [
+                            [4, 10],
+                            [4, 12],
+                            [8, 5],
+                            [2, 20],
+                          ]
+                        : const [
+                            [2, 45],
+                            [2, 40],
+                            [2, 35],
+                            [2, 30],
+                            [2, 20],
+                            [1, 10],
+                          ])
+                  ChoiceChip(
+                    label: Text('${format[0]} × ${format[1]}'),
+                    selected:
+                        setPeriods.text == '${format[0]}' &&
+                        setMinutes.text == '${format[1]}',
+                    onSelected: (_) => setState(() {
+                      setPeriods.text = '${format[0]}';
+                      setMinutes.text = '${format[1]}';
+                    }),
+                  ),
+              ],
+            ),
+            numberStepper(t('period_count'), setPeriods, 1, 12),
+            numberStepper(t('period_length'), setMinutes, 1, 120),
+            numberStepper(t('lineup_size'), setLineup, 1, basketball ? 5 : 11),
+            Wrap(
+              spacing: 8,
+              children: [
+                for (final size
+                    in basketball ? const [4, 5] : const [5, 7, 9, 11])
+                  ChoiceChip(
+                    label: Text('$size'),
+                    selected: setLineup.text == '$size',
+                    onSelected: (_) => setState(() => setLineup.text = '$size'),
+                  ),
+              ],
+            ),
+            Text(
+              t('lineup_size.note'),
+              style: const TextStyle(fontSize: 13, color: Color(0xffb5c2d4)),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(t('clock_enabled')),
+              value: setClock,
+              onChanged: (v) => setState(() => setClock = v),
+            ),
+            if (setClock &&
+                state['clock']['enabled'] != true &&
+                state['phase'] == 'period_running')
+              field(t('clock_elapsed'), setSeconds, numeric: true),
+            field(t('delay'), setDelay, numeric: true),
+          ],
+          dirty: formatDirty,
+          onSave: saveFormat,
+          onReset: () => setState(() => syncSettings(force: true)),
+        ),
+        if (basketball)
+          settingsCard(t('foul.mode'), [
+            Wrap(
+              spacing: 8,
+              children: [
+                for (final mode in ['team', 'personal', 'both', 'off'])
+                  ChoiceChip(
+                    label: Text(t('foul.mode.$mode')),
+                    selected: state['foul_mode'] == mode,
+                    onSelected: canWrite
+                        ? (_) => command('settings', {'foul_mode': mode})
+                        : null,
+                  ),
+              ],
+            ),
+          ]),
+        settingsCard(
+          t('settings.teams'),
+          [
+            for (final team in ['home', 'away']) ...[
+              Row(
+                children: [
+                  Expanded(
+                    flex: 3,
+                    child: TextField(
+                      controller: setName[team],
+                      maxLength: 60,
+                      onChanged: (_) => edited(),
+                      decoration: InputDecoration(
+                        labelText: '${t(team)} · ${t('name')}',
+                        counterText: '',
+                        isDense: true,
+                        border: const OutlineInputBorder(),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  SizedBox(
+                    width: 84,
+                    child: TextField(
+                      controller: setShort[team],
+                      maxLength: 3,
+                      textCapitalization: TextCapitalization.characters,
+                      onChanged: (_) => edited(),
+                      decoration: InputDecoration(
+                        labelText: t('short'),
+                        counterText: '',
+                        isDense: true,
+                        border: const OutlineInputBorder(),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final color in palette)
+                    InkWell(
+                      onTap: () => setState(() => setColor[team] = color),
+                      child: Container(
+                        width: 30,
+                        height: 30,
+                        decoration: BoxDecoration(
+                          color: hexColor(color),
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: setColor[team] == color
+                                ? const Color(0xffb6f36e)
+                                : Colors.white24,
+                            width: setColor[team] == color ? 3 : 1,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
+            ],
+          ],
+          dirty: teamsDirty,
+          onSave: saveTeams,
+          onReset: () => setState(() => syncSettings(force: true)),
+        ),
+        settingsCard(t('overlay'), [
+          Wrap(
+            spacing: 8,
+            children: [
+              for (final entry in {
+                'small': 'scoreboard',
+                'big': 'score_big',
+                'hidden': 'hidden',
+              }.entries)
+                ChoiceChip(
+                  label: Text(t(entry.key)),
+                  selected: state['overlay']['view'] == entry.value,
+                  onSelected: canWrite
+                      ? (_) => command('overlay', {
+                          'view': entry.value,
+                          'auto_big': false,
+                        })
+                      : null,
+                ),
+            ],
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text(t('auto_big')),
+            value: state['overlay']['auto_big'] == true,
+            onChanged: canWrite
+                ? (v) => command('overlay', {'auto_big': v})
+                : null,
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text(t('right')),
+            value: state['overlay']['position'] == 'top_right',
+            onChanged: canWrite
+                ? (v) => command('overlay', {
+                    'position': v ? 'top_right' : 'top_left',
+                  })
+                : null,
+          ),
+        ]),
+        settingsCard(
+          t('description.edit'),
+          [
+            TextField(
+              controller: setDescription,
+              maxLength: 300,
+              minLines: 2,
+              maxLines: 4,
+              onChanged: (_) => edited(),
+              decoration: InputDecoration(
+                labelText: t('description'),
+                hintText: t('description.hint'),
+                helperText: t('description.private'),
+                helperMaxLines: 2,
+                border: const OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: setStream,
+              maxLength: 300,
+              keyboardType: TextInputType.url,
+              onChanged: (_) => edited(),
+              decoration: InputDecoration(
+                labelText: t('stream.label'),
+                hintText: 'https://youtube.com/live/…',
+                helperText: t('stream.hint'),
+                helperMaxLines: 2,
+                border: const OutlineInputBorder(),
+              ),
+            ),
+          ],
+          dirty: textsDirty,
+          onSave: saveTexts,
+          onReset: () => setState(() => syncSettings(force: true)),
+        ),
+        settingsCard(t('location.title'), [
+          Align(
+            alignment: Alignment.centerLeft,
+            child: OutlinedButton.icon(
+              onPressed: admin && connected ? toggleMap : null,
+              icon: Icon(showMap ? Icons.expand_less : Icons.map_outlined),
+              label: Text(t(showMap ? 'close' : 'location.edit_map')),
+            ),
+          ),
+          if (showMap) ...[
+            const SizedBox(height: 8),
+            LocationFrame(
+              current: mapLocation,
+              lang: lang,
+              title: t('location.title'),
+              onSave: (chosen) async {
+                try {
+                  await api(
+                    '/api/s/$slug/location',
+                    method: 'PUT',
+                    body: {'location': chosen},
+                  );
+                  await refresh();
+                  notify(t('saved'));
+                  if (mounted) setState(() => showMap = false);
+                  return true;
+                } catch (_) {
+                  notify(t('error.network'));
+                  return false;
+                }
+              },
+            ),
+          ],
+        ]),
+        settingsCard(t('display.title'), [
+          DisplaysDialog(
+            api: (path, method, body) => api(path, method: method, body: body),
+            t: t,
+            inline: true,
+          ),
+        ]),
+        settingsCard(t('language'), [
+          Wrap(
+            spacing: 8,
+            children: [
+              for (final entry in {'de': 'Deutsch', 'en': 'English'}.entries)
+                ChoiceChip(
+                  label: Text(entry.value),
+                  selected: lang == entry.key,
+                  onSelected: (_) {
+                    if (lang != entry.key) switchLanguage();
+                  },
+                ),
+            ],
+          ),
+        ]),
+        Text(widget.releaseLabel, style: const TextStyle(fontSize: 12)),
+      ],
+    );
+  }
 
   Future<void> openMenu() async {
     final choice = await showModalBottomSheet<String>(
@@ -3145,6 +3674,12 @@ class _Score67State extends State<Score67> {
         if (await command('game_end')) navigate('/');
       case 'dashboard':
         navigate('/dashboard');
+      // In the console these live inline in the Settings / Sharing tabs.
+      case 'displays' || 'location' || 'description'
+          when consoleKey.currentState != null:
+        consoleKey.currentState!.showTab(3);
+      case 'links' || 'share' when consoleKey.currentState != null:
+        consoleKey.currentState!.showTab(4);
       case 'displays':
         await openDisplays();
       case 'links':
@@ -3179,7 +3714,7 @@ class _Score67State extends State<Score67> {
     final selected = {
       ...(state[team]['on_court'] as List? ?? []).cast<String>(),
     };
-    final limit = basketball ? 5 : 11;
+    final limit = lineupSize;
     final revision = state['revision'], match = state['match_id'];
     final result = await showDialog<List<String>>(
       context: navigator.currentContext!,

@@ -117,6 +117,13 @@ In Settings → Anzeigetafeln, up to two LED displays can be driven directly by 
 - **On court.** With no action selected, tapping a player moves them on court or back to the bench (max. 5 basketball, 11 football; youth formats with 4 or 7 simply activate fewer). Players on court are bright and on top, the bench is dimmed below; the team tile shows how many are on court. Without any lineup all players are bright. Actions still accept bench players (forgotten substitution). Each change is a substitution entry in the game flow, queued and shown at once like a score.
 - **Final result.** Ending the match (🏁 in the last period, Play at 0:00 of the last period, Period tab, menu Close game) shows one confirmation with the final score and the score per period.
 
+### Named periods, start warning, players on the field, inline settings (v0.28)
+
+- Period buttons name their period: "2. Viertel vorbereiten", "Periode 5/8 beenden", "2. Halbzeit anpfeifen" (EN "Prepare Quarter 2", …); the game flow says "Periode 1/8 gestartet / beendet".
+- An entry before its period has started never starts it silently: an inline warning asks "Periode X ist noch nicht gestartet. Jetzt starten?" (▶ starts the period and its clock, then books the entry). In a break: book to the ended period (free throws after the buzzer) or start the next one. In a prepared basketball period whose clock never ran: start the clock or book without it. Each answer holds for that period.
+- **Players on the field at once** (`lineup_size`, 1–5 basketball, 1–11 football; default the maximum): set when creating a scoreboard (presets 4/5 or 5/7/9/11), kept for games prepared from My scoreboards, editable in Einstellungen. The console, the Team tab and substitutions never mark more players active; shrinking below the players on court is refused (`lineup_too_large`).
+- **Einstellungen** holds every setting inline, without dialogs: game format (presets, periods, length, players on the field, clock, stream delay), foul mode, teams (name, short name, colour), overlay, description & livestream, venue map, scoreboard displays (incl. Bluetooth LED) and language. Sections with unsaved edits are marked • and keep their drafts while the game changes (Save / Reset). The ☰ menu entries for displays, venue and description open this tab; links and sharing open Teilen.
+
 ### Console menu
 
 The ☰ menu starts with Edit teams (opens the Team tab), Pause game (stops a running basketball clock and returns to the start page; the game stays open and can be resumed from My scoreboards) and Close game (confirms the final result, ends the game, returns to the start page), followed by My scoreboards, links, sharing, venue, description and language.
