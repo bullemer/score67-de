@@ -124,6 +124,10 @@ In Settings → Anzeigetafeln, up to two LED displays can be driven directly by 
 - **Players on the field at once** (`lineup_size`, 1–5 basketball, 1–11 football; default the maximum): set when creating a scoreboard (presets 4/5 or 5/7/9/11), kept for games prepared from My scoreboards, editable in Einstellungen. The console, the Team tab and substitutions never mark more players active; shrinking below the players on court is refused (`lineup_too_large`).
 - **Einstellungen** holds every setting inline, without dialogs: game format (presets, periods, length, players on the field, clock, stream delay), foul mode, teams (name, short name, colour), overlay, description & livestream, venue map, scoreboard displays (incl. Bluetooth LED) and language. Sections with unsaved edits are marked • and keep their drafts while the game changes (Save / Reset). The ☰ menu entries for displays, venue and description open this tab; links and sharing open Teilen.
 
+### Link previews (v0.28)
+
+Shared ticker links show a real preview in WhatsApp, Facebook, Signal, Telegram etc.: `/s/<code>` renders Open Graph tags server-side (title "Bramfeld 74 : 70 Scaletta · LIVE" / "· ENDSTAND", or "Bramfeld – Scaletta · <kick-off>" before the game; description with sport, period, venue, the game description) and `og:image` points to `/s/<code>/preview.png` — a 1200 × 630 PNG card drawn with Pillow (team colours, logos, score, status, period; `backend/score67/preview.py`, bundled DejaVu fonts). The image URL carries the revision, so a new score is a new image; `?match=` links preview that game. Private games show only "Privates Spiel". Site pages use the generic card `/preview.png`. Apps cache previews: Facebook's Sharing Debugger (developers.facebook.com/tools/debug) re-scrapes a link on demand.
+
 ### Console menu
 
 The ☰ menu starts with Edit teams (opens the Team tab), Pause game (stops a running basketball clock and returns to the start page; the game stays open and can be resumed from My scoreboards) and Close game (confirms the final result, ends the game, returns to the start page), followed by My scoreboards, links, sharing, venue, description and language.

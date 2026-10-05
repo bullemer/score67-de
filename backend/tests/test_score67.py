@@ -1441,3 +1441,25 @@ def test_players_on_court_setting(system):
     assert state(client, create(client)['slug'])['lineup_size'] == 11
     big = client.post('/api/scoreboards', json={'sport': 'basketball', 'lineup_size': 11}).json()['slug']
     assert state(client, big)['lineup_size'] == 5
+
+
+def test_link_previews_for_whatsapp_and_facebook(system):
+    import re as regex
+    app, client = system
+    slug = client.post('/api/scoreboards', json={'sport': 'basketball', 'description': 'U12 Liga'}).json()['slug']
+    command(client, slug, 'settings', {'home': {'name': 'Bramfeld'}, 'away': {'name': 'Scaletta'}})
+    page = client.get(f'/s/{slug}').text
+    tags = dict(regex.findall(r'<meta property="(og:[a-z:]+)" content="([^"]*)"', page))
+    assert tags['og:title'].startswith('Bramfeld – Scaletta')
+    assert 'U12 Liga' in tags['og:description'] and 'Basketball' in tags['og:description']
+    assert tags['og:image'].startswith('http') and f'/s/{slug}/preview.png' in tags['og:image']
+    command(client, slug, 'period_start')
+    command(client, slug, 'score', {'team': 'home', 'points': 3})
+    page = client.get(f'/s/{slug}').text
+    assert 'Bramfeld 3 : 0 Scaletta · LIVE' in page and '<title>Bramfeld 3 : 0 Scaletta · LIVE</title>' in page
+    image = client.get(tags['og:image'].split('testserver')[-1])
+    assert image.status_code == 200 and image.headers['content-type'] == 'image/png' and image.content[:4] == b'\x89PNG'
+    assert client.get('/preview.png').content[:4] == b'\x89PNG'
+    # The OBS overlay needs no tags; site pages get the generic card.
+    assert 'og:title' not in client.get(f'/s/{slug}/overlay').text
+    assert '/preview.png' in client.get('/').text and '/preview.png' in client.get('/forum').text

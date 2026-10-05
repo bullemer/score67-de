@@ -22,7 +22,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 
-from . import forum, mail
+from . import forum, mail, preview
 from .db import Account, AccountSession, Admin, Asset, LoginToken, Board, Display, DisplayAdmin, Match, MatchEvent, RateLimit, Receipt, database
 from .domain import FOOTBALL, BASKETBALL, RuleError, apply, period_ms, initial_state, normalize_clock, foul_mode, BASKETBALL_STATS, player_statistics, SHORT_MAX, FOOTBALL_EVENTS
 
@@ -344,6 +344,7 @@ def create_app(db_url=None, secure_cookies=None):
     app.state.send_mail = mail.send
     templates = Jinja2Templates(directory=ROOT / "backend/score67/templates")
     templates.env.globals["release_label"] = RELEASE["label"]
+    templates.env.globals["public_origin"] = os.getenv("PUBLIC_ORIGIN", "")
     # Footers show the build time in the viewer's time zone (common.mjs).
     templates.env.globals["release_version"] = RELEASE["version"]
     templates.env.globals["release_built_at"] = RELEASE["built_at"]
@@ -1382,11 +1383,64 @@ def create_app(db_url=None, secure_cookies=None):
     @app.get("/s/{slug}/overlay", response_class=HTMLResponse)
     def display(request: Request, slug: str):
         overlay = request.url.path.endswith("/overlay")
+        og = None
         with app.state.sessions() as db:
             b = board(db, slug)
             hidden = not viewer_allowed(db, b, request.cookies, request.query_params.get("k"))
+            if not overlay:
+                og = link_preview(db, b, request, hidden)
         return templates.TemplateResponse(request=request, name="display.html",
-                                          context={"slug": slug, "overlay": overlay, "private": hidden})
+                                          context={"slug": slug, "overlay": overlay, "private": hidden, "og": og})
+
+    def origin(request):
+        return os.getenv("PUBLIC_ORIGIN", str(request.base_url).rstrip("/"))
+
+    def preview_state(db, b, request):
+        """The game a shared link shows: ?match=<id> (an upcoming game) or the active one."""
+        match = request.query_params.get("match")
+        if match:
+            try:
+                return state(db, b, match)
+            except HTTPException:
+                pass
+        return state(db, b)
+
+    def link_preview(db, b, request, hidden):
+        """Open Graph texts and image for a shared ticker link (WhatsApp, Facebook)."""
+        language = request.query_params.get("lang") if request.query_params.get("lang") in ("de", "en") else b.language
+        url = f"{origin(request)}{request.url.path}" + (f"?{request.url.query}" if request.url.query else "")
+        if hidden:
+            w = preview.words(language)
+            return {"title": f"{w['private']} · Score67", "description": w["private_text"], "url": url,
+                    "image": f"{origin(request)}/preview.png?lang={language}", "language": language}
+        s = preview_state(db, b, request)
+        title, description = preview.summary(s, language)
+        query = f"lang={language}&r={s['revision']}" + (f"&match={s['match_id']}" if s.get("match_id") else "")
+        return {"title": title, "description": description, "url": url, "language": language,
+                "image": f"{origin(request)}/s/{b.slug}/preview.png?{query}"}
+
+    @app.get("/s/{slug}/preview.png")
+    def scoreboard_preview(request: Request, slug: str):
+        language = request.query_params.get("lang") if request.query_params.get("lang") in ("de", "en") else None
+        with app.state.sessions() as db:
+            b = board(db, slug)
+            language = language or b.language
+            if not viewer_allowed(db, b, request.cookies, request.query_params.get("k")):
+                data = preview.render(None, language)
+            else:
+                s = preview_state(db, b, request)
+                def logo(path):
+                    asset = db.get(Asset, path.removeprefix("/media/").removesuffix(".png"))
+                    return asset.data if asset and asset.slug == b.slug else None
+                data = preview.render(s, language, logo)
+        # Short cache: the URL carries the revision, so a new score is a new image.
+        return Response(data, media_type="image/png", headers={"Cache-Control": "public, max-age=300"})
+
+    @app.get("/preview.png")
+    def site_preview(request: Request):
+        language = request.query_params.get("lang") if request.query_params.get("lang") in ("de", "en") else "de"
+        return Response(preview.render(None, language), media_type="image/png",
+                        headers={"Cache-Control": "public, max-age=86400"})
 
     @app.get("/new")
     @app.get("/login")
