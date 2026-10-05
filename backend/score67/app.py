@@ -22,7 +22,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 
-from . import forum, guides, mail, preview, seo
+from . import display_feed, forum, guides, mail, preview, seo
 from .db import Account, AccountSession, Admin, Asset, LoginToken, Board, Display, DisplayAdmin, Match, MatchEvent, RateLimit, Receipt, database
 from .domain import FOOTBALL, BASKETBALL, RuleError, apply, period_ms, initial_state, normalize_clock, foul_mode, BASKETBALL_STATS, player_statistics, SHORT_MAX, FOOTBALL_EVENTS
 
@@ -56,6 +56,8 @@ class LocationUpdate(StrictModel):
 
 DISPLAY_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no 0/O/1/I
 PAIRING_SECONDS = 600
+CLAIM_CODE_SECONDS = 24 * 3600   # code shown on a self-registered panel until someone claims it
+IDENTIFY_SECONDS = 10
 
 
 class DisplayCreate(StrictModel):
@@ -65,6 +67,19 @@ class DisplayCreate(StrictModel):
 class DisplayUpdate(StrictModel):
     name: str | None = Field(default=None, min_length=1, max_length=60)
     board: str | None = Field(default=None, max_length=10)
+    brightness: int | None = Field(default=None, ge=10, le=100)
+
+
+class DisplayRegister(StrictModel):
+    """A self-registering device (ESP32 firmware); the key never leaves it except here."""
+    device_key: str = Field(min_length=32, max_length=128)
+    name: str | None = Field(default=None, min_length=1, max_length=60)
+    fw: str | None = Field(default=None, max_length=20)
+
+
+class DisplayClaim(StrictModel):
+    code: str = Field(min_length=6, max_length=12)
+    name: str | None = Field(default=None, min_length=1, max_length=60)
 
 
 class DisplayPair(StrictModel):
@@ -1236,7 +1251,9 @@ def create_app(db_url=None, secure_cookies=None):
                 "last_seen_at": round(d.last_seen_at * 1000) if d.last_seen_at else None,
                 "code": d.pairing_code if pending else None,
                 "code_expires_at": round(d.pairing_expires_at * 1000) if pending else None,
-                "board": b.slug if b else None, "board_description": b.description if b else None}
+                "board": b.slug if b else None, "board_description": b.description if b else None,
+                "device": d.device_key_hash is not None, "brightness": d.brightness or 60,
+                "fw_version": d.fw_version, "rssi": d.rssi}
 
     def device_display(db, token):
         d = db.scalar(select(Display).where(Display.token_hash == digest(token or "")))
@@ -1248,6 +1265,100 @@ def create_app(db_url=None, secure_cookies=None):
         b = db.get(Board, d.board_slug) if d.board_slug else None
         return {"display": {"id": d.id, "name": d.name}, "board": b.slug if b else None,
                 "state": state(db, b) if b else None, "server_now": round(time.time() * 1000)}
+
+    def claimed(db, d):
+        return db.scalar(select(DisplayAdmin.id).where(DisplayAdmin.display_id == d.id).limit(1)) is not None
+
+    def claim_code(db, d, now):
+        """The code an unclaimed self-registered panel shows; renewed once it expires."""
+        if not d.pairing_code or (d.pairing_expires_at or 0) <= now:
+            d.pairing_code, d.pairing_expires_at = pairing_code(db), now + CLAIM_CODE_SECONDS
+        return d.pairing_code
+
+    def compact_payload(db, d):
+        """The small feed for LED firmware (display_feed): pairing code, idle or the game."""
+        now = time.time()
+        common = {"now_ms": round(now * 1000), "name": d.name, "brightness": d.brightness or 60,
+                  "identify": bool(d.identify_until and d.identify_until > now)}
+        if d.device_key_hash and not claimed(db, d):
+            return display_feed.payload(mode="pairing", code=claim_code(db, d, now), **common)
+        b = db.get(Board, d.board_slug) if d.board_slug else None
+        if not b:
+            return display_feed.payload(mode="idle", **common)
+        return display_feed.payload(mode="game", s=state(db, b), **common)
+
+    def device_status(db, d, message):
+        """Status a device reports over its socket: {"fw": "0.1.0", "rssi": -61, "uptime": 3600}."""
+        try:
+            data = json.loads(message)
+        except ValueError:
+            return
+        if not isinstance(data, dict):
+            return
+        if isinstance(data.get("fw"), str):
+            d.fw_version = data["fw"][:20]
+        if isinstance(data.get("rssi"), int) and -127 <= data["rssi"] <= 0:
+            d.rssi = data["rssi"]
+        d.last_seen_at = time.time()
+
+    @app.post("/api/display/register")
+    def register_display(body: DisplayRegister, request: Request):
+        """Firmware's first contact (and after losing its token): the same device
+        key gets a fresh token and keeps owner and scoreboard; a new key is a new,
+        unclaimed display that shows a code on its panel."""
+        with lock, app.state.sessions() as db:
+            now = time.time()
+            if limited(db, "register:" + digest(request.client.host if request.client else "unknown"), 30, 3600, now):
+                db.commit()
+                raise HTTPException(429, "rate_limited")
+            d = db.scalar(select(Display).where(Display.device_key_hash == digest(body.device_key)))
+            if not d:
+                display_id = "".join(secrets.choice("abcdefghijklmnopqrstuvwxyz0123456789") for _ in range(12))
+                d = Display(id=display_id, name=(body.name or "Anzeigetafel").strip(), created_at=now,
+                            device_key_hash=digest(body.device_key), paired_at=now)
+                db.add(d)
+                db.flush()
+            token = secrets.token_urlsafe(32)
+            d.token_hash, d.last_seen_at = digest(token), now
+            if body.fw:
+                d.fw_version = body.fw[:20]
+            code = None if claimed(db, d) else claim_code(db, d, now)
+            if code is None:
+                d.pairing_code = d.pairing_expires_at = None
+            db.commit()
+            return {"display_id": d.id, "name": d.name, "token": token, "code": code}
+
+    @app.post("/api/displays/claim")
+    def claim_display(body: DisplayClaim, request: Request, response: Response):
+        """The app takes over a self-registered display by the code on its panel."""
+        with lock, app.state.sessions() as db:
+            now = time.time()
+            if limited(db, "claim:" + digest(request.client.host if request.client else "unknown"), 30, 3600, now):
+                db.commit()
+                raise HTTPException(429, "rate_limited")
+            code = body.code.strip().upper().replace("-", "").replace(" ", "")
+            d = db.scalar(select(Display).where(Display.pairing_code == code, Display.device_key_hash.is_not(None)))
+            if not d or (d.pairing_expires_at or 0) <= now or claimed(db, d):
+                db.commit()
+                raise HTTPException(404, "pairing_code_invalid")
+            if body.name:
+                d.name = body.name.strip()
+            d.pairing_code = d.pairing_expires_at = None
+            token = secrets.token_urlsafe(32)
+            db.add(DisplayAdmin(id=str(uuid4()), display_id=d.id, token_hash=digest(token), created_at=now))
+            response.set_cookie(display_cookie(d.id), token, httponly=True, secure=secure,
+                                samesite="lax", max_age=365 * 86400, path="/")
+            db.commit()
+            return display_info(db, d)
+
+    @app.post("/api/displays/{display_id}/identify")
+    def identify_display(display_id: str, request: Request):
+        """The panel flashes for a few seconds, to tell several displays apart."""
+        with lock, app.state.sessions() as db:
+            d = managed_display(db, display_id, request.cookies)
+            d.identify_until = time.time() + IDENTIFY_SECONDS
+            db.commit()
+            return display_info(db, d)
 
     def bearer(request):
         header = request.headers.get("authorization", "")
@@ -1287,6 +1398,8 @@ def create_app(db_url=None, secure_cookies=None):
             d = managed_display(db, display_id, request.cookies)
             if body.name is not None:
                 d.name = body.name.strip()
+            if body.brightness is not None:
+                d.brightness = body.brightness
             if "board" in body.model_fields_set:
                 if body.board is not None:
                     authorize(db, body.board, request)  # Only boards this browser controls.
@@ -1345,13 +1458,15 @@ def create_app(db_url=None, secure_cookies=None):
         with lock, app.state.sessions() as db:
             d = device_display(db, bearer(request))
             d.last_seen_at = time.time()
-            payload = device_payload(db, d)
+            compact = request.query_params.get("format") == "compact"
+            payload = compact_payload(db, d) if compact else device_payload(db, d)
             db.commit()
             return payload
 
     @app.websocket("/ws/display")
     async def display_live(ws: WebSocket):
         token = ws.query_params.get("token", "")
+        compact = ws.query_params.get("format") == "compact"
         with lock, app.state.sessions() as db:
             try:
                 device_display(db, token)
@@ -1369,8 +1484,14 @@ def create_app(db_url=None, secure_cookies=None):
                         return
                     b = db.get(Board, d.board_slug) if d.board_slug else None
                     m = db.get(Match, b.active_match) if b and b.active_match else None
-                    current = (d.board_slug, d.name, m.id if m else None, m.revision if m else 0)
-                    payload = device_payload(db, d) if current != signature else None
+                    current = (d.board_slug, d.name, m.id if m else None, m.revision if m else 0,
+                               d.brightness, bool(d.identify_until and d.identify_until > time.time()),
+                               d.pairing_code, claimed(db, d) if compact else None)
+                    if current != signature:
+                        payload = compact_payload(db, d) if compact else device_payload(db, d)
+                        db.commit()  # a renewed claim code is stored
+                    else:
+                        payload = None
                     if time.time() - seen > 10:
                         d.last_seen_at = seen = time.time()
                         db.commit()
@@ -1378,7 +1499,12 @@ def create_app(db_url=None, secure_cookies=None):
                     await ws.send_json(payload)
                     signature = current
                 try:
-                    await asyncio.wait_for(ws.receive_text(), timeout=0.25)
+                    message = await asyncio.wait_for(ws.receive_text(), timeout=0.25)
+                    with lock, app.state.sessions() as db:
+                        d = db.scalar(select(Display).where(Display.token_hash == digest(token)))
+                        if d:
+                            device_status(db, d, message)
+                            db.commit()
                 except asyncio.TimeoutError:
                     pass
         except (WebSocketDisconnect, RuntimeError):

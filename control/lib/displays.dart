@@ -38,6 +38,9 @@ class _DisplaysDialogState extends State<DisplaysDialog> {
   Timer? timer;
   final name = TextEditingController(text: 'Anzeigetafel');
 
+  /// The code a Score67 LED panel shows until it is added here.
+  final claim = TextEditingController();
+
   String t(String key) => widget.t(key);
 
   @override
@@ -52,6 +55,7 @@ class _DisplaysDialogState extends State<DisplaysDialog> {
   void dispose() {
     timer?.cancel();
     name.dispose();
+    claim.dispose();
     super.dispose();
   }
 
@@ -73,6 +77,24 @@ class _DisplaysDialogState extends State<DisplaysDialog> {
     } catch (_) {
       if (mounted) setState(() => error = t('error.network'));
     }
+  }
+
+  /// Adds a self-registered LED panel by the code on its display.
+  Future<void> claimPanel() async {
+    final code = claim.text.trim();
+    if (code.length < 6) return;
+    setState(() {
+      busy = true;
+      error = '';
+    });
+    try {
+      await widget.api('/api/displays/claim', 'POST', {'code': code});
+      claim.clear();
+      await load();
+    } catch (_) {
+      if (mounted) setState(() => error = t('display.claim_invalid'));
+    }
+    if (mounted) setState(() => busy = false);
   }
 
   Future<void> run(Future<dynamic> Function() action) async {
@@ -233,22 +255,76 @@ class _DisplaysDialogState extends State<DisplaysDialog> {
                     }),
                   ),
           ),
+          if (d['device'] == true) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Text(t('display.brightness')),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Wrap(
+                    spacing: 6,
+                    children: [
+                      for (final level in const [20, 40, 60, 80, 100])
+                        ChoiceChip(
+                          label: Text('$level %'),
+                          selected: d['brightness'] == level,
+                          onSelected: busy
+                              ? null
+                              : (_) => run(
+                                  () => widget.api(
+                                    '/api/displays/${d['id']}',
+                                    'PUT',
+                                    {'brightness': level},
+                                  ),
+                                ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            Text(
+              [
+                if (d['fw_version'] != null)
+                  '${t('display.fw')} ${d['fw_version']}',
+                if (d['rssi'] != null)
+                  '${t('display.signal')} ${d['rssi']} dBm',
+              ].join(' · '),
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+          ],
           Wrap(
             spacing: 8,
             children: [
-              TextButton.icon(
-                onPressed: busy
-                    ? null
-                    : () => run(
-                        () => widget.api(
-                          '/api/displays/${d['id']}/code',
-                          'POST',
-                          {},
+              if (d['device'] == true)
+                TextButton.icon(
+                  onPressed: busy
+                      ? null
+                      : () => run(
+                          () => widget.api(
+                            '/api/displays/${d['id']}/identify',
+                            'POST',
+                            {},
+                          ),
                         ),
-                      ),
-                icon: const Icon(Icons.qr_code_2),
-                label: Text(t('display.new_code')),
-              ),
+                  icon: const Icon(Icons.flare),
+                  label: Text(t('display.identify')),
+                ),
+              if (d['device'] != true)
+                TextButton.icon(
+                  onPressed: busy
+                      ? null
+                      : () => run(
+                          () => widget.api(
+                            '/api/displays/${d['id']}/code',
+                            'POST',
+                            {},
+                          ),
+                        ),
+                  icon: const Icon(Icons.qr_code_2),
+                  label: Text(t('display.new_code')),
+                ),
               TextButton.icon(
                 onPressed: busy
                     ? null
@@ -295,6 +371,34 @@ class _DisplaysDialogState extends State<DisplaysDialog> {
     if (error.isNotEmpty)
       Text(error, style: const TextStyle(color: Colors.orange)),
     for (final d in displays) card(d),
+    // A Score67 LED panel shows its own code: add it here.
+    Text(t('display.claim_hint'), style: const TextStyle(fontSize: 14)),
+    const SizedBox(height: 6),
+    Row(
+      children: [
+        Expanded(
+          child: TextField(
+            controller: claim,
+            maxLength: 7,
+            textCapitalization: TextCapitalization.characters,
+            onSubmitted: (_) => claimPanel(),
+            decoration: InputDecoration(
+              labelText: t('display.claim_label'),
+              counterText: '',
+              isDense: true,
+              border: const OutlineInputBorder(),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        FilledButton.icon(
+          onPressed: busy ? null : claimPanel,
+          icon: const Icon(Icons.add),
+          label: Text(t('display.claim')),
+        ),
+      ],
+    ),
+    const SizedBox(height: 16),
     Row(
       children: [
         Expanded(

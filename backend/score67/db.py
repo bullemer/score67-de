@@ -81,6 +81,13 @@ class Display(Base):
     created_at: Mapped[float] = mapped_column(Float)
     paired_at: Mapped[float | None] = mapped_column(Float, nullable=True)
     last_seen_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Self-registering devices (ESP32 firmware): the hash of a key the device
+    # generated once; the device shows pairing_code on its panel until claimed.
+    device_key_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
+    brightness: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    identify_until: Mapped[float | None] = mapped_column(Float, nullable=True)
+    fw_version: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    rssi: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class DisplayAdmin(Base):
@@ -180,6 +187,6 @@ def database(url: str | None = None):
     else:
         with engine.connect() as connection:
             version = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            if version != "0011_forum":
+            if version != "0012_display_device":
                 raise RuntimeError("Database schema does not match this release; run migrations first")
     return engine, sessionmaker(engine, expire_on_commit=False)

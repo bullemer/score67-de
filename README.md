@@ -148,6 +148,10 @@ All server pages (start, Funktionen, Über, Forum incl. every topic, Live list, 
 
 Five server-rendered pages answer what people search for, each in German (default) and English (`?lang=en`), with real app screenshots (`static/guides/*.webp`): `/basketball-liveticker`, `/fussball-liveticker`, `/obs-scoreboard-overlay`, `/anzeigetafel`, `/anleitung/spielstand-whatsapp-teilen`, plus the DIY build guide `/anzeigetafel/led-bauanleitung` (Waveshare P5 64×32 panel + Adafruit Matrix Portal S3 + 5 V/≥4 A supply, parts list; marked as draft: the ESP32 firmware is still to be written, the server side — pairing and `/ws/display` — already runs). Registry in `backend/score67/guides.py`, one template per page and language in `templates/guides/<key>.<lang>.html`, titles/descriptions in `seo.guide.<key>.*`. They are in the sitemap and linked from the footers of the start page, Funktionen and Über. Only describe what the app really does.
 
+### LED panels (ESP32 firmware) — server side
+
+Self-registering LED panels: `POST /api/display/register` (device key → token + code shown on the panel), claim in the app (Einstellungen → Anzeigetafeln → "Code von der LED-Tafel"), brightness and "Identifizieren" per panel, firmware/Wi-Fi status reported by the device, and a compact feed (`format=compact`, ~400 bytes instead of the full state) on the existing display socket. Concept and firmware plan: `docs/DISPLAY-FIRMWARE.md`; protocol: `docs/DISPLAY-API.md`; test without hardware: `cd backend && uv run python ../tools/display_sim.py [https://score67.de]`.
+
 ### Console menu
 
 The ☰ menu only leaves the console: **Start** (start page), **Meine Scoreboards**, **Viewer** and **Verlassen** (stops a running basketball clock first; the game stays open and can be resumed from My scoreboards). Everything else is in the console itself: teams in the Team tab, all settings in Einstellungen, PIN/links/sharing in Teilen, ending the game via 🏁 / the Period tab.

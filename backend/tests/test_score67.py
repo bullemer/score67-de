@@ -1564,3 +1564,75 @@ def test_guide_pages_in_both_languages_and_in_the_sitemap(system):
         assert '<h1>' in de.text and '· Score67</title>' in de.text and '<link rel="canonical"' in de.text
         assert f'<loc>http://testserver{path}</loc>' in sitemap
     assert '/basketball-liveticker' in client.get('/').text
+
+
+def test_display_feed_labels_and_clock():
+    from score67 import display_feed
+    from score67.domain import initial_state
+    s = initial_state(8, 5, 'basketball')
+    assert display_feed.period_label(s) == ''
+    s.update(period=5, phase='period_running')
+    assert display_feed.period_label(s) == '5/8'
+    s.update(period=9, period_count=8)
+    assert display_feed.period_label(s) == 'OT1'
+    q = initial_state(4, 10, 'basketball')
+    q.update(period=3, phase='period_running')
+    q['clock'].update(running=True, started_at=1_000_000, elapsed_ms=0)
+    c = display_feed.clock(q, 1_000_000 + 125_000)
+    assert display_feed.period_label(q) == 'Q3' and c['direction'] == 'down' and c['ms'] == 600_000 - 125_000 and c['running']
+    f = initial_state(2, 45, 'football')
+    f.update(period=2, phase='period_running')
+    f['clock'].update(running=False, started_at=None, elapsed_ms=60_000)
+    assert display_feed.period_label(f) == 'H2'
+    assert display_feed.clock(f, 0) == {'visible': True, 'running': False, 'direction': 'up', 'ms': 45 * 60_000 + 60_000, 'at': 0}
+    assert display_feed.clock(initial_state(), 0) == {'visible': False}
+
+
+def test_self_registering_led_display_flow(system):
+    app, client = system
+    key = 'k' * 40
+    device = TestClient(app)
+    first = device.post('/api/display/register', json={'device_key': key, 'fw': '0.1.0'}).json()
+    assert len(first['code']) == 6 and first['token']
+    again = device.post('/api/display/register', json={'device_key': key}).json()
+    assert again['display_id'] == first['display_id'] and again['token'] != first['token'] and again['code'] == first['code']
+    token = again['token']
+    # The old token is gone; the panel shows its code.
+    assert device.get('/api/display/state?format=compact', headers={'Authorization': f'Bearer {first["token"]}'}).status_code == 401
+    feed = lambda: device.get('/api/display/state?format=compact', headers={'Authorization': f'Bearer {token}'}).json()
+    assert feed()['mode'] == 'pairing' and feed()['code'] == first['code'] and feed()['v'] == 1
+    # Claim in the app with the code from the panel (any spelling).
+    assert client.post('/api/displays/claim', json={'code': 'ZZZZZZ'}).status_code == 404
+    info = client.post('/api/displays/claim', json={'code': first['code'].lower(), 'name': 'Halle 1'}).json()
+    assert info['device'] and info['name'] == 'Halle 1' and info['fw_version'] == '0.1.0'
+    assert client.post('/api/displays/claim', json={'code': first['code']}).status_code == 404
+    assert feed()['mode'] == 'idle'
+    # Assign a basketball board; the compact feed carries the game, not the whole state.
+    slug = client.post('/api/scoreboards', json={'sport': 'basketball', 'period_count': 8, 'period_length_min': 5}).json()['slug']
+    command(client, slug, 'settings', {'home': {'name': 'Bramfeld', 'short': 'BRA'}})
+    command(client, slug, 'period_start')
+    command(client, slug, 'score', {'team': 'home', 'points': 3})
+    command(client, slug, 'team_foul', {'team': 'away'}) if state(client, slug)['foul_mode'] != 'personal' else None
+    client.put(f'/api/displays/{info["id"]}', json={'board': slug, 'brightness': 40})
+    game = feed()
+    assert game['mode'] == 'game' and game['home']['short'] == 'BRA' and game['home']['score'] == 3
+    assert game['period'] == '1/8' and game['clock']['direction'] == 'down' and game['clock']['ms'] == 300_000
+    assert game['brightness'] == 40 and 'events' not in str(game) and len(str(game)) < 800
+    # Identify, live socket and status from the device.
+    assert client.post(f'/api/displays/{info["id"]}/identify', json={}).status_code == 200
+    with device.websocket_connect(f'/ws/display?token={token}&format=compact') as ws:
+        live = ws.receive_json()
+        assert live['mode'] == 'game' and live['identify'] is True
+        ws.send_text('{"fw": "0.2.0", "rssi": -61, "uptime": 42}')
+        ws.send_text('not json')
+        command(client, slug, 'score', {'team': 'away', 'points': 2})
+        update = ws.receive_json()
+        assert update['guest']['score'] == 2 and update['seq'] >= live['seq']
+    listed = client.get('/api/displays').json()['displays'][0]
+    assert (listed['fw_version'], listed['rssi'], listed['online']) == ('0.2.0', -61, True)
+    # A known key after the claim: new token, still claimed, no code.
+    third = device.post('/api/display/register', json={'device_key': key}).json()
+    assert third['display_id'] == info['id'] and third['code'] is None
+    # Removing it in the app ends the device's access.
+    client.delete(f'/api/displays/{info["id"]}')
+    assert device.get('/api/display/state?format=compact', headers={'Authorization': f'Bearer {third["token"]}'}).status_code == 401
