@@ -22,6 +22,8 @@ function links() {
   const url = spectatorUrl();
   const lang = document.documentElement.lang || preferredLanguage();
   el('take-control').href = `/s/${encodeURIComponent(document.body.dataset.slug)}/control?lang=${lang}`;
+  const controller = document.getElementById('controller-button');
+  if (controller) controller.href = el('take-control').href;
   labels();
   el('share-whatsapp').href = `https://wa.me/?text=${encodeURIComponent(url)}`;
   el('share-facebook').href = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`;

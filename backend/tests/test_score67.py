@@ -1520,3 +1520,13 @@ def test_restart_keeps_teams_and_never_replaces_a_running_game(system):
     r = client.post(f'/api/s/{slug}/matches/{finished["match_id"]}/commands', json={
         'command_id': str(uuid4()), 'expected_revision': old['revision'], 'action': 'new_match', 'data': {}})
     assert r.status_code == 409 and r.json()['error'] == 'game_running'
+
+
+def test_viewer_offers_controller_only_to_controllers(system):
+    app, client = system
+    slug = create(client)['slug']
+    page = client.get(f'/s/{slug}').text
+    assert 'id="controller-button"' in page and 'data-i18n="control"' in page
+    stranger = TestClient(app)
+    page = stranger.get(f'/s/{slug}').text
+    assert 'id="controller-button"' not in page and 'data-i18n="share.take_control"' in page

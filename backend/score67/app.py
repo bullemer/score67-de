@@ -1430,10 +1430,18 @@ def create_app(db_url=None, secure_cookies=None):
         with app.state.sessions() as db:
             b = board(db, slug)
             hidden = not viewer_allowed(db, b, request.cookies, request.query_params.get("k"))
+            controller = False
             if not overlay:
                 og = link_preview(db, b, request, hidden)
+                # This browser already controls the board: offer "Controller", not "take over".
+                try:
+                    authorize(db, slug, request)
+                    controller = True
+                except HTTPException:
+                    pass
         return templates.TemplateResponse(request=request, name="display.html",
-                                          context={"slug": slug, "overlay": overlay, "private": hidden, "og": og})
+                                          context={"slug": slug, "overlay": overlay, "private": hidden, "og": og,
+                                                   "controller": controller})
 
     def origin(request):
         return os.getenv("PUBLIC_ORIGIN", str(request.base_url).rstrip("/"))

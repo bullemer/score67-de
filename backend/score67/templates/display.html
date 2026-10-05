@@ -5,8 +5,8 @@
 <body class="{{ 'overlay' if overlay else 'spectator' }}" data-slug="{{ slug }}">
 {% if private %}{% if not overlay %}<header><a class="brand" href="/">SCORE<span>67</span></a></header>
 <main class="private-notice"><h1>Privates Spiel · Private game</h1><p>Dieses Spiel ist privat und wird nicht öffentlich geteilt.</p><p>This game is private and not shared publicly.</p></main>
-<footer><a href="/live">Live</a><a href="/s/{{ slug }}/control">Steuerung · Control</a></footer>{% endif %}
-{% else %}{% if not overlay %}<header class="viewer-bar"><a class="brand" href="/">SCORE<span>67</span></a><button id="menu-button" aria-haspopup="dialog" aria-expanded="false" aria-controls="menu" data-label="menu.title"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg></button></header>
+<footer><a href="/live">Live</a><a href="/s/{{ slug }}/control">Controller</a></footer>{% endif %}
+{% else %}{% if not overlay %}<header class="viewer-bar"><a class="brand" href="/">SCORE<span>67</span></a>{% if controller %}<a id="controller-button" class="viewer-controller" href="/s/{{ slug }}/control">Controller</a>{% endif %}<button id="menu-button" aria-haspopup="dialog" aria-expanded="false" aria-controls="menu" data-label="menu.title"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg></button></header>
 <div class="ticker-layout">{% endif %}
 <main id="scoreboard" class="scoreboard" hidden>
 <div id="phase" class="phase"></div>
@@ -41,7 +41,7 @@
 <button id="share-native" class="icon-button" data-label="share.more" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M18 16.1c-.8 0-1.4.3-2 .8l-7.1-4.2c.1-.2.1-.5.1-.7s0-.5-.1-.7L16 7.2c.5.5 1.2.8 2 .8 1.7 0 3-1.3 3-3s-1.3-3-3-3-3 1.3-3 3c0 .2 0 .5.1.7L8 9.8C7.5 9.3 6.8 9 6 9c-1.7 0-3 1.3-3 3s1.3 3 3 3c.8 0 1.5-.3 2-.8l7.1 4.2c-.1.2-.1.4-.1.6 0 1.6 1.3 2.9 2.9 2.9s2.9-1.3 2.9-2.9-1.3-2.9-2.9-2.9z"/></svg></button>
 <a id="share-obs" class="icon-button" href="/s/{{ slug }}/overlay" target="_blank" rel="noopener" data-label="share.obs"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M17 10.5V7c0-.6-.4-1-1-1H4c-.6 0-1 .4-1 1v10c0 .6.4 1 1 1h12c.6 0 1-.4 1-1v-3.5l4 4v-11l-4 4z"/></svg><small>OBS</small></a>
 </div><p id="share-status" role="status"></p></section>
-<a id="take-control" class="menu-control" href="/s/{{ slug }}/control" data-label="share.take_control"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12.7 10A6 6 0 1 0 12.7 14H17v4h4v-4h2v-4H12.7zM7 14a2 2 0 1 1 0-4 2 2 0 0 1 0 4z"/></svg><span data-i18n="share.take_control"></span></a>
+<a id="take-control" class="menu-control" href="/s/{{ slug }}/control" data-label="{{ 'control' if controller else 'share.take_control' }}"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12.7 10A6 6 0 1 0 12.7 14H17v4h4v-4h2v-4H12.7zM7 14a2 2 0 1 1 0-4 2 2 0 0 1 0 4z"/></svg><span data-i18n="{{ 'control' if controller else 'share.take_control' }}"></span></a>
 <div id="venue" class="venue" hidden><a id="venue-link" target="_blank" rel="noopener noreferrer"></a></div>
 <div class="menu-links"><a href="/live" data-i18n="live.title"></a><button id="language" aria-label="Deutsch / English">DE / EN</button></div>
 <p class="menu-meta"><span id="connection"></span><span>{% include "_legal_links.html" %}</span><span class="version-footer" data-version="{{ release_version }}" data-built="{{ release_built_at }}">{{ release_label }}</span></p>

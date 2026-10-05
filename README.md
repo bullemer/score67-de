@@ -136,9 +136,13 @@ Shared ticker links show a real preview in WhatsApp, Facebook, Signal, Telegram 
 
 The console's sixth tab "BS" lists the selected team's statistics for the whole game or one period: basketball MIN, PTS, FT (made/attempted), FT%, 2P, 3P, PF (personal + player technicals), RB; football MIN, goals, YC, RC. One row per squad player, a "Team" row for entries without a player (incl. admin score corrections, so the sum equals the score) and the total. Minutes are game-clock time on court, replayed from the lineup (players tapped on court, substitutions) and the period starts/ends, the running period up to now; without a lineup or clock they show "–". Undone and corrected entries do not count (`control/lib/box_score.dart`, tested in `box_score_test.dart`).
 
+### Controller and Viewer
+
+The two roles are always called **Controller** (the scoring console, `/s/<code>/control`) and **Viewer** (the public scoreboard page, `/s/<code>`), in German too. A browser that already controls a board (PIN cookie or signed-in owner) sees a **Controller** button in the Viewer's top bar and "Controller" in its menu; everybody else gets "Controller (mit PIN)". The Controller's ☰ menu has **Viewer** (opens in a new tab), and every game in My scoreboards has a **Viewer** button.
+
 ### Console menu
 
-The ☰ menu only leaves the console: **Start** (start page), **Meine Scoreboards** and **Verlassen** (stops a running basketball clock first; the game stays open and can be resumed from My scoreboards). Everything else is in the console itself: teams in the Team tab, all settings in Einstellungen, PIN/links/sharing in Teilen, ending the game via 🏁 / the Period tab.
+The ☰ menu only leaves the console: **Start** (start page), **Meine Scoreboards**, **Viewer** and **Verlassen** (stops a running basketball clock first; the game stays open and can be resumed from My scoreboards). Everything else is in the console itself: teams in the Team tab, all settings in Einstellungen, PIN/links/sharing in Teilen, ending the game via 🏁 / the Period tab.
 
 ### Typing on a phone
 

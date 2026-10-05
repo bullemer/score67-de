@@ -542,13 +542,16 @@ class _DashboardState extends State<Dashboard> {
                         : null,
                     child: Text(t('game.start')),
                   ),
-                if (game['phase'] == 'finished' || game['archived'])
-                  OutlinedButton(
-                    onPressed: () => widget.navigate(
-                      '/s/${board['slug']}?match=${game['match_id']}',
-                    ),
-                    child: Text(t('game.view')),
+                // Every game: its Viewer (the active one without ?match=).
+                OutlinedButton.icon(
+                  onPressed: () => widget.navigate(
+                    game['active']
+                        ? '/s/${board['slug']}'
+                        : '/s/${board['slug']}?match=${game['match_id']}',
                   ),
+                  icon: const Icon(Icons.visibility_outlined, size: 18),
+                  label: Text(t('viewer')),
+                ),
                 OutlinedButton.icon(
                   onPressed: enabled
                       ? () async {

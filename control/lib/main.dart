@@ -3756,6 +3756,7 @@ class _Score67State extends State<Score67> {
               for (final entry in [
                 ('start', Icons.home_outlined, t('menu.start')),
                 ('dashboard', Icons.dashboard_outlined, t('dashboard')),
+                ('viewer', Icons.visibility_outlined, t('viewer')),
                 ('exit', Icons.logout, t('menu.exit')),
               ])
                 ListTile(
@@ -3775,6 +3776,9 @@ class _Score67State extends State<Score67> {
         navigate('/');
       case 'dashboard':
         navigate('/dashboard');
+      case 'viewer':
+        // A new tab: the Controller stays open next to the Viewer.
+        web.window.open('/s/$slug?lang=$lang', '_blank');
       case 'exit':
         // Leaving keeps the game open (resume from "My scoreboards"); a
         // running basketball clock is stopped first so it does not run on.
