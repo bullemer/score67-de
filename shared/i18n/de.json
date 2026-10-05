@@ -563,5 +563,7 @@
   "live.final": "Endstand",
   "live.ended_at": "beendet {time}",
   "live.auto_ended": "Automatisch beendet – nach der Spielzeit kamen keine Eingaben mehr.",
-  "forum.privacy_link": "Datenschutzerklärung"
+  "forum.privacy_link": "Datenschutzerklärung",
+  "menu.start": "Start",
+  "menu.exit": "Verlassen (Uhr anhalten)"
 }

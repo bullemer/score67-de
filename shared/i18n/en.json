@@ -563,5 +563,7 @@
   "live.final": "Final score",
   "live.ended_at": "ended {time}",
   "live.auto_ended": "Ended automatically – no more entries after the playing time.",
-  "forum.privacy_link": "Privacy policy (German)"
+  "forum.privacy_link": "Privacy policy (German)",
+  "menu.start": "Start",
+  "menu.exit": "Exit (stop the clock)"
 }

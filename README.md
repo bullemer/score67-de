@@ -134,7 +134,7 @@ Shared ticker links show a real preview in WhatsApp, Facebook, Signal, Telegram 
 
 ### Console menu
 
-The ☰ menu starts with Edit teams (opens the Team tab), Pause game (stops a running basketball clock and returns to the start page; the game stays open and can be resumed from My scoreboards) and Close game (confirms the final result, ends the game, returns to the start page), followed by My scoreboards, links, sharing, venue, description and language.
+The ☰ menu only leaves the console: **Start** (start page), **Meine Scoreboards** and **Verlassen** (stops a running basketball clock first; the game stays open and can be resumed from My scoreboards). Everything else is in the console itself: teams in the Team tab, all settings in Einstellungen, PIN/links/sharing in Teilen, ending the game via 🏁 / the Period tab.
 
 ### Typing on a phone
 

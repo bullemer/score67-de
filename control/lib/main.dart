@@ -3738,23 +3738,12 @@ class _Score67State extends State<Score67> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // Everything else lives in the console tabs (Team, Einstellungen,
+              // Teilen) and the 🏁 button; the menu only leaves the console.
               for (final entry in [
-                ('teams', Icons.groups, t('menu.edit_teams')),
-                if (state['phase'] != 'finished') ...[
-                  ('pause', Icons.pause_circle_outline, t('menu.pause')),
-                  ('close', Icons.flag_outlined, t('menu.close')),
-                ],
+                ('start', Icons.home_outlined, t('menu.start')),
                 ('dashboard', Icons.dashboard_outlined, t('dashboard')),
-                ('displays', Icons.scoreboard_outlined, t('display.title')),
-                ('links', Icons.link, t('links')),
-                ('share', Icons.share_outlined, t('share.spectator')),
-                ('location', Icons.place_outlined, t('location.title')),
-                ('description', Icons.edit_note, t('description.edit')),
-                (
-                  'language',
-                  Icons.language,
-                  lang == 'de' ? 'English' : 'Deutsch',
-                ),
+                ('exit', Icons.logout, t('menu.exit')),
               ])
                 ListTile(
                   leading: Icon(entry.$2),
@@ -3767,40 +3756,19 @@ class _Score67State extends State<Score67> {
       ),
     );
     if (choice == null) return;
-    final [kind, ...rest] = choice.split(':');
+    final [kind, ...] = choice.split(':');
     switch (kind) {
-      case 'teams':
-        consoleKey.currentState?.showTab(1);
-      case 'pause':
-        // The game stays open (resume from "My scoreboards"); a running
-        // basketball clock is stopped first.
+      case 'start':
+        navigate('/');
+      case 'dashboard':
+        navigate('/dashboard');
+      case 'exit':
+        // Leaving keeps the game open (resume from "My scoreboards"); a
+        // running basketball clock is stopped first so it does not run on.
         if (basketball && basketballClockRunning) {
           if (!await command('clock_stop')) return;
         }
         navigate('/');
-      case 'close':
-        if (!await confirmFinal()) return;
-        if (await command('game_end')) navigate('/');
-      case 'dashboard':
-        navigate('/dashboard');
-      // In the console these live inline in the Settings / Sharing tabs.
-      case 'displays' || 'location' || 'description'
-          when consoleKey.currentState != null:
-        consoleKey.currentState!.showTab(3);
-      case 'links' || 'share' when consoleKey.currentState != null:
-        consoleKey.currentState!.showTab(4);
-      case 'displays':
-        await openDisplays();
-      case 'links':
-        await manageAccess();
-      case 'share':
-        await showSharing();
-      case 'location':
-        await editLocation();
-      case 'description':
-        await editDescription();
-      case 'language':
-        await switchLanguage();
     }
   }
 
