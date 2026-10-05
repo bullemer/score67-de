@@ -1,15 +1,18 @@
 {
-  "_comment": "Operator details for /impressum and /datenschutz. All pages read this file; fill it before publishing.",
+  "_comment": "Operator details for /impressum and /datenschutz (source: navisense.de/contact imprint, 2026-10-05).",
   "name": "",
-  "company": "",
-  "street": "",
-  "postal_code": "",
-  "city": "",
+  "company": "Navisense GmbH",
+  "street": "Dorothea-Bernstein-Weg 28",
+  "postal_code": "22081",
+  "city": "Hamburg",
   "country": "Deutschland",
   "email": "support@score67.de",
   "phone": "",
-  "register": "",
+  "register": "Handelsregister: Amtsgericht Hamburg, HRB 145280",
   "vat_id": "",
-  "responsible": "",
-  "as_of": "Oktober 2026"
+  "responsible": "Carsten Bullemer",
+  "as_of": "Oktober 2026",
+  "represented_by": "Carsten Bullemer (Geschäftsführer)",
+  "company_email": "contact@navisense.de",
+  "authority": "Der Hamburgische Beauftragte für Datenschutz und Informationsfreiheit, Ludwig-Erhard-Str. 22, 20459 Hamburg"
 }
