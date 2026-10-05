@@ -1041,7 +1041,8 @@ def create_app(db_url=None, secure_cookies=None):
             management = body.action in ("activate", "archive", "restore", "delete", "schedule", "trash")
             if m.deleted_at:
                 raise HTTPException(410, "match_deleted")
-            if (not management and b.active_match != m.id) or m.revision != body.expected_revision:
+            # A rematch may start from any finished game of the board (it becomes the active one).
+            if (not management and body.action != "new_match" and b.active_match != m.id) or m.revision != body.expected_revision:
                 raise HTTPException(409, "state_changed")
             if management:
                 if body.action == "activate":
@@ -1082,10 +1083,18 @@ def create_app(db_url=None, secure_cookies=None):
             elif body.action == "new_match":
                 if m.state["phase"] != "finished":
                     raise HTTPException(409, "finish_first")
+                # A rematch never replaces a game that is running on this board.
+                active = db.get(Match, b.active_match) if b.active_match and b.active_match != m.id else None
+                if active and active.state["phase"] in ("period_running", "break"):
+                    raise HTTPException(409, "game_running")
                 new = Match(id=str(uuid4()), slug=slug,
                             state=initial_state(m.state["period_count"], m.state["period_length_min"], m.state["sport"], m.state.get("lineup_size")))
                 new.state["team_fouls_enabled"] = m.state.get("team_fouls_enabled", False)
                 new.state["foul_mode"] = foul_mode(m.state)
+                # Same teams: names, colours, logos and squads; no score, fouls or lineup.
+                for team in ("home", "away"):
+                    new.state[team].update({k: deepcopy(m.state[team][k]) for k in ("name", "short", "color", "logo", "squad")
+                                            if k in m.state[team]})
                 db.add(new)
                 b.active_match = new.id
             elif body.action == "undo":

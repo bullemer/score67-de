@@ -506,7 +506,8 @@ def test_squad_attribution_corrections_and_undo(system):
     old = removed['match_id']
     command(client, slug, 'game_end')
     fresh = command(client, slug, 'new_match').json()
-    assert fresh['home']['squad'] == [] and fresh['home']['counters']['yellow_cards'] == 0
+    # A new game keeps the teams (squad included) but starts with clean counters.
+    assert [p['number'] for p in fresh['home']['squad']] == ['10'] and fresh['home']['counters']['yellow_cards'] == 0
     assert client.get(f'/api/s/{slug}/matches/{old}/state').json()['home']['squad'][0]['name'] == 'Renamed'
 
 
@@ -1495,3 +1496,27 @@ def test_impressum_and_datenschutz_are_linked_everywhere(system):
     for path in ('/', '/about', '/features', '/forum', '/live', f'/s/{slug}'):
         text = client.get(path).text
         assert 'href="/impressum"' in text and 'href="/datenschutz"' in text, path
+
+
+def test_restart_keeps_teams_and_never_replaces_a_running_game(system):
+    app, client = system
+    slug = create(client)['slug']
+    players = [{'id': str(uuid4()), 'number': '7', 'name': 'Ali'}]
+    command(client, slug, 'squad', {'team': 'home', 'players': players})
+    command(client, slug, 'settings', {'home': {'name': 'Bramfeld', 'color': '#16a34a'}, 'away': {'name': 'Scaletta'}})
+    command(client, slug, 'lineup', {'team': 'home', 'player_ids': [players[0]['id']]})
+    command(client, slug, 'period_start')
+    command(client, slug, 'score', {'team': 'home', 'points': 1})
+    command(client, slug, 'game_end')
+    finished = state(client, slug)
+    s = command(client, slug, 'new_match').json()
+    assert s['match_id'] != finished['match_id'] and s['phase'] == 'pre_game'
+    assert (s['home']['name'], s['home']['color'], s['away']['name']) == ('Bramfeld', '#16a34a', 'Scaletta')
+    assert s['home']['squad'] == finished['home']['squad'] and s['home']['score'] == 0
+    assert not s['home'].get('on_court')
+    # The new game runs; restarting the old finished one must not replace it.
+    command(client, slug, 'period_start')
+    old = client.get(f'/api/s/{slug}/matches/{finished["match_id"]}/state').json()
+    r = client.post(f'/api/s/{slug}/matches/{finished["match_id"]}/commands', json={
+        'command_id': str(uuid4()), 'expected_revision': old['revision'], 'action': 'new_match', 'data': {}})
+    assert r.status_code == 409 and r.json()['error'] == 'game_running'

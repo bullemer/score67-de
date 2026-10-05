@@ -468,12 +468,46 @@ class _DashboardState extends State<Dashboard> {
             spacing: 8,
             runSpacing: 8,
             children: [
-              if (game['active'] && !game['archived'])
-                FilledButton(
+              // One clear action per status instead of a generic "Controls".
+              if (game['active'] && status == 'planned')
+                FilledButton.icon(
                   onPressed: enabled
                       ? () => widget.navigate('/s/${board['slug']}/control')
                       : null,
-                  child: Text(t('control')),
+                  icon: const Icon(Icons.play_arrow),
+                  label: Text(t('game.start')),
+                ),
+              if (game['active'] && status == 'running')
+                FilledButton.icon(
+                  onPressed: enabled
+                      ? () => widget.navigate('/s/${board['slug']}/control')
+                      : null,
+                  icon: const Icon(Icons.play_circle_outline),
+                  label: Text(t('game.resume')),
+                ),
+              if (status == 'completed')
+                FilledButton.icon(
+                  onPressed: enabled
+                      ? () => write(
+                          '/api/s/${board['slug']}/matches/${game['match_id']}/commands',
+                          {
+                            'command_id': const Uuid().v4(),
+                            'expected_revision': game['revision'],
+                            'action': 'new_match',
+                            'data': {},
+                          },
+                          navigate: '/s/${board['slug']}/control',
+                        )
+                      : null,
+                  icon: const Icon(Icons.replay),
+                  label: Text(t('game.restart')),
+                ),
+              if (game['active'] && status == 'completed')
+                TextButton(
+                  onPressed: enabled
+                      ? () => widget.navigate('/s/${board['slug']}/control')
+                      : null,
+                  child: Text(t('game.correct')),
                 ),
               if (status == 'trash') ...[
                 FilledButton(
@@ -506,7 +540,7 @@ class _DashboardState extends State<Dashboard> {
                             },
                           )
                         : null,
-                    child: Text(t('game.use')),
+                    child: Text(t('game.start')),
                   ),
                 if (game['phase'] == 'finished' || game['archived'])
                   OutlinedButton(

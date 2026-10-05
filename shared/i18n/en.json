@@ -572,5 +572,10 @@
   "box.team_row": "Team (no player)",
   "box.total": "Total",
   "box.minutes_note": "Minutes appear once players are tapped on court (team column, left) and the clock runs.",
-  "box.player": "Player"
+  "box.player": "Player",
+  "game.start": "Start game",
+  "game.resume": "Resume",
+  "game.restart": "Restart (same teams)",
+  "game.correct": "Correct result",
+  "error.game_running": "A game is running on this scoreboard. Finish it first."
 }

@@ -572,5 +572,10 @@
   "box.team_row": "Team (ohne Spieler)",
   "box.total": "Summe",
   "box.minutes_note": "Minuten erscheinen, wenn Spieler per Tippen aufs Feld gesetzt werden (Team-Spalte links) und die Uhr läuft.",
-  "box.player": "Spieler"
+  "box.player": "Spieler",
+  "game.start": "Spiel starten",
+  "game.resume": "Fortsetzen",
+  "game.restart": "Neu starten (gleiche Teams)",
+  "game.correct": "Ergebnis korrigieren",
+  "error.game_running": "Auf diesem Scoreboard läuft gerade ein Spiel. Beende es zuerst."
 }
