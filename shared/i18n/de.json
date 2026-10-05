@@ -488,9 +488,9 @@
   "features.ticker.title": "Viewer für Zuschauer",
   "features.ticker.text": "Spielstand und Zeit groß auf jedem Bildschirm oder TV in der Halle. Die erweiterte Ansicht zeigt Torschützen, Punkte je Spieler, Viertelergebnisse und den Spielverlauf.",
   "features.directory.title": "Alle Spiele auf einen Blick",
-  "features.directory.text": "Die Seite „Aktuelle Liveticker“ listet alle öffentlichen laufenden Spiele und die der nächsten 72 Stunden – mit Spielort und Livestream-Link.",
+  "features.directory.text": "Die Seite „Aktuelle Liveticker“ listet alle öffentlichen laufenden Spiele, die der nächsten 72 Stunden und die gerade beendeten mit Endstand – mit Spielort und Livestream-Link.",
   "features.console.title": "Controller auf dem Handy",
-  "features.console.text": "Konsole im Querformat: erst Aktion, dann Spieler. Rückgängig, Spielverlauf, Endergebnis bestätigen. Eingaben gehen auch bei schwachem Netz nicht verloren und werden nachgesendet; der Bildschirm bleibt an.",
+  "features.console.text": "Konsole im Querformat: erst Aktion, dann Spieler. Warnung, wenn eine Periode noch nicht gestartet ist, Rückgängig, Spielverlauf, Endergebnis bestätigen, mit einem Tipp zwischen Controller und Viewer wechseln. Eingaben gehen auch bei schwachem Netz nicht verloren.",
   "features.squad.title": "Kader, Aufstellung, Teams",
   "features.squad.text": "Bis zu 40 Spieler je Team mit Nummer und Name, Liste einfügen, Spieler per Tippen aufs Feld oder auf die Bank, Wechsel im Spielverlauf. Teamnamen, Kürzel, Farben und Logos.",
   "features.devices.title": "Mehrere Geräte, PIN, Anmeldung",
@@ -498,7 +498,7 @@
   "features.manage.title": "Spiele planen und verwalten",
   "features.manage.text": "Anstoßzeit, Beschreibung, Spielort mit Karte, private Spiele. „Meine Scoreboards“ mit geplanten, laufenden und beendeten Spielen, Archiv und Papierkorb.",
   "features.displays.title": "Anzeigetafeln",
-  "features.displays.text": "LED-Displays direkt vom Handy per Bluetooth (Chrome auf Android). Echte Anzeigetafeln per WLAN-Kopplung sind in Arbeit.",
+  "features.displays.text": "Den Viewer auf Fernseher, Beamer oder Tablet in der Halle zeigen, LED-Displays per Bluetooth direkt vom Handy (Chrome auf Android) – und jedes Spiel in der LED-Vorschau so sehen, wie es auf einer 64 × 32 LED-Tafel erscheint.",
   "features.free.title": "Deutsch und Englisch",
   "features.free.text": "Die ganze App auf Deutsch und Englisch – ohne Werbung, ohne Konto, als Testversion kostenlos.",
   "features.wish": "Funktion wünschen",
@@ -626,5 +626,11 @@
   "display.update": "Update auf {version} verfügbar – die Tafel installiert es selbst, sobald kein Spiel läuft.",
   "display.ota_status": "Update-Status",
   "display.beta": "Beta-Firmware erhalten",
-  "display.beta_note": "Auch Testversionen installieren (für Tester)."
+  "display.beta_note": "Auch Testversionen installieren (für Tester).",
+  "features.more": "Mehr erfahren →",
+  "features.boxscore.title": "Box Score je Spieler",
+  "features.boxscore.text": "Minuten auf dem Feld, Punkte, Freiwürfe mit Quote, 2er, 3er, Fouls und Rebounds je Spieler – für das ganze Spiel oder jede Periode. Im Fußball Tore und Karten je Spieler.",
+  "features.led.title": "LED-Anzeigetafel selbst bauen",
+  "features.led.text": "Aus einem 64 × 32 LED-Panel und einem steckbaren ESP32 (Adafruit Matrix Portal S3) wird ohne Löten eine Tafel, die das Spiel live zeigt – Bauanleitung mit Bestellliste, LED-Vorschau für jedes Spiel, Kopplung per Code und Updates über WLAN. Die Firmware ist in Arbeit.",
+  "landing.guides": "Anleitungen & Ratgeber"
 }

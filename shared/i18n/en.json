@@ -488,9 +488,9 @@
   "features.ticker.title": "Viewer for spectators",
   "features.ticker.text": "Score and time in large type on any screen or TV in the gym. The extended view shows scorers, points per player, period scores and the game log.",
   "features.directory.title": "All games at a glance",
-  "features.directory.text": "The live directory lists all public running games and those in the next 72 hours – with venue and livestream link.",
+  "features.directory.text": "The live directory lists all public running games, those in the next 72 hours and the ones just finished with their final score – with venue and livestream link.",
   "features.console.title": "Controller on your phone",
-  "features.console.text": "Landscape console: action first, then the player. Undo, game log, confirm the final result. Entries survive a weak connection and are sent later; the screen stays on.",
+  "features.console.text": "Landscape console: action first, then the player. A warning when a period has not been started, undo, game log, confirm the final result, switch between Controller and Viewer with one tap. Entries survive a weak connection.",
   "features.squad.title": "Squads, lineups, teams",
   "features.squad.text": "Up to 40 players per team with number and name, paste a list, tap players on court or to the bench, substitutions in the game log. Team names, short names, colours and logos.",
   "features.devices.title": "Several devices, PIN, sign-in",
@@ -498,7 +498,7 @@
   "features.manage.title": "Plan and manage games",
   "features.manage.text": "Kick-off time, description, venue with map, private games. \"My scoreboards\" with planned, running and finished games, archive and trash.",
   "features.displays.title": "Scoreboard displays",
-  "features.displays.text": "LED displays straight from the phone over Bluetooth (Chrome on Android). Physical scoreboards over Wi-Fi pairing are in the works.",
+  "features.displays.text": "Show the Viewer on a TV, projector or tablet in the gym, drive LED displays over Bluetooth straight from the phone (Chrome on Android) – and see any game in the LED preview exactly as it would appear on a 64 × 32 LED board.",
   "features.free.title": "German and English",
   "features.free.text": "The whole app in German and English – no ads, no account, free while in testing.",
   "features.wish": "Request a feature",
@@ -626,5 +626,11 @@
   "display.update": "Update to {version} available – the panel installs it by itself when no game is running.",
   "display.ota_status": "Update status",
   "display.beta": "Receive beta firmware",
-  "display.beta_note": "Also install test versions (for testers)."
+  "display.beta_note": "Also install test versions (for testers).",
+  "features.more": "Learn more →",
+  "features.boxscore.title": "Box score per player",
+  "features.boxscore.text": "Minutes on court, points, free throws with percentage, 2s, 3s, fouls and rebounds per player – for the whole game or one period. In football, goals and cards per player.",
+  "features.led.title": "Build your own LED scoreboard",
+  "features.led.text": "A 64 × 32 LED panel and a plug-on ESP32 (Adafruit Matrix Portal S3) become a board that shows the game live, no soldering – build guide with parts list, LED preview for every game, pairing by code and updates over Wi-Fi. The firmware is in the works.",
+  "landing.guides": "Guides & how-tos"
 }
