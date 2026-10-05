@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="{{ lang }}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Score67</title>{% include "_og.html" %}<link rel="stylesheet" href="/static/display.css"><link rel="stylesheet" href="/static/site.css"></head>
+<body class="site-page guide-page">{% include "_site_header.html" %}
+<main><article>{% block content %}{% endblock %}</article>
+<aside class="guide-cta"><a class="primary" href="/new{{ '?lang=en' if lang == 'en' }}">{{ 'Create a free scoreboard' if lang == 'en' else 'Kostenlos Scoreboard anlegen' }}</a><a class="primary secondary" href="/live{{ '?lang=en' if lang == 'en' }}">{{ 'See live games' if lang == 'en' else 'Aktuelle Liveticker ansehen' }}</a></aside>
+<nav class="guide-more" aria-label="{{ 'More guides' if lang == 'en' else 'Weitere Ratgeber' }}"><h2>{{ 'More guides' if lang == 'en' else 'Weitere Ratgeber' }}</h2>{% include "_guide_links.html" %}</nav></main>
+<footer class="version-footer site-footer"><span>{% include "_legal_links.html" %}</span> · <span class="version-footer" data-version="{{ release_version }}" data-built="{{ release_built_at }}">{{ release_label }}</span></footer>
+<script type="module" src="/static/site.mjs"></script></body></html>

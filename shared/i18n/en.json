@@ -595,5 +595,15 @@
   "seo.impressum.description": "Legal notice of Score67, operated by Navisense GmbH, Hamburg.",
   "landing.seo.title": "Live ticker and scoreboard for basketball and football",
   "landing.seo.text": "With Score67 you record points, goals, fouls, cards and the game clock right on your phone – for basketball (including youth formats such as 8 × 5 minutes) and football from kids' games to 11-a-side. Parents, fans and teammates follow the score live through a link, e.g. via WhatsApp, with no app and no sign-up.",
-  "landing.seo.text2": "For live streams there is a transparent OBS overlay, for the gym a large display on a TV or projector and LED displays over Bluetooth. After the game, the final score, the game log and a box score per player are ready."
+  "landing.seo.text2": "For live streams there is a transparent OBS overlay, for the gym a large display on a TV or projector and LED displays over Bluetooth. After the game, the final score, the game log and a box score per player are ready.",
+  "seo.guide.basketball.title": "Basketball live ticker & score app for youth games · Score67",
+  "seo.guide.basketball.description": "Keep the basketball score on your phone and share it live: points, free throws, fouls, game clock (including 8 × 5), box score per player. Free, no app, no account.",
+  "seo.guide.football.title": "Live ticker for kids' and youth football – share the score live · Score67",
+  "seo.guide.football.description": "Record goals, cards and the match minute on your phone and share them live via WhatsApp – for 5, 7, 9 or 11 players. Free, no app, shirt numbers instead of names.",
+  "seo.guide.obs.title": "Scoreboard overlay for OBS and live streams · Score67",
+  "seo.guide.obs.description": "Transparent score overlay for OBS Studio and Streamlabs: add it as a browser source, control it live from your phone, small or large, with stream delay.",
+  "seo.guide.display.title": "Scoreboard from your phone – score on a TV, projector or LED · Score67",
+  "seo.guide.display.description": "Turn any screen into a scoreboard: control the score from your phone and show it large on a TV, projector, tablet or Bluetooth LED display.",
+  "seo.guide.whatsapp.title": "Share the score live on WhatsApp – how-to · Score67",
+  "seo.guide.whatsapp.description": "Share the live score with the parents' group in three steps: create a scoreboard, send the link via WhatsApp, tap in the points. No app, no sign-up."
 }

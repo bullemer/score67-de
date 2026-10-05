@@ -1,0 +1,16 @@
+{% extends "guides/_base.html" %}{% block content %}
+<p class="eyebrow">Livestream</p>
+<h1>Scoreboard-Overlay für OBS: Spielstand im Livestream einblenden</h1>
+<p>Wer Spiele auf YouTube, Twitch oder Facebook streamt, braucht eine Spielstandsanzeige im Bild. Score67 liefert dafür ein transparentes Overlay, das du in OBS Studio (oder Streamlabs) als Browserquelle einbindest. Der Spielstand kommt live vom Handy am Spielfeldrand – ohne zusätzliche Software auf dem Stream-Rechner.</p>
+<figure class="guide-shot"><img src="/static/guides/overlay-stream.webp" width="960" height="540" alt="Score67-Overlay oben links über einem Basketballfeld: TSV 23, SC 16, Periode 3/8, 04:31" loading="lazy"><figcaption>Das kleine Overlay oben links – Teams, Spielstand, Periode und Uhr.</figcaption></figure>
+<h2>In drei Schritten eingerichtet</h2>
+<ol>
+<li>Scoreboard anlegen und im Controller den Tab <strong>Teilen</strong> öffnen. Dort steht der <strong>OBS-Link</strong> (bei privaten Spielen mit eigenem Schlüssel).</li>
+<li>In OBS eine neue Quelle <strong>Browser</strong> anlegen, den Link einfügen und die Größe auf <strong>1920 × 1080</strong> setzen.</li>
+<li>Fertig: Jede Eingabe im Controller erscheint im Stream, inklusive laufender Uhr.</li>
+</ol>
+<h2>Anpassen, ohne OBS anzufassen</h2>
+<p>Unter <strong>Einstellungen → Einblendung</strong> im Controller wählst du klein, groß oder ausgeblendet, links oder rechts oben. Auf Wunsch schaltet das Overlay in Pausen und am Spielende automatisch auf die große Ansicht. Läuft dein Stream mit Verzögerung, stellst du dieselbe Verzögerung ein – dann passt der eingeblendete Stand zum Bild.</p>
+<h2>Für Basketball und Fußball</h2>
+<p>Das Overlay zeigt Teamkürzel, Farben, Punkte bzw. Tore, Periode oder Halbzeit und die Uhr; im Fußball zusätzlich Rote Karten. Team-Logos lädst du beim Bearbeiten des Spiels in „Meine Scoreboards“ hoch. Mehr zu den Sportarten: <a href="/basketball-liveticker">Basketball-Liveticker</a> und <a href="/fussball-liveticker">Fußball-Liveticker</a>.</p>
+{% endblock %}

@@ -595,5 +595,15 @@
   "seo.impressum.description": "Impressum von Score67, betrieben von der Navisense GmbH, Hamburg.",
   "landing.seo.title": "Liveticker und Anzeigetafel für Basketball und Fußball",
   "landing.seo.text": "Mit Score67 erfasst du Punkte, Tore, Fouls, Karten und die Spielzeit direkt auf dem Handy – für Basketball (auch Jugendformate wie 8 × 5 Minuten) und Fußball vom Kinderfußball bis 11 gegen 11. Eltern, Fans und Mitspieler verfolgen den Spielstand live über einen Link, etwa per WhatsApp, ohne App und ohne Anmeldung.",
-  "landing.seo.text2": "Für Livestreams gibt es ein transparentes OBS-Overlay, für die Halle eine große Anzeige auf TV oder Beamer und LED-Displays per Bluetooth. Nach dem Spiel stehen Endstand, Spielverlauf und ein Box Score je Spieler bereit."
+  "landing.seo.text2": "Für Livestreams gibt es ein transparentes OBS-Overlay, für die Halle eine große Anzeige auf TV oder Beamer und LED-Displays per Bluetooth. Nach dem Spiel stehen Endstand, Spielverlauf und ein Box Score je Spieler bereit.",
+  "seo.guide.basketball.title": "Basketball-Liveticker & Spielstand-App für Jugendspiele · Score67",
+  "seo.guide.basketball.description": "Basketball-Spielstand vom Handy erfassen und live teilen: Punkte, Freiwürfe, Fouls, Spielzeit (auch 8 × 5), Box Score je Spieler. Kostenlos, ohne App und ohne Konto.",
+  "seo.guide.football.title": "Liveticker für Kinder- und Jugendfußball – Spielstand live teilen · Score67",
+  "seo.guide.football.description": "Tore, Karten und Spielminute vom Handy erfassen und live per WhatsApp teilen – für 5, 7, 9 oder 11 Spieler. Kostenlos, ohne App, Rückennummern statt Namen möglich.",
+  "seo.guide.obs.title": "Scoreboard-Overlay für OBS und Livestreams – Spielstand einblenden · Score67",
+  "seo.guide.obs.description": "Transparentes Spielstand-Overlay für OBS Studio und Streamlabs: als Browserquelle einbinden, live vom Handy steuern, klein oder groß, mit Sendeverzögerung.",
+  "seo.guide.display.title": "Anzeigetafel vom Handy – Spielstand auf TV, Beamer oder LED · Score67",
+  "seo.guide.display.description": "Jeder Bildschirm wird zur Anzeigetafel: Spielstand vom Handy steuern und groß auf Fernseher, Beamer, Tablet oder Bluetooth-LED-Display zeigen.",
+  "seo.guide.whatsapp.title": "Spielstand per WhatsApp live teilen – Anleitung · Score67",
+  "seo.guide.whatsapp.description": "In drei Schritten den Live-Spielstand in die Elterngruppe teilen: Scoreboard anlegen, Link per WhatsApp schicken, Punkte eintippen. Ohne App und ohne Anmeldung."
 }

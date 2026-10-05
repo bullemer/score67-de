@@ -1,0 +1,16 @@
+{% extends "guides/_base.html" %}{% block content %}
+<p class="eyebrow">Live streaming</p>
+<h1>Scoreboard overlay for OBS: show the score in your live stream</h1>
+<p>Streaming games on YouTube, Twitch or Facebook needs a score bug in the picture. Score67 provides a transparent overlay you add to OBS Studio (or Streamlabs) as a browser source. The score comes live from the phone courtside – no extra software on the streaming computer.</p>
+<figure class="guide-shot"><img src="/static/guides/overlay-stream.webp" width="960" height="540" alt="Score67 overlay top left over a basketball court: TSV 23, SC 16, period 3/8, 04:31" loading="lazy"><figcaption>The small overlay top left – teams, score, period and clock.</figcaption></figure>
+<h2>Set up in three steps</h2>
+<ol>
+<li>Create a scoreboard and open the <strong>Sharing</strong> tab in the Controller. It has the <strong>OBS link</strong> (with its own key for private games).</li>
+<li>In OBS add a new <strong>Browser</strong> source, paste the link and set the size to <strong>1920 × 1080</strong>.</li>
+<li>Done: every entry in the Controller appears in the stream, including the running clock.</li>
+</ol>
+<h2>Adjust without touching OBS</h2>
+<p>Under <strong>Game settings → Overlay</strong> in the Controller choose small, large or hidden, top left or top right. Optionally the overlay switches to the large view in breaks and at full time. If your stream runs with a delay, set the same delay so the score matches the picture.</p>
+<h2>For basketball and football</h2>
+<p>The overlay shows team short names, colours, points or goals, period or half and the clock; in football also cards. Team logos are uploaded when editing the game in “My scoreboards”. More on each sport: <a href="/basketball-liveticker?lang=en">basketball live ticker</a> and <a href="/fussball-liveticker?lang=en">football live ticker</a>.</p>
+{% endblock %}

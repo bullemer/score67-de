@@ -1551,3 +1551,16 @@ def test_pages_are_readable_without_javascript_and_listed_for_search(system):
     sitemap = client.get('/sitemap.xml')
     assert sitemap.headers['content-type'].startswith('application/xml')
     assert '<loc>http://testserver/features?lang=en</loc>' in sitemap.text and 'hreflang="x-default"' in sitemap.text
+
+
+def test_guide_pages_in_both_languages_and_in_the_sitemap(system):
+    from score67.guides import GUIDES
+    app, client = system
+    sitemap = client.get('/sitemap.xml').text
+    for path in GUIDES:
+        de, en = client.get(path), client.get(f'{path}?lang=en')
+        assert de.status_code == 200 and en.status_code == 200, path
+        assert 'lang="de"' in de.text and 'lang="en"' in en.text
+        assert '<h1>' in de.text and '· Score67</title>' in de.text and '<link rel="canonical"' in de.text
+        assert f'<loc>http://testserver{path}</loc>' in sitemap
+    assert '/basketball-liveticker' in client.get('/').text

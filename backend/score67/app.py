@@ -22,7 +22,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 
-from . import forum, mail, preview, seo
+from . import forum, guides, mail, preview, seo
 from .db import Account, AccountSession, Admin, Asset, LoginToken, Board, Display, DisplayAdmin, Match, MatchEvent, RateLimit, Receipt, database
 from .domain import FOOTBALL, BASKETBALL, RuleError, apply, period_ms, initial_state, normalize_clock, foul_mode, BASKETBALL_STATS, player_statistics, SHORT_MAX, FOOTBALL_EVENTS
 
@@ -1445,6 +1445,15 @@ def create_app(db_url=None, secure_cookies=None):
     def location_picker(request: Request):
         return page(request, "location-picker.html", index=False)
 
+    def guide_route(path, key):
+        def guide(request: Request):
+            language = seo.language(request)
+            return page(request, f"guides/{key}.{language}.html", {"page": f"guide.{key}"}, language=language)
+        app.add_api_route(path, guide, methods=["GET"], response_class=HTMLResponse, name=f"guide_{key}")
+
+    for path, key in guides.GUIDES.items():
+        guide_route(path, key)
+
     @app.get("/robots.txt")
     def robots_txt(request: Request):
         return Response(seo.robots(origin(request)), media_type="text/plain")
@@ -1454,7 +1463,7 @@ def create_app(db_url=None, secure_cookies=None):
         with lock, app.state.sessions() as db:
             threads = [(t["id"], datetime.fromtimestamp(t["last_at"] / 1000, timezone.utc).strftime("%Y-%m-%d"))
                        for t in forum.thread_list(db)]
-        pages = ["/", "/features", "/about", "/live", "/forum", "/datenschutz"]
+        pages = ["/", "/features", "/about", *guides.GUIDES, "/live", "/forum", "/datenschutz"]
         return Response(seo.sitemap(origin(request), pages, threads), media_type="application/xml")
 
     @app.get("/s/{slug}", response_class=HTMLResponse)

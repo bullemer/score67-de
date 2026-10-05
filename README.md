@@ -144,6 +144,10 @@ The two roles are always called **Controller** (the scoring console, `/s/<code>/
 
 All server pages (start, Funktionen, Über, Forum incl. every topic, Live list, Impressum, Datenschutz, Viewer) are rendered with their texts already in the HTML (`backend/score67/seo.py` fills every `data-i18n` element from shared/i18n); the page scripts still switch language in place. The URL decides the language: German by default, English with `?lang=en`; only a visitor's own choice (stored) overrides it, not the browser locale. Each page has its own title/description (`seo.<page>.*`), canonical and hreflang (de / en / x-default) links; the start page carries schema.org `WebApplication` + `Organization` (Navisense GmbH) JSON-LD (deliberately no FAQ markup). `robots.txt` blocks the API, the Flutter app (create, My scoreboards, Controller), overlays and moderation and points to `sitemap.xml` (site pages in both languages plus forum topics). Single games (`/s/<code>`) and the Flutter routes are `noindex` (meta + `X-Robots-Tag`): shared, but not search results.
 
+### Guide pages (search content)
+
+Five server-rendered pages answer what people search for, each in German (default) and English (`?lang=en`), with real app screenshots (`static/guides/*.webp`): `/basketball-liveticker`, `/fussball-liveticker`, `/obs-scoreboard-overlay`, `/anzeigetafel`, `/anleitung/spielstand-whatsapp-teilen`. Registry in `backend/score67/guides.py`, one template per page and language in `templates/guides/<key>.<lang>.html`, titles/descriptions in `seo.guide.<key>.*`. They are in the sitemap and linked from the footers of the start page, Funktionen and Über. Only describe what the app really does.
+
 ### Console menu
 
 The ☰ menu only leaves the console: **Start** (start page), **Meine Scoreboards**, **Viewer** and **Verlassen** (stops a running basketball clock first; the game stays open and can be resumed from My scoreboards). Everything else is in the console itself: teams in the Team tab, all settings in Einstellungen, PIN/links/sharing in Teilen, ending the game via 🏁 / the Period tab.
