@@ -172,7 +172,7 @@ lib_deps =
 
 - **Erstes Flashen:** `pio run -t upload` per USB-C; ohne Port: BOOT halten, RESET kurz, BOOT los.
 - **Web-Flasher** (für Vereine, ohne Entwicklungsumgebung): Seite auf score67.de mit ESP Web Tools; Manifest + zusammengeführtes Image (`esptool.py merge_bin`).
-- **OTA (später):** Befehl über den WebSocket, Download per HTTPS von score67.de/fw, Prüfsumme beim Download mitrechnen (`HTTPUpdate` prüft keine SHA-256 von selbst), nie während die Uhr läuft. Rollback über einen **Boot-Zähler im NVS** – der Bootloader-Rollback ist im Standard-Arduino-Build abgeschaltet.
+- **OTA – Server-Seite umgesetzt (5. Oktober 2026):** Releases liegen in score67 (Tabelle `firmware_release`). Hochladen mit `tools/fw_release.py upload firmware.bin 0.2.0` (Operator-Token `FIRMWARE_ADMIN_TOKEN`); neue Versionen starten im Kanal **test** und gehen nur an Tafeln mit „Beta-Firmware erhalten“, danach `channel 0.2.0 stable` für alle, `off` zieht sie zurück. Der kompakte Feed enthält `firmware: {version, url, sha256, size}`, sobald für die Tafel eine neuere Version freigegeben ist. Die Tafel installiert **nur ohne laufendes Spiel**, lädt `/fw/<version>.bin` mit ihrem Token, rechnet beim Download die SHA-256 mit (`HTTPUpdate` prüft sie nicht selbst), meldet `{"ota": "downloading 0.2.0" / "failed: sha256" / "installed 0.2.0"}` und nach dem Neustart ihre neue `fw`. Rollback über einen **Boot-Zähler im NVS** (der Bootloader-Rollback ist im Standard-Arduino-Build abgeschaltet): gilt als gut erst nach erfolgreicher Verbindung zu score67.de, sonst nach 3 Fehlstarts zurück zur alten Partition. `tools/display_sim.py --fw=0.1.0` spielt den Ablauf ohne Hardware durch.
 
 ## Betrieb vor Ort
 
@@ -190,4 +190,4 @@ Jede Phase endet mit etwas, das sichtbar funktioniert.
 3. **Server-Seite** ✅ (5. Oktober 2026): Registrierung, Code auf der Tafel, Übernahme in der App, kompakter Feed, Helligkeit, Identifizieren, Status; Simulator `tools/display_sim.py`.
 4. **Firmware verbindet sich:** WLAN (mehrere Netze), Registrierung, WSS zu score67.de, Code-Anzeige, Live-Daten, roter Punkt, Watchdog.
 5. **Feldtest:** ein echtes Spiel über Handy-Hotspot, mit absichtlichen Verbindungsabbrüchen.
-6. **Web-Flasher, danach OTA** mit Boot-Zähler und Prüfsumme.
+6. **Web-Flasher, danach OTA** mit Boot-Zähler und Prüfsumme (Server-Seite ✅).

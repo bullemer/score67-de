@@ -51,11 +51,13 @@ def team(s, side):
             "red_cards": counters.get("red_cards", 0) if s.get("sport") != "basketball" else None}
 
 
-def payload(*, now_ms, name, brightness, identify, mode, code=None, s=None):
+def payload(*, now_ms, name, brightness, identify, mode, code=None, s=None, firmware=None):
     """mode: "pairing" (not claimed: show ``code``), "idle" (no scoreboard
     assigned) or "game" (``s`` = public state of the assigned board)."""
     out = {"v": FORMAT_VERSION, "seq": now_ms, "server_now": now_ms, "mode": mode, "name": name,
            "brightness": brightness, "identify": identify}
+    if firmware:
+        out["firmware"] = firmware   # an update to install when idle (see firmware.offer)
     if mode == "pairing":
         out["code"] = code
     if mode == "game" and s is not None:

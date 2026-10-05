@@ -293,6 +293,31 @@ class _DisplaysDialogState extends State<DisplaysDialog> {
               ].join(' · '),
               style: const TextStyle(fontSize: 12, color: Colors.grey),
             ),
+            // Over-the-air updates: installed by the panel when no game runs.
+            if (d['update'] != null)
+              Text(
+                t('display.update').replaceAll('{version}', '${d['update']}'),
+                style: const TextStyle(fontSize: 12, color: Color(0xfffbbf24)),
+              ),
+            if (d['ota_status'] != null)
+              Text(
+                '${t('display.ota_status')}: ${d['ota_status']}',
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+            SwitchListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              title: Text(t('display.beta')),
+              subtitle: Text(t('display.beta_note')),
+              value: d['beta'] == true,
+              onChanged: busy
+                  ? null
+                  : (on) => run(
+                      () => widget.api('/api/displays/${d['id']}', 'PUT', {
+                        'beta': on,
+                      }),
+                    ),
+            ),
           ],
           Wrap(
             spacing: 8,

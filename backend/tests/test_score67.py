@@ -1650,3 +1650,51 @@ def test_led_preview_page_and_feed(system):
     assert f'data-led-slug="{slug}"' in page and '/static/led.mjs' in page and 'noindex' in page
     assert f'href="/s/{slug}/led"' in client.get(f'/s/{slug}').text
     assert 'data-led-demo' in client.get('/anzeigetafel/led-bauanleitung').text
+
+
+def test_firmware_releases_offer_and_download(system, monkeypatch):
+    import base64, hashlib
+    app, client = system
+    monkeypatch.setenv('FIRMWARE_ADMIN_TOKEN', 'operator-secret')
+    admin = {'Authorization': 'Bearer operator-secret'}
+    image = bytes(range(256)) * 400   # 100 KB, larger than the normal 16 KB request limit
+    body = {'version': '0.2.0', 'channel': 'test', 'notes': 'Zehntel', 'sha256': hashlib.sha256(image).hexdigest(),
+            'data': base64.b64encode(image).decode()}
+    assert client.post('/api/firmware', json=body).status_code == 401
+    assert client.post('/api/firmware', json=body, headers={'Authorization': 'Bearer wrong'}).status_code == 401
+    assert client.post('/api/firmware', json={**body, 'sha256': '0' * 64}, headers=admin).json()['error'] == 'sha256_mismatch'
+    assert client.post('/api/firmware', json={**body, 'version': 'v2'}, headers=admin).status_code == 422
+    created = client.post('/api/firmware', json=body, headers=admin)
+    assert created.status_code == 201 and created.json()['size'] == len(image)
+    assert client.post('/api/firmware', json=body, headers=admin).status_code == 409
+    assert [r['version'] for r in client.get('/api/firmware', headers=admin).json()['releases']] == ['0.2.0']
+    # A claimed panel on 0.1.0: test releases only with beta switched on.
+    device = TestClient(app)
+    reg = device.post('/api/display/register', json={'device_key': 'o' * 40, 'fw': '0.1.0'}).json()
+    info = client.post('/api/displays/claim', json={'code': reg['code']}).json()
+    auth = {'Authorization': f'Bearer {reg["token"]}'}
+    feed = lambda: device.get('/api/display/state?format=compact', headers=auth).json()
+    assert 'firmware' not in feed()
+    assert client.put(f'/api/displays/{info["id"]}', json={'beta': True}).json()['update'] == '0.2.0'
+    offered = feed()['firmware']
+    assert offered == {'version': '0.2.0', 'url': '/fw/0.2.0.bin', 'sha256': body['sha256'], 'size': len(image)}
+    client.put(f'/api/displays/{info["id"]}', json={'beta': False})
+    assert 'firmware' not in feed()
+    client.put('/api/firmware/0.2.0', json={'channel': 'stable'}, headers=admin)
+    assert feed()['firmware']['version'] == '0.2.0'
+    # Download only for panels (or the operator); the bytes match the checksum.
+    assert device.get('/fw/0.2.0.bin').status_code == 401
+    got = device.get('/fw/0.2.0.bin', headers=auth)
+    assert got.status_code == 200 and hashlib.sha256(got.content).hexdigest() == body['sha256']
+    assert got.headers['x-checksum-sha256'] == body['sha256']
+    # The panel reports progress and its new version; then nothing is offered any more.
+    with device.websocket_connect(f'/ws/display?token={reg["token"]}&format=compact') as ws:
+        ws.receive_json()
+        ws.send_text('{"ota": "installed 0.2.0", "fw": "0.2.0"}')
+        ws.send_text('{"rssi": -50}')
+        ws.receive_json()   # the offer disappears with the new version
+    listed = client.get('/api/displays').json()['displays'][0]
+    assert (listed['fw_version'], listed['ota_status'], listed['update']) == ('0.2.0', 'installed 0.2.0', None)
+    # Withdrawn releases are neither offered nor downloadable.
+    client.put('/api/firmware/0.2.0', json={'channel': 'off'}, headers=admin)
+    assert device.get('/fw/0.2.0.bin', headers=auth).status_code == 404

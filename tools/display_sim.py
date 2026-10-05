@@ -20,9 +20,13 @@ from pathlib import Path
 
 import websockets
 
-BASE = (sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8067").rstrip("/")
+ARGS = [a for a in sys.argv[1:] if not a.startswith("--fw=")]
+BASE = (ARGS[0] if ARGS else "http://127.0.0.1:8067").rstrip("/")
 STORE = Path.home() / ".score67-display-sim.json"
-FW = "sim-0.1.0"
+# --fw=0.1.0 reports a real version, so the server offers OTA updates; the
+# simulator then "installs" them like the firmware: only when no game runs,
+# download with the panel token, check SHA-256, report progress, new version.
+FW = next((a[5:] for a in sys.argv[1:] if a.startswith("--fw=")), "sim-0.1.0")
 
 
 def register():
@@ -34,6 +38,16 @@ def register():
     answer = json.load(urllib.request.urlopen(request, timeout=10))
     STORE.write_text(json.dumps({"device_key": key, "token": answer["token"]}))
     return answer
+
+
+def install(offer, token):
+    """What the firmware does with an offered update (simulated: nothing is flashed)."""
+    import hashlib
+    request = urllib.request.Request(BASE + offer["url"], headers={"Authorization": f"Bearer {token}"})
+    data = urllib.request.urlopen(request, timeout=60).read()
+    if hashlib.sha256(data).hexdigest() != offer["sha256"] or len(data) != offer["size"]:
+        return "failed: sha256", None
+    return f"installed {offer['version']}", offer["version"]
 
 
 def mmss(ms, tenths):
@@ -61,6 +75,7 @@ def frame(feed, received):
 
 
 async def follow(token):
+    global FW
     url = BASE.replace("http", "ws", 1) + f"/ws/display?token={token}&format=compact"
     started, feed, received, last_seq = time.monotonic(), None, 0.0, 0
     async with websockets.connect(url) as ws:
@@ -75,6 +90,17 @@ async def follow(token):
                 pass
             if feed:
                 print(time.strftime("%H:%M:%S"), frame(feed, received), flush=True)
+                offer = feed.get("firmware")
+                busy = feed.get("mode") == "game" and (feed.get("clock") or {}).get("running")
+                if offer and not busy:
+                    print(f"UPDATE {FW} -> {offer['version']} ({offer['size']} Bytes)", flush=True)
+                    await ws.send(json.dumps({"ota": f"downloading {offer['version']}"}))
+                    status, new = install(offer, token)
+                    print(status, flush=True)
+                    if new:
+                        FW = new   # the real panel restarts here and reports the new version
+                    await ws.send(json.dumps({"ota": status, "fw": FW}))
+                    feed = None
             if int(time.monotonic() - started) % 30 == 0:
                 await ws.send(json.dumps({"fw": FW, "rssi": -55, "uptime": int(time.monotonic() - started)}))
 

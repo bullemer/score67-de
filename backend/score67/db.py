@@ -88,6 +88,22 @@ class Display(Base):
     identify_until: Mapped[float | None] = mapped_column(Float, nullable=True)
     fw_version: Mapped[str | None] = mapped_column(String(20), nullable=True)
     rssi: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # OTA: "test" panels also get beta releases; the last update status the device reported.
+    fw_channel: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    ota_status: Mapped[str | None] = mapped_column(String(60), nullable=True)
+
+
+class FirmwareRelease(Base):
+    """An LED panel firmware build for over-the-air updates (stored like logos, in the database).
+    channel: "test" (beta panels only), "stable" (everyone) or "off" (withdrawn)."""
+    __tablename__ = "firmware_release"
+    version: Mapped[str] = mapped_column(String(20), primary_key=True)
+    data: Mapped[bytes] = mapped_column(LargeBinary, deferred=True)
+    sha256: Mapped[str] = mapped_column(String(64))
+    size: Mapped[int] = mapped_column(Integer)
+    channel: Mapped[str] = mapped_column(String(10))
+    notes: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    created_at: Mapped[float] = mapped_column(Float)
 
 
 class DisplayAdmin(Base):
@@ -187,6 +203,6 @@ def database(url: str | None = None):
     else:
         with engine.connect() as connection:
             version = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            if version != "0012_display_device":
+            if version != "0013_firmware":
                 raise RuntimeError("Database schema does not match this release; run migrations first")
     return engine, sessionmaker(engine, expire_on_commit=False)

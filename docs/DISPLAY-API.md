@@ -112,3 +112,16 @@ The same `device_key` again returns a **new token** (the old one stops working) 
 Text messages on the same socket: `{"fw": "0.1.0", "rssi": -61, "uptime": 3600}` (any subset). They update the panel's firmware version, Wi-Fi strength and online time shown in the app. Anything else is ignored.
 
 `tools/display_sim.py` simulates a panel end to end (register, code, compact feed with a local clock, status).
+
+### Over-the-air updates
+
+When a newer firmware release is approved for the panel (channel `stable`, or also `test` for panels with "Beta-Firmware erhalten"), its compact messages carry:
+
+```json
+"firmware": {"version": "0.2.0", "url": "/fw/0.2.0.bin", "sha256": "…", "size": 1503232}
+```
+
+Only panels that report a plain `x.y.z` version (`fw` at registration or in status) are offered updates. Install only while no game is running. `GET /fw/0.2.0.bin` with `Authorization: Bearer <panel token>` returns the image (`X-Checksum-SHA256` header); compare the SHA-256 of the downloaded bytes before switching partitions. Report progress with status messages such as `{"ota": "downloading 0.2.0"}`, `{"ota": "failed: sha256"}`, `{"ota": "installed 0.2.0", "fw": "0.2.0"}`; the app shows them.
+
+Operator API (bearer `FIRMWARE_ADMIN_TOKEN`; `tools/fw_release.py`): `POST /api/firmware` `{"version", "channel": "test", "notes", "sha256", "data": "<base64>"}` (max. 4 MB image), `PUT /api/firmware/{version}` `{"channel": "stable" | "test" | "off"}`, `GET /api/firmware`.
+

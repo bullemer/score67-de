@@ -622,5 +622,9 @@
   "led.build": "Build an LED board",
   "led.menu": "LED preview (64 × 32)",
   "seo.led.title": "LED preview · Score67",
-  "seo.led.description": "How the game looks on a 64 × 32 LED board."
+  "seo.led.description": "How the game looks on a 64 × 32 LED board.",
+  "display.update": "Update to {version} available – the panel installs it by itself when no game is running.",
+  "display.ota_status": "Update status",
+  "display.beta": "Receive beta firmware",
+  "display.beta_note": "Also install test versions (for testers)."
 }

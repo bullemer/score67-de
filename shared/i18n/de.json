@@ -622,5 +622,9 @@
   "led.build": "LED-Tafel selbst bauen",
   "led.menu": "LED-Vorschau (64 × 32)",
   "seo.led.title": "LED-Vorschau · Score67",
-  "seo.led.description": "So sieht das Spiel auf einer 64 × 32 LED-Tafel aus."
+  "seo.led.description": "So sieht das Spiel auf einer 64 × 32 LED-Tafel aus.",
+  "display.update": "Update auf {version} verfügbar – die Tafel installiert es selbst, sobald kein Spiel läuft.",
+  "display.ota_status": "Update-Status",
+  "display.beta": "Beta-Firmware erhalten",
+  "display.beta_note": "Auch Testversionen installieren (für Tester)."
 }

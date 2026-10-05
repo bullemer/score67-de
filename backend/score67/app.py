@@ -22,7 +22,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 
-from . import display_feed, forum, guides, mail, preview, seo
+from . import display_feed, firmware, forum, guides, mail, preview, seo
 from .db import Account, AccountSession, Admin, Asset, LoginToken, Board, Display, DisplayAdmin, Match, MatchEvent, RateLimit, Receipt, database
 from .domain import FOOTBALL, BASKETBALL, RuleError, apply, period_ms, initial_state, normalize_clock, foul_mode, BASKETBALL_STATS, player_statistics, SHORT_MAX, FOOTBALL_EVENTS
 
@@ -68,6 +68,7 @@ class DisplayUpdate(StrictModel):
     name: str | None = Field(default=None, min_length=1, max_length=60)
     board: str | None = Field(default=None, max_length=10)
     brightness: int | None = Field(default=None, ge=10, le=100)
+    beta: bool | None = None   # also install "test" firmware releases
 
 
 class DisplayRegister(StrictModel):
@@ -382,7 +383,8 @@ def create_app(db_url=None, secure_cookies=None):
             if request.method != "DELETE" and request.headers.get("content-type", "").split(";")[0] != "application/json":
                 return JSONResponse({"error": "json_required"}, status_code=415)
             # Logo uploads (already downscaled by the client) may be larger.
-            limit = LOGO_MAX_REQUEST if LOGO_PATH.match(request.url.path) else 16384
+            limit = (LOGO_MAX_REQUEST if LOGO_PATH.match(request.url.path)
+                     else firmware.MAX_REQUEST if request.url.path == "/api/firmware" else 16384)
             length = request.headers.get("content-length", "0")
             if not length.isdigit() or int(length) > limit:
                 return JSONResponse({"error": "request_too_large"}, status_code=413)
@@ -1265,7 +1267,8 @@ def create_app(db_url=None, secure_cookies=None):
                 "code_expires_at": round(d.pairing_expires_at * 1000) if pending else None,
                 "board": b.slug if b else None, "board_description": b.description if b else None,
                 "device": d.device_key_hash is not None, "brightness": d.brightness or 60,
-                "fw_version": d.fw_version, "rssi": d.rssi}
+                "fw_version": d.fw_version, "rssi": d.rssi, "beta": d.fw_channel == "test",
+                "ota_status": d.ota_status, "update": (firmware.offer(db, d) or {}).get("version")}
 
     def device_display(db, token):
         d = db.scalar(select(Display).where(Display.token_hash == digest(token or "")))
@@ -1292,6 +1295,7 @@ def create_app(db_url=None, secure_cookies=None):
         now = time.time()
         common = {"now_ms": round(now * 1000), "name": d.name, "brightness": d.brightness or 60,
                   "identify": bool(d.identify_until and d.identify_until > now)}
+        common["firmware"] = firmware.offer(db, d)
         if d.device_key_hash and not claimed(db, d):
             return display_feed.payload(mode="pairing", code=claim_code(db, d, now), **common)
         b = db.get(Board, d.board_slug) if d.board_slug else None
@@ -1311,6 +1315,8 @@ def create_app(db_url=None, secure_cookies=None):
             d.fw_version = data["fw"][:20]
         if isinstance(data.get("rssi"), int) and -127 <= data["rssi"] <= 0:
             d.rssi = data["rssi"]
+        if isinstance(data.get("ota"), str):
+            d.ota_status = data["ota"][:60]   # e.g. "downloading 0.2.0", "failed: sha256"
         d.last_seen_at = time.time()
 
     @app.post("/api/display/register")
@@ -1363,6 +1369,8 @@ def create_app(db_url=None, secure_cookies=None):
             db.commit()
             return display_info(db, d)
 
+    firmware.register(app, lock=lock, device_display=device_display)
+
     @app.post("/api/displays/{display_id}/identify")
     def identify_display(display_id: str, request: Request):
         """The panel flashes for a few seconds, to tell several displays apart."""
@@ -1412,6 +1420,8 @@ def create_app(db_url=None, secure_cookies=None):
                 d.name = body.name.strip()
             if body.brightness is not None:
                 d.brightness = body.brightness
+            if body.beta is not None:
+                d.fw_channel = "test" if body.beta else None
             if "board" in body.model_fields_set:
                 if body.board is not None:
                     authorize(db, body.board, request)  # Only boards this browser controls.
@@ -1498,7 +1508,8 @@ def create_app(db_url=None, secure_cookies=None):
                     m = db.get(Match, b.active_match) if b and b.active_match else None
                     current = (d.board_slug, d.name, m.id if m else None, m.revision if m else 0,
                                d.brightness, bool(d.identify_until and d.identify_until > time.time()),
-                               d.pairing_code, claimed(db, d) if compact else None)
+                               d.pairing_code, claimed(db, d) if compact else None,
+                               (firmware.offer(db, d) or {}).get("version") if compact else None)
                     if current != signature:
                         payload = compact_payload(db, d) if compact else device_payload(db, d)
                         db.commit()  # a renewed claim code is stored
