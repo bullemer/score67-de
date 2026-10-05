@@ -3705,7 +3705,26 @@ class _Score67State extends State<Score67> {
             ],
           ),
         ]),
-        Text(widget.releaseLabel, style: const TextStyle(fontSize: 12)),
+        Wrap(
+          spacing: 12,
+          children: [
+            Text(widget.releaseLabel, style: const TextStyle(fontSize: 12)),
+            for (final (label, path) in const [
+              ('Impressum', '/impressum'),
+              ('Datenschutz', '/datenschutz'),
+            ])
+              InkWell(
+                onTap: () => web.window.open(path, '_blank'),
+                child: Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    decoration: TextDecoration.underline,
+                  ),
+                ),
+              ),
+          ],
+        ),
       ],
     );
   }
@@ -3927,13 +3946,34 @@ class _Score67State extends State<Score67> {
                       horizontal: 12,
                       vertical: 8,
                     ),
-                    child: Text(
-                      widget.releaseLabel,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Color(0xffb5c2d4),
-                      ),
+                    child: Wrap(
+                      alignment: WrapAlignment.center,
+                      spacing: 12,
+                      children: [
+                        Text(
+                          widget.releaseLabel,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Color(0xffb5c2d4),
+                          ),
+                        ),
+                        // Legal pages must be reachable from every page.
+                        for (final (label, path) in const [
+                          ('Impressum', '/impressum'),
+                          ('Datenschutz', '/datenschutz'),
+                        ])
+                          InkWell(
+                            onTap: () => web.window.location.assign(path),
+                            child: Text(
+                              label,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Color(0xffb5c2d4),
+                                decoration: TextDecoration.underline,
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                 ),

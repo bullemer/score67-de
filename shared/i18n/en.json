@@ -562,5 +562,6 @@
   "live.finished_title": "Just finished",
   "live.final": "Final score",
   "live.ended_at": "ended {time}",
-  "live.auto_ended": "Ended automatically – no more entries after the playing time."
+  "live.auto_ended": "Ended automatically – no more entries after the playing time.",
+  "forum.privacy_link": "Privacy policy (German)"
 }

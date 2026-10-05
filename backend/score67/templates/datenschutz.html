@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Datenschutz · Score67</title>{% include "_og.html" %}<link rel="stylesheet" href="/static/display.css"><link rel="stylesheet" href="/static/site.css"></head>
+<body class="site-page legal-page">{% include "_site_header.html" %}
+<main><h1>Datenschutzerklärung</h1>
+<p>Score67 ist ein Live-Scoreboard für Fußball und Basketball. Du kannst es ohne Konto nutzen. Wir verwenden <strong>keine Werbung, keine Analyse- oder Tracking-Werkzeuge und keine eingebetteten Social-Media-Plugins</strong>. Hier steht, welche Daten trotzdem anfallen, wozu und wie lange.</p>
+
+<h2>1. Verantwortlicher</h2>
+{% include "_operator.html" %}
+<p>E-Mail: <a href="mailto:{{ legal.email }}">{{ legal.email }}</a>{% if legal.phone %} · Telefon: {{ legal.phone }}{% endif %}</p>
+
+<h2>2. Hosting und Server-Logdateien</h2>
+<p>Score67 läuft auf einem Server der Hetzner Online GmbH, Industriestr. 25, 91710 Gunzenhausen, in einem Rechenzentrum in Nürnberg (Deutschland). Mit Hetzner besteht ein Vertrag zur Auftragsverarbeitung.</p>
+<p>Bei jedem Aufruf speichert der Webserver automatisch: IP-Adresse, Datum und Uhrzeit, aufgerufene Adresse, Statuscode, übertragene Datenmenge, Referrer und Browser-Kennung. Das ist nötig, um die Seite auszuliefern, Fehler zu finden und Angriffe abzuwehren (Art. 6 Abs. 1 lit. f DSGVO). Die Logdateien werden nach <strong>14 Tagen</strong> gelöscht. Für Missbrauchsgrenzen (z. B. bei der PIN-Eingabe oder im Forum) speichern wir IP- und E-Mail-Adressen nur als nicht umkehrbaren Hashwert zusammen mit einem Zähler für ein Zeitfenster von einer Stunde.</p>
+
+<h2>3. Scoreboards und Spiele</h2>
+<p>Was du in ein Scoreboard eingibst, speichern wir, um es anzuzeigen: Teamnamen, Kürzel, Farben und Logos, Kader (Rückennummern, optional Namen), Spielereignisse mit Zeitpunkt, Beschreibung, Livestream-Link, geplante Anstoßzeit und – wenn du ihn freigibst – den Spielort. Rechtsgrundlage ist die Bereitstellung des Dienstes, den du nutzt (Art. 6 Abs. 1 lit. b DSGVO).</p>
+<p><strong>Öffentliche Spiele</strong> sind für alle mit dem Link sichtbar und erscheinen in den „Aktuellen Livetickern“ – samt Vorschaubild, wenn der Link z. B. per WhatsApp geteilt wird. <strong>Private Spiele</strong> sieht nur, wer den privaten Link hat. Der Spielort ist standardmäßig privat.</p>
+<p><strong>Bitte bei Kindern und Jugendlichen:</strong> Trage Spielernamen nur ein, wenn die Eltern bzw. die Spieler einverstanden sind. Rückennummern allein genügen für alle Funktionen.</p>
+<p>Speicherdauer: Abgebrochene oder nie gestartete Spiele wandern automatisch in den Papierkorb; nach 30 Tagen sind sie endgültig gesperrt und nicht mehr abrufbar. Beendete Spiele bleiben gespeichert, bis du sie löschst. Auf Wunsch löschen wir die Daten eines Scoreboards vollständig – eine E-Mail an {{ legal.email }} genügt. Datenbank-Sicherungen werden nach 14 Tagen gelöscht.</p>
+
+<h2>4. Cookies und Speicher im Browser</h2>
+<p>Score67 setzt nur technisch notwendige Cookies, für die keine Einwilligung nötig ist (§ 25 Abs. 2 Nr. 2 TDDDG):</p>
+<ul>
+<li><code>score67_&lt;Code&gt;</code> – merkt sich, dass dieses Gerät ein Scoreboard steuern darf (nach PIN-Eingabe), 180 Tage.</li>
+<li><code>score67_account</code> – nur nach E-Mail-Anmeldung oder einem Forenbeitrag: hält dich angemeldet, 180 Tage.</li>
+<li>Ein Gerätecookie für gekoppelte Anzeigetafeln (nur auf diesen Geräten).</li>
+</ul>
+<p>Außerdem speichert die App im lokalen Speicher deines Browsers (nicht auf unserem Server): Sprache, Standard-Spielformate, Ticker-Ansicht, die PIN auf dem Gerät, das ein Scoreboard angelegt hat, noch nicht gesendete Eingaben (damit bei schlechtem Netz nichts verloren geht), Einstellungen für Bluetooth-Anzeigen und deinen Forennamen. Du kannst das jederzeit über die Browser-Einstellungen löschen.</p>
+
+<h2>5. E-Mail-Anmeldung und Forum</h2>
+<p>Optional kannst du dich per E-Mail anmelden („Meine Scoreboards“ auf allen Geräten, PIN vergessen). Wir speichern dafür deine E-Mail-Adresse, die verknüpften Scoreboards und deine Anmeldesitzungen. Anmeldelinks gelten 30 Minuten und nur einmal.</p>
+<p>Im Forum werden dein angezeigter Name, Betreff und Text öffentlich veröffentlicht. Deine E-Mail-Adresse wird <strong>nie angezeigt</strong>; wir nutzen sie zur Bestätigung (6-stelliger Code, 30 Minuten gültig), zur Anmeldung für weitere Beiträge und für Rückfragen. Nicht bestätigte Beiträge löschen wir nach einem Tag. Neue Beiträge werden zur Moderation an {{ legal.email }} gemeldet.</p>
+<p>Rechtsgrundlage ist Art. 6 Abs. 1 lit. b DSGVO (Nutzung der Funktion, die du anforderst). Konto und Beiträge löschen wir auf Wunsch – eine E-Mail an {{ legal.email }} genügt.</p>
+
+<h2>6. E-Mail-Versand über Postmark</h2>
+<p>E-Mails (Anmeldelinks, Forencodes, Hinweise) versenden wir über Postmark, einen Dienst der ActiveCampaign, LLC, 1 North Dearborn Street, 5th Floor, Chicago, IL 60602, USA. Postmark verarbeitet dafür Empfängeradresse, Inhalt und Zustellinformationen und speichert sie für eine begrenzte Zeit (in der Regel 45 Tage) zur Zustellungsnachverfolgung. Grundlage der Übermittlung in die USA sind der Vertrag zur Auftragsverarbeitung mit EU-Standardvertragsklauseln bzw. das EU-US Data Privacy Framework, soweit der Anbieter danach zertifiziert ist (Art. 44 ff. DSGVO).</p>
+
+<h2>7. Karte für den Spielort (OpenStreetMap)</h2>
+<p>Nur wenn du beim Anlegen oder Bearbeiten eines Spiels die Karte öffnest, lädt dein Browser Kartenkacheln von den Servern der OpenStreetMap Foundation (St John’s Innovation Centre, Cowley Road, Cambridge, CB4 0WS, Großbritannien). Dabei wird deine IP-Adresse an diese Server übermittelt (Art. 6 Abs. 1 lit. f DSGVO; für Großbritannien besteht ein Angemessenheitsbeschluss). Details: <a href="https://osmfoundation.org/wiki/Privacy_Policy" target="_blank" rel="noopener">osmfoundation.org/wiki/Privacy_Policy</a>. Deinen Standort fragt die Karte nur ab, wenn du „Meinen Standort verwenden“ wählst und dein Browser es erlaubt.</p>
+
+<h2>8. Teilen-Links und externe Links</h2>
+<p>Die Schaltflächen für WhatsApp, Facebook usw. sind einfache Links: Erst wenn du darauf tippst, öffnet sich der jeweilige Dienst, und es gelten dessen Datenschutzbestimmungen. Dasselbe gilt für Livestream-Links (z. B. YouTube), die Nutzer bei einem Spiel hinterlegen.</p>
+
+<h2>9. Deine Rechte</h2>
+<p>Du hast das Recht auf Auskunft (Art. 15 DSGVO), Berichtigung (Art. 16), Löschung (Art. 17), Einschränkung der Verarbeitung (Art. 18), Datenübertragbarkeit (Art. 20) und Widerspruch gegen Verarbeitungen auf Grundlage berechtigter Interessen (Art. 21). Schreib dazu einfach an <a href="mailto:{{ legal.email }}">{{ legal.email }}</a>. Außerdem kannst du dich bei einer Datenschutz-Aufsichtsbehörde beschweren (Art. 77 DSGVO).</p>
+<p>Eine Pflicht, Daten bereitzustellen, besteht nicht; ohne E-Mail-Adresse kannst du lediglich die Anmeldung und das Forum nicht nutzen. Automatisierte Entscheidungen oder Profiling finden nicht statt.</p>
+
+<p class="legal-meta"><a href="/impressum">Impressum</a> · Stand: {{ legal.as_of }}</p></main>
+<footer class="version-footer site-footer">{% include "_legal_links.html" %}</footer>
+<script type="module" src="/static/site.mjs"></script></body></html>

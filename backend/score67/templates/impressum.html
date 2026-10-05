@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
+<title>Impressum · Score67</title>{% include "_og.html" %}<link rel="stylesheet" href="/static/display.css"><link rel="stylesheet" href="/static/site.css"></head>
+<body class="site-page legal-page">{% include "_site_header.html" %}
+<main><h1>Impressum</h1>
+<h2>Angaben gemäß § 5 DDG</h2>
+{% include "_operator.html" %}
+<h2>Kontakt</h2>
+<p>E-Mail: <a href="mailto:{{ legal.email }}">{{ legal.email }}</a>{% if legal.phone %}<br>Telefon: {{ legal.phone }}{% endif %}</p>
+{% if legal.register %}<h2>Registereintrag</h2><p>{{ legal.register }}</p>{% endif %}
+{% if legal.vat_id %}<h2>Umsatzsteuer-ID</h2><p>Umsatzsteuer-Identifikationsnummer gemäß § 27a UStG: {{ legal.vat_id }}</p>{% endif %}
+<h2>Verantwortlich für den Inhalt nach § 18 Abs. 2 MStV</h2>
+<p>{{ legal.responsible or legal.name }}, Anschrift wie oben.</p>
+<h2>Nutzerinhalte</h2>
+<p>Score67 ist ein Testprojekt. Spielstände, Team- und Spielernamen, Beschreibungen, Logos und Forenbeiträge werden von den Nutzerinnen und Nutzern selbst eingegeben. Wir prüfen diese Inhalte nicht vorab, entfernen aber rechtswidrige Inhalte, sobald wir davon erfahren – bitte melde sie an <a href="mailto:{{ legal.email }}">{{ legal.email }}</a>.</p>
+<h2>Haftung für Links</h2>
+<p>Für Inhalte externer Seiten, auf die verlinkt wird (z. B. Livestreams), sind ausschließlich deren Betreiber verantwortlich. Bei Bekanntwerden von Rechtsverletzungen entfernen wir solche Links umgehend.</p>
+<h2>Verbraucherstreitbeilegung</h2>
+<p>Wir sind nicht bereit und nicht verpflichtet, an Streitbeilegungsverfahren vor einer Verbraucherschlichtungsstelle teilzunehmen.</p>
+<p class="legal-meta"><a href="/datenschutz">Datenschutzerklärung</a> · Stand: {{ legal.as_of }}</p></main>
+<footer class="version-footer site-footer">{% include "_legal_links.html" %}</footer>
+<script type="module" src="/static/site.mjs"></script></body></html>

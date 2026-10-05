@@ -13,7 +13,7 @@
 <p id="mail-off" class="forum-note" data-i18n="forum.mail_off" hidden></p>
 <form id="write" novalidate>
 <label><span data-i18n="forum.name"></span><input name="name" maxlength="60" required autocomplete="nickname"></label>
-<label id="email-row"><span data-i18n="forum.email"></span><input name="email" type="email" maxlength="254" autocomplete="email"><small data-i18n="forum.email_note"></small></label>
+<label id="email-row"><span data-i18n="forum.email"></span><input name="email" type="email" maxlength="254" autocomplete="email"><small data-i18n="forum.email_note"></small><small><a href="/datenschutz" data-i18n="forum.privacy_link">Datenschutz</a></small></label>
 <p id="signed-in" class="forum-note" hidden></p>
 <label id="title-row"><span data-i18n="forum.subject"></span><input name="title" maxlength="120"></label>
 <label><span data-i18n="forum.text"></span><textarea name="body" rows="6" maxlength="4000" required></textarea></label>
@@ -26,5 +26,5 @@
 <button class="primary" type="submit" data-i18n="forum.publish"></button>
 </form>
 </section></main>
-<footer class="version-footer" data-version="{{ release_version }}" data-built="{{ release_built_at }}">{{ release_label }}</footer>
+<footer class="version-footer site-footer"><span>{% include "_legal_links.html" %}</span> · <span class="version-footer" data-version="{{ release_version }}" data-built="{{ release_built_at }}">{{ release_label }}</span></footer>
 <script type="module" src="/static/forum.mjs"></script></body></html>

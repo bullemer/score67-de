@@ -1481,3 +1481,17 @@ def test_live_list_keeps_just_finished_games(system, monkeypatch):
     # After the window the game leaves the list.
     monkeypatch.setenv('LIVE_FINISHED_HOURS', '0')
     assert client.get('/api/live').json()['finished'] == []
+
+
+def test_impressum_and_datenschutz_are_linked_everywhere(system):
+    import json as _json
+    app, client = system
+    legal = _json.loads((Path(__file__).parents[2] / 'shared/legal.json').read_text())
+    for path in ('/impressum', '/datenschutz'):
+        page = client.get(path)
+        assert page.status_code == 200 and legal['email'] in page.text
+    assert 'Hetzner Online GmbH' in client.get('/datenschutz').text
+    slug = create(client)['slug']
+    for path in ('/', '/about', '/features', '/forum', '/live', f'/s/{slug}'):
+        text = client.get(path).text
+        assert 'href="/impressum"' in text and 'href="/datenschutz"' in text, path

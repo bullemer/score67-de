@@ -1,0 +1,15 @@
+{
+  "_comment": "Operator details for /impressum and /datenschutz. All pages read this file; fill it before publishing.",
+  "name": "",
+  "company": "",
+  "street": "",
+  "postal_code": "",
+  "city": "",
+  "country": "Deutschland",
+  "email": "support@score67.de",
+  "phone": "",
+  "register": "",
+  "vat_id": "",
+  "responsible": "",
+  "as_of": "Oktober 2026"
+}

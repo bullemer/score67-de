@@ -562,5 +562,6 @@
   "live.finished_title": "Gerade beendet",
   "live.final": "Endstand",
   "live.ended_at": "beendet {time}",
-  "live.auto_ended": "Automatisch beendet – nach der Spielzeit kamen keine Eingaben mehr."
+  "live.auto_ended": "Automatisch beendet – nach der Spielzeit kamen keine Eingaben mehr.",
+  "forum.privacy_link": "Datenschutzerklärung"
 }

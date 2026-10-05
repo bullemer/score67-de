@@ -1384,6 +1384,14 @@ def create_app(db_url=None, secure_cookies=None):
 
     forum.register(app, lock=lock, current_account=current_account, limited=limited, sign_in=sign_in)
 
+    @app.get("/impressum", response_class=HTMLResponse)
+    @app.get("/datenschutz", response_class=HTMLResponse)
+    def legal_page(request: Request):
+        # Operator details live in shared/legal.json (one place for both pages).
+        legal = json.loads((ROOT / "shared/legal.json").read_text())
+        name = request.url.path.strip("/")
+        return templates.TemplateResponse(request=request, name=f"{name}.html", context={"page": name, "legal": legal})
+
     @app.get("/about", response_class=HTMLResponse)
     @app.get("/features", response_class=HTMLResponse)
     def info_page(request: Request):
