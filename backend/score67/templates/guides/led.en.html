@@ -2,7 +2,7 @@
 <p class="eyebrow">Build guide · draft</p>
 <h1>Build your own LED scoreboard: 64 × 32 LED panel with an ESP32 for Score67</h1>
 <p>With a ready-made LED panel, a plug-on ESP32 controller and a power supply you can build a scoreboard that shows the Score67 score in half an hour – no soldering. The board connects to score67.de over Wi-Fi and follows whichever scoreboard you assign to it in the app.</p>
-<p class="guide-note"><strong>Status:</strong> the parts list and assembly are ready. The Score67 firmware for the controller is <strong>in the works</strong>; once it is available you install it with one click in the browser. The server side on score67.de (pairing by code, live data) is already running.</p>
+<p class="guide-note"><strong>Status:</strong> the parts list and assembly are ready. The Score67 firmware for the controller is <strong>in the works</strong>; once it is available you install it with one click in the browser. The server side on score67.de (pairing by code, live data, updates over Wi-Fi) is already running.</p>
 <figure class="guide-shot"><div class="led-frame"><canvas class="led-panel" data-led-demo role="img" aria-label="Live preview: how the board shows a game (demo, 64 × 32 pixels)."></canvas></div><figcaption>Live preview: how the board shows a game (demo, 64 × 32 pixels). Interactive preview of a running game – any Score67 game can be viewed the same way via “LED preview” in the Viewer menu.</figcaption></figure>
 
 <h2>Parts list</h2>
@@ -21,10 +21,21 @@
 <li><strong>Plug on the controller:</strong> the Matrix Portal S3 goes straight onto the <strong>input header (HUB75 “In”)</strong> on the back of the panel – the arrows on the board show the data direction, the controller sits at the start. No ribbon cable, no soldering. The solder jumper for address line “E” is only needed for 64 × 64 panels, not for 64 × 32.</li>
 <li><strong>Power the panel:</strong> connect the panel's power cable to the 5 V supply (red = +5 V, black = ground). The panel draws up to 20 W – do <strong>not</strong> power it through the controller's USB-C port, which is too weak for that.</li>
 <li><strong>Connect the controller:</strong> USB-C to your computer (to install the firmware) and later to a USB power supply.</li>
-<li><strong>Install the firmware</strong> <em>(once available)</em>: open the Score67 flash page in Chrome or Edge, pick the controller, done.</li>
+<li><strong>Install the firmware</strong> <em>(once available)</em>: open the Score67 flash page in Chrome or Edge, pick the controller, done. This is needed only <strong>once</strong> – every later version comes over Wi-Fi (see below).</li>
 <li><strong>Pair with Score67</strong> <em>(once available)</em>: on first start the board opens its own Wi-Fi. Connect with your phone, enter the venue Wi-Fi and the <strong>pairing code</strong>. You create the code in the Controller under <strong>Game settings → Displays → Connect display</strong> (valid for 10 minutes).</li>
 <li><strong>Assign a scoreboard:</strong> in the same list choose which scoreboard the board shows – you can switch during the game. The board follows that scoreboard's current game automatically.</li>
 </ol>
+
+<h2>Updates over Wi-Fi (OTA)</h2>
+<p>After the first install over USB nobody needs to plug in a cable again: new firmware versions come over Wi-Fi straight from score67.de.</p>
+<ul>
+<li><strong>Automatic, but never during a game:</strong> the board installs an update only when no game is running – e.g. when no scoreboard is assigned or between two games. While the clock runs, it waits.</li>
+<li><strong>Verified:</strong> the firmware is downloaded encrypted (HTTPS) and only with the board's own credentials. Before installing, the board checks a checksum; if it does not match, the old version stays.</li>
+<li><strong>With a fallback:</strong> the controller has room for two versions. If the new one does not start cleanly or cannot reach score67.de, the board switches back to the previous version by itself after a few attempts.</li>
+<li><strong>Visible in the app:</strong> under <strong>Game settings → Displays</strong> each board shows its firmware version, a note when an update is waiting and the update status (“installed 0.2.0”).</li>
+<li><strong>Beta for testers:</strong> with the <strong>“Receive beta firmware”</strong> switch a board gets new versions while they are still being tested. Without it, only released versions arrive.</li>
+</ul>
+<p>Updates use the same Wi-Fi as the display – a phone hotspot works too. An update is about 1–2 MB.</p>
 
 <h2>Safety</h2>
 <ul>
