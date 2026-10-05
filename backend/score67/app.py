@@ -905,6 +905,18 @@ def create_app(db_url=None, secure_cookies=None):
         with lock, app.state.sessions() as db:
             return state(db, public_board(db, slug, request))
 
+    @app.get("/api/s/{slug}/led")
+    def led_preview_feed(slug: str, request: Request):
+        """The compact LED feed for one game (the LED preview page); private games
+        need the same access as the Viewer."""
+        with lock, app.state.sessions() as db:
+            b = public_board(db, slug, request)
+            now_ms = round(time.time() * 1000)
+            common = {"now_ms": now_ms, "name": b.name, "brightness": 100, "identify": False}
+            if not b.active_match:
+                return display_feed.payload(mode="idle", **common)
+            return display_feed.payload(mode="game", s=state(db, b), **common)
+
     @app.get("/api/s/{slug}/control-state")
     @app.get("/api/s/{slug}/matches/{match_id}/control-state")
     def control_state(slug: str, request: Request, match_id: str | None = None):
@@ -1591,6 +1603,13 @@ def create_app(db_url=None, secure_cookies=None):
                        for t in forum.thread_list(db)]
         pages = ["/", "/features", "/about", *guides.GUIDES, "/live", "/forum", "/datenschutz"]
         return Response(seo.sitemap(origin(request), pages, threads), media_type="application/xml")
+
+    @app.get("/s/{slug}/led", response_class=HTMLResponse)
+    def led_page(request: Request, slug: str):
+        with app.state.sessions() as db:
+            b = board(db, slug)
+            language = seo.language(request, b.language if b.language in seo.LANGUAGES else "de")
+        return page(request, "led.html", {"slug": slug, "page": "led"}, language=language, index=False)
 
     @app.get("/s/{slug}", response_class=HTMLResponse)
     @app.get("/s/{slug}/overlay", response_class=HTMLResponse)

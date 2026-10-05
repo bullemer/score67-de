@@ -1636,3 +1636,17 @@ def test_self_registering_led_display_flow(system):
     # Removing it in the app ends the device's access.
     client.delete(f'/api/displays/{info["id"]}')
     assert device.get('/api/display/state?format=compact', headers={'Authorization': f'Bearer {third["token"]}'}).status_code == 401
+
+
+def test_led_preview_page_and_feed(system):
+    app, client = system
+    slug = client.post('/api/scoreboards', json={'sport': 'basketball'}).json()['slug']
+    command(client, slug, 'settings', {'home': {'name': 'Bramfeld', 'short': 'BRA'}})
+    command(client, slug, 'period_start')
+    command(client, slug, 'score', {'team': 'home', 'points': 2})
+    feed = TestClient(app).get(f'/api/s/{slug}/led').json()
+    assert feed['mode'] == 'game' and feed['home']['short'] == 'BRA' and feed['home']['score'] == 2 and feed['period'] == 'Q1'
+    page = client.get(f'/s/{slug}/led').text
+    assert f'data-led-slug="{slug}"' in page and '/static/led.mjs' in page and 'noindex' in page
+    assert f'href="/s/{slug}/led"' in client.get(f'/s/{slug}').text
+    assert 'data-led-demo' in client.get('/anzeigetafel/led-bauanleitung').text

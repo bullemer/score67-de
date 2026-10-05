@@ -44,6 +44,7 @@
 <a id="take-control" class="menu-control" href="/s/{{ slug }}/control" data-label="{{ 'control' if controller else 'share.take_control' }}"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12.7 10A6 6 0 1 0 12.7 14H17v4h4v-4h2v-4H12.7zM7 14a2 2 0 1 1 0-4 2 2 0 0 1 0 4z"/></svg><span data-i18n="{{ 'control' if controller else 'share.take_control' }}"></span></a>
 <div id="venue" class="venue" hidden><a id="venue-link" target="_blank" rel="noopener noreferrer"></a></div>
 <div class="menu-links"><a href="/live" data-i18n="live.title"></a><button id="language" aria-label="Deutsch / English">DE / EN</button></div>
+<a class="menu-led" href="/s/{{ slug }}/led" data-i18n="led.menu">LED-Vorschau</a>
 <p class="menu-meta"><span id="connection"></span><span>{% include "_legal_links.html" %}</span><span class="version-footer" data-version="{{ release_version }}" data-built="{{ release_built_at }}">{{ release_label }}</span></p>
 </div></div>
 <script type="module" src="/static/share.mjs"></script>{% endif %}

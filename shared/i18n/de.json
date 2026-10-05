@@ -615,5 +615,12 @@
   "display.brightness": "Helligkeit",
   "display.identify": "Identifizieren",
   "display.fw": "Firmware",
-  "display.signal": "WLAN"
+  "display.signal": "WLAN",
+  "led.eyebrow": "LED-Vorschau",
+  "led.title": "So sieht das Spiel auf einer LED-Tafel aus",
+  "led.text": "Live-Vorschau eines 64 × 32 LED-Panels mit der Score67-Firmware: Teamkürzel, Spielstand, Periode und Uhr – genau so, wie die Tafel es zeigen würde.",
+  "led.build": "LED-Tafel selbst bauen",
+  "led.menu": "LED-Vorschau (64 × 32)",
+  "seo.led.title": "LED-Vorschau · Score67",
+  "seo.led.description": "So sieht das Spiel auf einer 64 × 32 LED-Tafel aus."
 }

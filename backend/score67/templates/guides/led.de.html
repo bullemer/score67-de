@@ -3,7 +3,7 @@
 <h1>LED-Anzeigetafel selbst bauen: 64 × 32 LED-Panel mit ESP32 für Score67</h1>
 <p>Mit einem fertigen LED-Panel, einem steckbaren ESP32-Controller und einem Netzteil baust du in einer halben Stunde eine Anzeigetafel, die den Spielstand aus Score67 zeigt – ohne Löten. Die Tafel verbindet sich per WLAN mit score67.de und folgt dem Scoreboard, das du ihr in der App zuweist.</p>
 <p class="guide-note"><strong>Stand:</strong> Bestellliste und Aufbau sind fertig. Die Score67-Firmware für den Controller ist <strong>in Arbeit</strong>; sobald sie bereitsteht, spielst du sie mit einem Klick im Browser auf. Die Gegenstelle auf score67.de (Kopplung per Code, Live-Daten) läuft bereits.</p>
-<figure class="guide-shot"><img src="/static/guides/led-mockup.webp" width="778" height="401" alt="Entwurf der LED-Anzeige: oben die Teamkürzel HOM und GUE, groß der Spielstand 34:32 in Orange, unten die Spielzeit 12:34 in Grün" loading="lazy"><figcaption>So soll die Anzeige aussehen: Teamkürzel, Spielstand und Zeit auf 64 × 32 Pixeln.</figcaption></figure>
+<figure class="guide-shot"><div class="led-frame"><canvas class="led-panel" data-led-demo role="img" aria-label="Live-Vorschau: So zeigt die Tafel ein Spiel (Demo, 64 × 32 Pixel)."></canvas></div><figcaption>Live-Vorschau: So zeigt die Tafel ein Spiel (Demo, 64 × 32 Pixel). Interaktive Vorschau eines laufenden Spiels – jede Score67-Partie lässt sich im Viewer-Menü unter „LED-Vorschau“ genauso ansehen.</figcaption></figure>
 
 <h2>Bestellliste</h2>
 <div class="guide-table"><table>

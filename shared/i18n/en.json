@@ -615,5 +615,12 @@
   "display.brightness": "Brightness",
   "display.identify": "Identify",
   "display.fw": "Firmware",
-  "display.signal": "Wi-Fi"
+  "display.signal": "Wi-Fi",
+  "led.eyebrow": "LED preview",
+  "led.title": "How the game looks on an LED board",
+  "led.text": "Live preview of a 64 × 32 LED panel running the Score67 firmware: short names, score, period and clock – exactly as the board would show it.",
+  "led.build": "Build an LED board",
+  "led.menu": "LED preview (64 × 32)",
+  "seo.led.title": "LED preview · Score67",
+  "seo.led.description": "How the game looks on a 64 × 32 LED board."
 }

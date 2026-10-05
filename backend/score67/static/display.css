@@ -93,3 +93,4 @@ body.spectator .big .team-logo{width:min(8vw,7vh);height:min(8vw,7vh)}
 @media(orientation:landscape){body.spectator .scoreboard.big{padding-top:54px;padding-bottom:12px;gap:1vh}body.spectator .big .teams{padding:2.5vh 2vw}body.spectator .big .team{padding-top:1.5vh;gap:.5vh}body.spectator .big .team strong{font-size:min(22vw,38vh)}body.spectator .big[data-digits="3"] .team strong{font-size:min(15vw,33vh)}body.spectator .big .time{font-size:min(6vw,10vh)}}
 .menu-meta a{color:#b5c2d4}
 .viewer-controller{margin-left:auto;margin-right:10px;padding:8px 16px;border-radius:18px;background:#b6f36e;color:#111b0c!important;font-weight:700;font-size:14px;text-decoration:none}
+.menu-led{display:block;margin-top:14px;color:#b6f36e;font-weight:600}

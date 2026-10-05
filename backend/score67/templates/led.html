@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="{{ lang }}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LED-Vorschau · Score67</title>{% include "_og.html" %}<link rel="stylesheet" href="/static/display.css"><link rel="stylesheet" href="/static/site.css"></head>
+<body class="site-page led-page">{% include "_site_header.html" %}
+<main><p class="eyebrow" data-i18n="led.eyebrow">LED-Vorschau</p><h1 data-i18n="led.title">So sieht das Spiel auf einer LED-Tafel aus</h1>
+<div class="led-frame"><canvas class="led-panel" data-led-slug="{{ slug }}" role="img" aria-label="LED 64 × 32"></canvas></div>
+<p data-i18n="led.text">Live-Vorschau eines 64 × 32 LED-Panels mit der Score67-Firmware: Teamkürzel, Spielstand, Periode und Uhr – genau so, wie die Tafel es zeigen würde.</p>
+<div class="landing-actions"><a class="primary" href="/s/{{ slug }}" data-i18n="viewer">Viewer</a><a class="primary secondary" href="/anzeigetafel/led-bauanleitung" data-i18n="led.build" data-link="/anzeigetafel/led-bauanleitung">LED-Tafel selbst bauen</a></div></main>
+<footer class="version-footer site-footer"><span>{% include "_legal_links.html" %}</span></footer>
+<script type="module" src="/static/site.mjs"></script><script type="module" src="/static/led.mjs"></script></body></html>

@@ -79,6 +79,8 @@ Erneute Registrierung mit **demselben** Schlüssel (z. B. Token verloren): neues
 - Farben: Kürzel in Teamfarbe (zu dunkle Farben aufhellen), Spielstand amber, Uhr grün, gestoppt gelb.
 - Doppelpuffer der DMA-Bibliothek; neu zeichnen bei jeder Nachricht, jede Sekunde für die Uhr, **unter einer Minute (Basketball) zehnmal pro Sekunde** für Zehntel.
 
+**Referenz:** Layout, Farben und die Pixelschriften (3×5, 5×7, 10×14, 8×14) sind in `backend/score67/static/led.mjs` umgesetzt; die LED-Vorschau `/s/<code>/led` zeigt jedes Spiel genau so. `fonts.h` der Firmware wird aus denselben Bitmaps erzeugt.
+
 ### Uhr
 
 Beim Empfang merkt sich die Tafel `received = millis()`. Läuft die Uhr:

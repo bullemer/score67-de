@@ -150,7 +150,7 @@ Five server-rendered pages answer what people search for, each in German (defaul
 
 ### LED panels (ESP32 firmware) — server side
 
-Self-registering LED panels: `POST /api/display/register` (device key → token + code shown on the panel), claim in the app (Einstellungen → Anzeigetafeln → "Code von der LED-Tafel"), brightness and "Identifizieren" per panel, firmware/Wi-Fi status reported by the device, and a compact feed (`format=compact`, ~400 bytes instead of the full state) on the existing display socket. Concept and firmware plan: `docs/DISPLAY-FIRMWARE.md`; protocol: `docs/DISPLAY-API.md`; test without hardware: `cd backend && uv run python ../tools/display_sim.py [https://score67.de]`.
+Self-registering LED panels: `POST /api/display/register` (device key → token + code shown on the panel), claim in the app (Einstellungen → Anzeigetafeln → "Code von der LED-Tafel"), brightness and "Identifizieren" per panel, firmware/Wi-Fi status reported by the device, and a compact feed (`format=compact`, ~400 bytes instead of the full state) on the existing display socket. LED preview for every game: `/s/<code>/led` (Viewer menu → "LED-Vorschau"), draws the 64 × 32 pixels from `/api/s/<code>/led` exactly as the panel will; an animated demo runs on the build guide. Layout and bitmap fonts in `backend/score67/static/led.mjs` are the reference for the firmware. Concept and firmware plan: `docs/DISPLAY-FIRMWARE.md`; protocol: `docs/DISPLAY-API.md`; test without hardware: `cd backend && uv run python ../tools/display_sim.py [https://score67.de]`.
 
 ### Console menu
 
