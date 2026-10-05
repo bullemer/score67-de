@@ -565,5 +565,12 @@
   "live.auto_ended": "Automatisch beendet – nach der Spielzeit kamen keine Eingaben mehr.",
   "forum.privacy_link": "Datenschutzerklärung",
   "menu.start": "Start",
-  "menu.exit": "Verlassen (Uhr anhalten)"
+  "menu.exit": "Verlassen (Uhr anhalten)",
+  "console.box_score": "BS",
+  "box.goals": "Tore",
+  "box.all": "Gesamt",
+  "box.team_row": "Team (ohne Spieler)",
+  "box.total": "Summe",
+  "box.minutes_note": "Minuten erscheinen, wenn Spieler per Tippen aufs Feld gesetzt werden (Team-Spalte links) und die Uhr läuft.",
+  "box.player": "Spieler"
 }

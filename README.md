@@ -132,6 +132,10 @@ Shared ticker links show a real preview in WhatsApp, Facebook, Signal, Telegram 
 
 `/live` keeps public games that ended within `LIVE_FINISHED_HOURS` (default 6) in a "Gerade beendet" section under the running games: final score, end time, "ended automatically" when the auto end closed it, venue, description and livestream link. The card opens that game's ticker (`?match=` when the board has moved on to another game).
 
+### Box score (BS tab)
+
+The console's sixth tab "BS" lists the selected team's statistics for the whole game or one period: basketball MIN, PTS, FT (made/attempted), FT%, 2P, 3P, PF (personal + player technicals), RB; football MIN, goals, YC, RC. One row per squad player, a "Team" row for entries without a player (incl. admin score corrections, so the sum equals the score) and the total. Minutes are game-clock time on court, replayed from the lineup (players tapped on court, substitutions) and the period starts/ends, the running period up to now; without a lineup or clock they show "–". Undone and corrected entries do not count (`control/lib/box_score.dart`, tested in `box_score_test.dart`).
+
 ### Console menu
 
 The ☰ menu only leaves the console: **Start** (start page), **Meine Scoreboards** and **Verlassen** (stops a running basketball clock first; the game stays open and can be resumed from My scoreboards). Everything else is in the console itself: teams in the Team tab, all settings in Einstellungen, PIN/links/sharing in Teilen, ending the game via 🏁 / the Period tab.

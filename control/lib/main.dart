@@ -17,6 +17,7 @@ import 'team_editor.dart';
 import 'displays.dart';
 import 'logo_picker.dart';
 import 'location_frame.dart';
+import 'box_score.dart';
 import 'led_display.dart';
 import 'command_queue.dart';
 import 'package:web/web.dart' as web;
@@ -2462,6 +2463,18 @@ class _Score67State extends State<Score67> {
         (t('console.period'), periodPanel()),
         (t('console.settings'), settingsPanel()),
         (t('console.sharing'), sharingPanel()),
+        (
+          t('console.box_score'),
+          BoxScorePanel(
+            state: state,
+            t: t,
+            periodLabel: (p) {
+              final label = periodLabel({...state, 'period': p});
+              return label.isEmpty ? '$p' : label;
+            },
+            elapsed: elapsed,
+          ),
+        ),
       ],
     );
   }

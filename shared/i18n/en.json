@@ -565,5 +565,12 @@
   "live.auto_ended": "Ended automatically – no more entries after the playing time.",
   "forum.privacy_link": "Privacy policy (German)",
   "menu.start": "Start",
-  "menu.exit": "Exit (stop the clock)"
+  "menu.exit": "Exit (stop the clock)",
+  "console.box_score": "BS",
+  "box.goals": "Goals",
+  "box.all": "All",
+  "box.team_row": "Team (no player)",
+  "box.total": "Total",
+  "box.minutes_note": "Minutes appear once players are tapped on court (team column, left) and the clock runs.",
+  "box.player": "Player"
 }
