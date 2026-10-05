@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Forum · Score67</title><meta name="description" content="Erfahrungen, Fragen und Wünsche rund um Score67 teilen.">
+<link rel="stylesheet" href="/static/display.css"><link rel="stylesheet" href="/static/site.css"></head>
+<body class="site-page forum-page" data-thread="{{ thread_id or '' }}">{% include "_site_header.html" %}
+<main>
+<p class="crumb" id="crumb" hidden><a href="/forum" data-i18n="forum.back" data-link="/forum"></a></p>
+<p class="eyebrow" data-i18n="forum.eyebrow"></p><h1 id="heading" data-i18n="forum.title"></h1><p id="intro" data-i18n="forum.intro"></p>
+<p id="status" role="status" aria-live="polite"></p>
+<div id="posts" class="forum-list"></div>
+<section class="forum-form" id="compose">
+<h2 id="compose-title"></h2>
+<p id="mail-off" class="forum-note" data-i18n="forum.mail_off" hidden></p>
+<form id="write" novalidate>
+<label><span data-i18n="forum.name"></span><input name="name" maxlength="60" required autocomplete="nickname"></label>
+<label id="email-row"><span data-i18n="forum.email"></span><input name="email" type="email" maxlength="254" autocomplete="email"><small data-i18n="forum.email_note"></small></label>
+<p id="signed-in" class="forum-note" hidden></p>
+<label id="title-row"><span data-i18n="forum.subject"></span><input name="title" maxlength="120"></label>
+<label><span data-i18n="forum.text"></span><textarea name="body" rows="6" maxlength="4000" required></textarea></label>
+<label class="forum-hp" aria-hidden="true">Website<input name="website" tabindex="-1" autocomplete="off"></label>
+<button class="primary" type="submit" data-i18n="forum.send"></button>
+</form>
+<form id="verify" hidden novalidate>
+<p class="forum-note" id="verify-note"></p>
+<label><span data-i18n="forum.code"></span><input name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required></label>
+<button class="primary" type="submit" data-i18n="forum.publish"></button>
+</form>
+</section></main>
+<footer class="version-footer" data-version="{{ release_version }}" data-built="{{ release_built_at }}">{{ release_label }}</footer>
+<script type="module" src="/static/forum.mjs"></script></body></html>

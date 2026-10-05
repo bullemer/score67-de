@@ -2,7 +2,7 @@ import os
 import time
 from pathlib import Path
 
-from sqlalchemy import false, JSON, LargeBinary, Boolean, Float, ForeignKey, Integer, String, create_engine, event, text
+from sqlalchemy import false, JSON, LargeBinary, Boolean, Float, ForeignKey, Integer, String, Text, create_engine, event, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 
@@ -136,6 +136,28 @@ class Receipt(Base):
     fingerprint: Mapped[str] = mapped_column(String(64))
 
 
+class ForumPost(Base):
+    """A forum thread (thread_id None) or a reply. Unpublished until the
+    author's email is confirmed with a code; the address is never shown."""
+    __tablename__ = "forum_post"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    thread_id: Mapped[int | None] = mapped_column(ForeignKey("forum_post.id"), nullable=True, index=True)
+    title: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    body: Mapped[str] = mapped_column(Text)
+    author_name: Mapped[str] = mapped_column(String(60))
+    email: Mapped[str] = mapped_column(String(254))
+    account_id: Mapped[str | None] = mapped_column(ForeignKey("account.id"), nullable=True)
+    language: Mapped[str] = mapped_column(String(2), default="de")
+    created_at: Mapped[float] = mapped_column(Float)
+    code_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    code_expires_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+    code_attempts: Mapped[int] = mapped_column(Integer, default=0)
+    published_at: Mapped[float | None] = mapped_column(Float, nullable=True, index=True)
+    hidden_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # One-click hide link in the moderator notification.
+    moderation_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
 class RateLimit(Base):
     __tablename__ = "rate_limit"
     key: Mapped[str] = mapped_column(String(100), primary_key=True)
@@ -158,6 +180,6 @@ def database(url: str | None = None):
     else:
         with engine.connect() as connection:
             version = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            if version != "0010_accounts":
+            if version != "0011_forum":
                 raise RuntimeError("Database schema does not match this release; run migrations first")
     return engine, sessionmaker(engine, expire_on_commit=False)

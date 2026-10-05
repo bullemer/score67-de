@@ -22,7 +22,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 
-from . import mail
+from . import forum, mail
 from .db import Account, AccountSession, Admin, Asset, LoginToken, Board, Display, DisplayAdmin, Match, MatchEvent, RateLimit, Receipt, database
 from .domain import FOOTBALL, BASKETBALL, RuleError, apply, period_ms, initial_state, normalize_clock, foul_mode, BASKETBALL_STATS, player_statistics, SHORT_MAX, FOOTBALL_EVENTS
 
@@ -758,6 +758,21 @@ def create_app(db_url=None, secure_cookies=None):
         row.count += 1
         return row.count > limit
 
+    def sign_in(db, email, response):
+        """Start an account session for a confirmed address (sign-in link or
+        forum code); creates the account on first use. Returns its id."""
+        now = time.time()
+        account = db.scalar(select(Account).where(Account.email == email))
+        if not account:
+            account = Account(id=str(uuid4()), email=email, language="de", created_at=now)
+            db.add(account)
+            db.flush()
+        token = secrets.token_urlsafe(32)
+        db.add(AccountSession(id=str(uuid4()), account_id=account.id, token_hash=digest(token), created_at=now, last_seen_at=now))
+        response.set_cookie(ACCOUNT_COOKIE, token, httponly=True, secure=secure,
+                            samesite="lax", max_age=SESSION_SECONDS, path="/")
+        return account.id
+
     @app.get("/api/account")
     def account_info(request: Request):
         with lock, app.state.sessions() as db:
@@ -800,13 +815,7 @@ def create_app(db_url=None, secure_cookies=None):
             if not login or login.used_at or login.expires_at < now:
                 raise HTTPException(401, "login_invalid")
             login.used_at = now
-            account = db.scalar(select(Account).where(Account.email == login.email))
-            if not account:
-                account = Account(id=str(uuid4()), email=login.email, language="de", created_at=now)
-                db.add(account)
-                db.flush()
-            token = secrets.token_urlsafe(32)
-            db.add(AccountSession(id=str(uuid4()), account_id=account.id, token_hash=digest(token), created_at=now, last_seen_at=now))
+            account = db.get(Account, sign_in(db, login.email, response))
             linked = 0
             for cookie in request.cookies:
                 if cookie.startswith("score67_") and len(cookie) == 18:
@@ -819,8 +828,6 @@ def create_app(db_url=None, secure_cookies=None):
                         b.owner_id = account.id
                         linked += 1
             db.commit()
-            response.set_cookie(ACCOUNT_COOKIE, token, httponly=True, secure=secure,
-                                samesite="lax", max_age=SESSION_SECONDS, path="/")
             return {"email": account.email, "linked": linked}
 
     @app.post("/api/account/logout")
@@ -1344,6 +1351,25 @@ def create_app(db_url=None, secure_cookies=None):
     @app.get("/live", response_class=HTMLResponse)
     def live_page(request: Request):
         return templates.TemplateResponse(request=request, name="live.html")
+
+    forum.register(app, lock=lock, current_account=current_account, limited=limited, sign_in=sign_in)
+
+    @app.get("/about", response_class=HTMLResponse)
+    @app.get("/features", response_class=HTMLResponse)
+    def info_page(request: Request):
+        name = request.url.path.strip("/")
+        return templates.TemplateResponse(request=request, name=f"{name}.html", context={"page": name})
+
+    @app.get("/forum", response_class=HTMLResponse)
+    @app.get("/forum/{thread_id:int}", response_class=HTMLResponse)
+    def forum_page(request: Request, thread_id: int | None = None):
+        return templates.TemplateResponse(request=request, name="forum.html",
+                                          context={"page": "forum", "thread_id": thread_id})
+
+    @app.get("/forum/moderate/{post_id:int}", response_class=HTMLResponse)
+    def forum_moderation_page(request: Request, post_id: int):
+        return templates.TemplateResponse(request=request, name="forum-moderate.html",
+                                          context={"page": "forum", "post_id": post_id})
 
     @app.get("/location-picker", response_class=HTMLResponse)
     def location_picker(request: Request):

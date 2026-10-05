@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
+<title>Moderation · Score67</title><link rel="stylesheet" href="/static/display.css"><link rel="stylesheet" href="/static/site.css"></head>
+<body class="site-page" data-post="{{ post_id }}">{% include "_site_header.html" %}
+<main><h1>Forum-Moderation</h1><p>Beitrag / post #{{ post_id }}</p>
+<div class="landing-actions"><button class="primary" id="hide">Ausblenden / Hide</button><button id="show">Wieder anzeigen / Show</button></div>
+<p id="status" role="status"></p></main>
+<script type="module">
+const post = document.body.dataset.post, key = new URLSearchParams(location.hash.slice(1)).get('k') || '';
+const status = document.querySelector('#status');
+async function set(hidden) {
+  const r = await fetch(`/api/forum/posts/${post}/moderate`, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({key, hidden})});
+  const data = await r.json().catch(() => ({}));
+  status.textContent = r.ok ? (data.hidden ? 'Ausgeblendet / hidden.' : 'Sichtbar / visible.') : 'Nicht erlaubt / not allowed.';
+  if (r.ok) status.insertAdjacentHTML('beforeend', ` <a href="/forum/${data.thread_id}">Thema / thread</a>`);
+}
+document.querySelector('#hide').onclick = () => set(true);
+document.querySelector('#show').onclick = () => set(false);
+</script></body></html>

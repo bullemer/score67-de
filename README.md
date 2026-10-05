@@ -52,6 +52,12 @@ The development database is `backend/data/score67.db` when started from `backend
 - Future games can be prepared without interrupting the live game. Opening their controls activates them; kickoff remains manual.
 - Visible back navigation and global language/default game-format settings, saved on this browser.
 
+### Website pages and forum (v0.27)
+
+The landing page shows the headline and the three entry points (Create scoreboard, My scoreboards, Live tickers); a header navigation links **Features** (`/features`, every current feature as cards), **About** (`/about`, why the project exists) and the **Forum** (`/forum`). Texts live in `shared/i18n` like everything else (`nav.*`, `about.*`, `features.*`, `forum.*`); `static/site.mjs` renders them and keeps the language in links.
+
+The forum (`backend/score67/forum.py`, table `forum_post`, migration `0011_forum`) has topics and replies. Posting needs a confirmed email: without an account the post stays unpublished and a six-digit code is mailed (30 min, 5 attempts, 5 codes per address and hour, 20 posts per IP and hour, a hidden honeypot field). Entering the code publishes the post and signs the browser in (the same account session as the email sign-in), so later posts publish at once. Addresses are stored but never returned by the API; names, titles and texts are rendered as plain text. Unconfirmed posts are dropped after a day. With `FORUM_MODERATOR_EMAIL` set, every published post is mailed there with a one-click link to `/forum/moderate/<id>` (hide / show again; the key is only in that mail). Posting requires SMTP like the sign-in; without it the forum is read-only and says so.
+
 The five-scoreboards-per-hour creation cap is disabled during testing. `SCOREBOARD_CREATE_LIMIT=0` (default) keeps it off; a positive value enables an hourly IP limit later. PIN protection remains enabled.
 
 ## Basketball pilot (v0.7)

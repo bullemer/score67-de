@@ -1338,3 +1338,84 @@ def test_email_login_rules(system, monkeypatch):
     assert client.post('/api/account/login', json={'email': 'a@b.de'}).status_code == 429
     assert len(sent) == 5
     assert client.post('/api/account/verify', json={'token': 'x' * 40}).status_code == 401
+
+
+def test_forum_code_publishes_and_signs_in(system, monkeypatch):
+    app, client = system
+    monkeypatch.setenv('MAIL_LOG', 'true')
+    monkeypatch.setenv('FORUM_MODERATOR_EMAIL', 'mod@example.org')
+    sent = []
+    app.state.send_mail = lambda to, subject, body: sent.append((to, subject, body))
+    assert client.get('/api/forum').json() == {'threads': []}
+    assert client.get('/api/forum/me').json() == {'mail_enabled': True, 'email': None}
+    # A new topic needs a subject; the address must look like one.
+    assert client.post('/api/forum/posts', json={'body': 'Hi', 'name': 'Carla', 'email': 'c@example.org'}).status_code == 422
+    assert client.post('/api/forum/posts', json={'title': 'T', 'body': 'Hi', 'name': 'Carla', 'email': 'nope'}).status_code == 422
+    r = client.post('/api/forum/posts', json={'title': 'Wish: shot clock', 'body': 'Please add\na shot clock', 'name': 'Carla',
+                                              'email': 'Carla@Example.org', 'language': 'en'})
+    assert r.status_code == 200 and r.json()['pending']
+    post_id = r.json()['post_id']
+    to, subject, body = sent.pop()
+    code = next(line for line in body.splitlines() if line.strip().isdigit()).strip()
+    assert to == 'carla@example.org' and 'forum' in subject.lower() and len(code) == 6
+    # Unconfirmed posts are invisible.
+    assert client.get('/api/forum').json()['threads'] == []
+    wrong = '000000' if code != '000000' else '111111'
+    assert client.post(f'/api/forum/posts/{post_id}/verify', json={'code': wrong}).status_code == 401
+    r = client.post(f'/api/forum/posts/{post_id}/verify', json={'code': code})
+    assert r.status_code == 200 and r.json()['thread_id'] == post_id
+    assert client.post(f'/api/forum/posts/{post_id}/verify', json={'code': code}).status_code == 404
+    threads = client.get('/api/forum').json()['threads']
+    assert [(t['title'], t['author'], t['replies']) for t in threads] == [('Wish: shot clock', 'Carla', 0)]
+    assert 'email' not in threads[0] and 'Example' not in str(client.get(f'/api/forum/{post_id}').json())
+    # The moderator got the post with a hide link.
+    to, subject, body = sent.pop()
+    assert to == 'mod@example.org' and 'carla@example.org' in body
+    key = body.split('#k=')[1].strip()
+    # The code signed this browser in: the reply is published at once, no code.
+    assert client.get('/api/forum/me').json()['email'] == 'carla@example.org'
+    r = client.post('/api/forum/posts', json={'thread_id': post_id, 'body': 'Me too', 'name': 'Carla'})
+    assert r.json()['published'] and r.json()['thread_id'] == post_id
+    sent.clear()
+    page = client.get(f'/api/forum/{post_id}').json()
+    assert page['thread']['body'] == 'Please add\na shot clock' and [p['body'] for p in page['replies']] == ['Me too']
+    assert client.get('/api/forum').json()['threads'][0]['replies'] == 1
+    # Replies only to existing topics, not to replies.
+    assert client.post('/api/forum/posts', json={'thread_id': page['replies'][0]['id'], 'body': 'x', 'name': 'C'}).status_code == 404
+    # Moderation: the key from the mail hides the topic; a wrong key does nothing.
+    assert client.post(f'/api/forum/posts/{post_id}/moderate', json={'key': 'x' * 20}).status_code == 403
+    assert client.post(f'/api/forum/posts/{post_id}/moderate', json={'key': key}).json()['hidden']
+    assert client.get('/api/forum').json()['threads'] == []
+    assert client.get(f'/api/forum/{post_id}').status_code == 404
+    assert not client.post(f'/api/forum/posts/{post_id}/moderate', json={'key': key, 'hidden': False}).json()['hidden']
+    for path in ('/forum', f'/forum/{post_id}', '/about', '/features', '/', f'/forum/moderate/{post_id}'):
+        assert client.get(path).status_code == 200, path
+
+
+def test_forum_codes_expire_lock_and_bots_are_ignored(system, monkeypatch):
+    app, client = system
+    sent = []
+    app.state.send_mail = lambda to, subject, body: sent.append(body)
+    # Without mail delivery nobody can confirm an address.
+    monkeypatch.delenv('SMTP_HOST', raising=False)
+    monkeypatch.setenv('MAIL_LOG', 'false')
+    new = {'title': 'T', 'body': 'B', 'name': 'N', 'email': 'n@example.org'}
+    assert client.post('/api/forum/posts', json=new).status_code == 503
+    monkeypatch.setenv('MAIL_LOG', 'true')
+    # The honeypot field: answered like a success, nothing stored or sent.
+    assert client.post('/api/forum/posts', json={**new, 'website': 'http://spam'}).json() == {'pending': True, 'post_id': 0}
+    assert sent == []
+    post_id = client.post('/api/forum/posts', json=new).json()['post_id']
+    for _ in range(5):
+        assert client.post(f'/api/forum/posts/{post_id}/verify', json={'code': '99999a'}).status_code == 401
+    assert client.post(f'/api/forum/posts/{post_id}/verify', json={'code': '99999a'}).status_code == 429
+    post_id = client.post('/api/forum/posts', json=new).json()['post_id']
+    code = next(line for line in sent[-1].splitlines() if line.strip().isdigit()).strip()
+    import score67.forum as forum
+    monkeypatch.setattr(forum.time, 'time', lambda: 4_000_000_000.0)
+    assert client.post(f'/api/forum/posts/{post_id}/verify', json={'code': code}).status_code == 410
+    # Five codes per address and hour.
+    monkeypatch.undo()
+    monkeypatch.setenv('MAIL_LOG', 'true')
+    codes = [client.post('/api/forum/posts', json=new).status_code for _ in range(5)]
+    assert codes[-1] == 429
