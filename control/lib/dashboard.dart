@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 
 import 'account.dart';
 import 'dates.dart';
+import 'fixture_import.dart';
 import 'game_editor.dart';
 
 typedef DashboardApi =
@@ -23,9 +24,13 @@ class Dashboard extends StatefulWidget {
 
   /// Image picker for team logos (browser only; null hides logo upload).
   final Future<String?> Function() pickLogo;
+
+  /// Opens an external link in a new tab (browser only; null hides the link).
+  final void Function(String)? openLink;
   const Dashboard({
     super.key,
     this.pickLogo = _noLogo,
+    this.openLink,
     required this.api,
     required this.t,
     required this.navigate,
@@ -234,6 +239,12 @@ class _DashboardState extends State<Dashboard> {
     bool scheduled = false;
     DateTime when = DateTime.now().add(const Duration(days: 1));
     String validation = '';
+    Map<String, dynamic>? fixture;
+    int? lineup;
+    final shorts = {
+      'home': TextEditingController(),
+      'away': TextEditingController(),
+    };
     await showDialog<void>(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -245,7 +256,43 @@ class _DashboardState extends State<Dashboard> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  FixtureImport(
+                    api: widget.api,
+                    t: t,
+                    enabled: enabled,
+                    onLoaded: (f) => update(() {
+                      fixture = f;
+                      sport = f['sport'];
+                      final format = f['format'];
+                      periods =
+                          format?['period_count'] ??
+                          (sport == 'basketball'
+                              ? widget.basketballPeriods
+                              : widget.periods);
+                      minutes =
+                          format?['period_length_min'] ??
+                          (sport == 'basketball'
+                              ? widget.basketballMinutes
+                              : widget.minutes);
+                      lineup = format?['lineup_size'];
+                      for (final team in ['home', 'away']) {
+                        final name = f[team]['name'] as String;
+                        (team == 'home' ? home : away).text = name.length > 60
+                            ? name.substring(0, 60)
+                            : name;
+                        shorts[team]!.text = f[team]['short'] ?? '';
+                      }
+                      final int? kickoff = f['kickoff'];
+                      scheduled =
+                          kickoff != null &&
+                          kickoff > DateTime.now().millisecondsSinceEpoch;
+                      if (scheduled) {
+                        when = DateTime.fromMillisecondsSinceEpoch(kickoff!);
+                      }
+                    }),
+                  ),
                   DropdownButtonFormField<String>(
+                    key: ValueKey(sport),
                     initialValue: sport,
                     items: [
                       for (final value in ['football', 'basketball'])
@@ -284,23 +331,38 @@ class _DashboardState extends State<Dashboard> {
                     ),
                   if (sport == 'basketball') Text(t('basketball.pilot')),
                   const SizedBox(height: 12),
-                  TextField(
-                    controller: home,
-                    maxLength: 60,
-                    decoration: InputDecoration(
-                      labelText: t('home'),
-                      border: const OutlineInputBorder(),
+                  for (final team in ['home', 'away']) ...[
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: team == 'home' ? home : away,
+                            maxLength: 60,
+                            decoration: InputDecoration(
+                              labelText: t(team),
+                              border: const OutlineInputBorder(),
+                            ),
+                          ),
+                        ),
+                        if (fixture != null) ...[
+                          const SizedBox(width: 8),
+                          SizedBox(
+                            width: 84,
+                            child: TextField(
+                              controller: shorts[team],
+                              maxLength: 3,
+                              textCapitalization: TextCapitalization.characters,
+                              decoration: InputDecoration(
+                                labelText: t('fixture.short'),
+                                border: const OutlineInputBorder(),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: away,
-                    maxLength: 60,
-                    decoration: InputDecoration(
-                      labelText: t('away'),
-                      border: const OutlineInputBorder(),
-                    ),
-                  ),
+                    if (team == 'home') const SizedBox(height: 12),
+                  ],
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
                     title: Text(t('game.schedule')),
@@ -366,10 +428,19 @@ class _DashboardState extends State<Dashboard> {
                   'sport': sport,
                   'period_count': periods,
                   'period_length_min': minutes,
-                  // The next game keeps the team's format (players on the field).
-                  if (previous?['sport'] == sport &&
+                  // The next game keeps the team's format (players on the field),
+                  // unless the imported game suggests one.
+                  if (lineup != null)
+                    'lineup_size': lineup
+                  else if (previous?['sport'] == sport &&
                       previous?['lineup_size'] != null)
                     'lineup_size': previous!['lineup_size'],
+                  if (fixture != null) ...{
+                    for (final team in ['home', 'away'])
+                      if (shorts[team]!.text.trim().isNotEmpty)
+                        '${team}_short': shorts[team]!.text.trim(),
+                    'fixture': fixture,
+                  },
                 };
                 Navigator.pop(context);
                 write('/api/s/${board['slug']}/matches', body);
@@ -443,6 +514,15 @@ class _DashboardState extends State<Dashboard> {
           if ((board['description'] ?? '').isNotEmpty) ...[
             const SizedBox(height: 6),
             Text(board['description'], style: const TextStyle(fontSize: 15)),
+          ],
+          if (game['fixture'] != null) ...[
+            const SizedBox(height: 4),
+            FixtureFacts(
+              fixture: game['fixture'],
+              t: t,
+              open: widget.openLink,
+              fontSize: 13,
+            ),
           ],
           const SizedBox(height: 8),
           Text(

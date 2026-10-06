@@ -16,6 +16,7 @@ import 'match_console.dart';
 import 'team_editor.dart';
 import 'displays.dart';
 import 'logo_picker.dart';
+import 'fixture_import.dart';
 import 'location_frame.dart';
 import 'box_score.dart';
 import 'led_display.dart';
@@ -137,6 +138,46 @@ class _Score67State extends State<Score67> {
   final draftDescription = TextEditingController();
   final draftStream = TextEditingController();
   DateTime? draftStart;
+  // Taken over from a fussball.de / basketball-bund.net game link (optional).
+  Map<String, dynamic>? draftFixture;
+  final draftTeams = {
+    for (final key in ['home', 'away', 'home_short', 'away_short'])
+      key: TextEditingController(),
+  };
+
+  /// Fills the create form from a looked-up game; everything stays editable.
+  void applyFixture(Map<String, dynamic> f) => setState(() {
+    draftFixture = f;
+    if (draftSport != f['sport']) {
+      draftSport = f['sport'];
+      applyDefaultFormat(draftSport);
+      lineupInput.text = draftSport == 'basketball' ? '5' : '11';
+    }
+    final format = f['format'];
+    if (format != null) {
+      draftPeriods = format['period_count'];
+      draftMinutes = format['period_length_min'];
+      if (format['lineup_size'] != null) {
+        lineupInput.text = '${format['lineup_size']}';
+      }
+    }
+    for (final team in ['home', 'away']) {
+      final name = (f[team]['name'] as String);
+      draftTeams[team]!.text = name.length > 60 ? name.substring(0, 60) : name;
+      draftTeams['${team}_short']!.text = f[team]['short'] ?? '';
+    }
+    if (draftDescription.text.trim().isEmpty) {
+      draftDescription.text = f['description'] ?? '';
+    }
+    final int? kickoff = f['kickoff'];
+    draftStart =
+        kickoff != null && kickoff > DateTime.now().millisecondsSinceEpoch
+        ? DateTime.fromMillisecondsSinceEpoch(kickoff)
+        : null;
+    if (f['location'] != null && draftLocation == null) {
+      draftLocation = Map<String, dynamic>.from(f['location']);
+    }
+  });
 
   String t(String key) =>
       (words[key] ?? words['error.generic'] ?? key).toString();
@@ -829,6 +870,12 @@ class _Score67State extends State<Score67> {
           'stream_url': draftStream.text.trim().isEmpty
               ? null
               : draftStream.text.trim(),
+          if (draftFixture != null) ...{
+            for (final entry in draftTeams.entries)
+              if (entry.value.text.trim().isNotEmpty)
+                entry.key: entry.value.text.trim(),
+            'fixture': draftFixture,
+          },
         },
       );
       // Straight to the console; PIN and links live in its Sharing tab.
@@ -1648,6 +1695,12 @@ class _Score67State extends State<Score67> {
                   '${t('scheduled')}: ${dateLabel(state['scheduled_at'])}',
                   style: muted,
                 ),
+              if (state['fixture'] != null)
+                FixtureFacts(
+                  fixture: state['fixture'],
+                  t: t,
+                  open: (url) => web.window.open(url, '_blank'),
+                ),
             ],
           ),
         ),
@@ -1712,6 +1765,12 @@ class _Score67State extends State<Score67> {
   }
 
   Widget createView() => section(t('create'), [
+    FixtureImport(
+      api: (path, method, body) => api(path, method: method, body: body),
+      t: t,
+      enabled: !busy,
+      onLoaded: applyFixture,
+    ),
     Wrap(
       spacing: 12,
       children: [
@@ -1788,7 +1847,39 @@ class _Score67State extends State<Score67> {
     ),
     Text(t('lineup_size.note')),
     const SizedBox(height: 12),
-    Text(t('create.note')),
+    if (draftFixture == null) Text(t('create.note')),
+    if (draftFixture != null)
+      for (final team in ['home', 'away'])
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: draftTeams[team],
+                  maxLength: 60,
+                  decoration: InputDecoration(
+                    labelText: t(team),
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                width: 84,
+                child: TextField(
+                  controller: draftTeams['${team}_short'],
+                  maxLength: 3,
+                  textCapitalization: TextCapitalization.characters,
+                  decoration: InputDecoration(
+                    labelText: t('fixture.short'),
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
     const SizedBox(height: 16),
     TextField(
       controller: draftDescription,
@@ -4042,6 +4133,8 @@ class _Score67State extends State<Score67> {
                                     basketballPeriods: basketballPeriods,
                                     basketballMinutes: basketballMinutes,
                                     pickLogo: pickLogo,
+                                    openLink: (url) =>
+                                        web.window.open(url, '_blank'),
                                   )
                                 else if (slug.isEmpty)
                                   createView()
@@ -4087,6 +4180,9 @@ class _Score67State extends State<Score67> {
     pinInput.dispose();
     deviceName.dispose();
     draftDescription.dispose();
+    for (final c in draftTeams.values) {
+      c.dispose();
+    }
     draftStream.dispose();
     periodsInput.dispose();
     minutesInput.dispose();

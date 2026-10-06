@@ -141,6 +141,8 @@ class Match(Base):
     trash_reason: Mapped[str | None] = mapped_column(String(20), nullable=True)
     # Last management activity (restore, schedule, activate); events carry their own times.
     touched_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Facts taken from a league website (fixtures.stored): link, game number, league, venue, clubs.
+    fixture: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
 class MatchEvent(Base):
@@ -203,6 +205,6 @@ def database(url: str | None = None):
     else:
         with engine.connect() as connection:
             version = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            if version != "0013_firmware":
+            if version != "0014_fixture":
                 raise RuntimeError("Database schema does not match this release; run migrations first")
     return engine, sessionmaker(engine, expire_on_commit=False)

@@ -632,5 +632,21 @@
   "features.boxscore.text": "Minutes on court, points, free throws with percentage, 2s, 3s, fouls and rebounds per player – for the whole game or one period. In football, goals and cards per player.",
   "features.led.title": "Build your own LED scoreboard",
   "features.led.text": "A 64 × 32 LED panel and a plug-on ESP32 (Adafruit Matrix Portal S3) become a board that shows the game live, no soldering – build guide with parts list, LED preview for every game, pairing by code and updates over Wi-Fi. The firmware is in the works.",
-  "landing.guides": "Guides & how-tos"
+  "landing.guides": "Guides & how-tos",
+  "fixture.title": "Import game (optional)",
+  "fixture.hint": "Copy the full link of the game page on fussball.de or basketball-bund.net and paste it here. Teams, kickoff, venue, league and game number are filled in. Other websites are not supported yet.",
+  "fixture.link": "Game link (fussball.de or basketball-bund.net)",
+  "fixture.load": "Import",
+  "fixture.error.url": "This is not a game link from fussball.de or basketball-bund.net. Open the page of the single game there and copy its full address.",
+  "fixture.error.not_found": "This game was not found. Please check the link.",
+  "fixture.error.unavailable": "The website cannot be reached right now. Try again shortly or enter the game by hand.",
+  "fixture.cancelled": "Note: the game is marked as cancelled there.",
+  "fixture.no_time": "No kickoff time found – please choose the start time yourself.",
+  "fixture.past": "The kickoff is in the past – the start time was not taken over.",
+  "fixture.check": "Please check: names, short names and game format can be changed below.",
+  "fixture.short": "Short",
+  "fixture.number": "Game no.",
+  "fixture.error.rate_limited": "Too many lookups in a short time. Please try again in an hour.",
+  "features.import.title": "Import a game from fussball.de or basketball-bund.net",
+  "features.import.text": "Paste the link of the game page – teams with short names, kickoff, venue, league, matchday and game number are filled in, and the playing time and number of players are suggested for the age group. Everything stays editable. Websites from other countries can be added later."
 }

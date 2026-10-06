@@ -22,7 +22,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 
-from . import display_feed, firmware, forum, guides, mail, preview, seo
+from . import display_feed, firmware, fixtures, forum, guides, mail, preview, seo
 from .db import Account, AccountSession, Admin, Asset, LoginToken, Board, Display, DisplayAdmin, Match, MatchEvent, RateLimit, Receipt, database
 from .domain import FOOTBALL, BASKETBALL, RuleError, apply, period_ms, initial_state, normalize_clock, foul_mode, BASKETBALL_STATS, player_statistics, SHORT_MAX, FOOTBALL_EVENTS
 
@@ -161,6 +161,26 @@ class CreateBoard(StrictModel):
     period_length_min: int | None = Field(default=None, ge=1, le=120)
     lineup_size: int | None = Field(default=None, ge=1, le=11)
     location: Location | None = None
+    # Optional, e.g. from a fussball.de / basketball-bund.net lookup (fixture = its result).
+    home: str | None = Field(default=None, max_length=60)
+    away: str | None = Field(default=None, max_length=60)
+    home_short: str | None = Field(default=None, max_length=SHORT_MAX)
+    away_short: str | None = Field(default=None, max_length=SHORT_MAX)
+    fixture: dict | None = None
+
+
+class FixtureLookup(StrictModel):
+    url: str = Field(min_length=10, max_length=500)
+
+
+def name_teams(s, body):
+    """Team names and short names of a new game; a missing short name is guessed."""
+    for team in ("home", "away"):
+        name = (getattr(body, team) or "").strip()
+        if not name:
+            continue
+        short = fixtures.ascii_upper(getattr(body, f"{team}_short") or "")[:SHORT_MAX] or fixtures.guess_short(name)
+        s[team].update(name=name, short=short)
 
 
 class CreateMatch(StrictModel):
@@ -172,6 +192,9 @@ class CreateMatch(StrictModel):
     period_count: int | None = Field(default=None, ge=1, le=12)
     period_length_min: int | None = Field(default=None, ge=1, le=120)
     lineup_size: int | None = Field(default=None, ge=1, le=11)
+    home_short: str | None = Field(default=None, max_length=SHORT_MAX)
+    away_short: str | None = Field(default=None, max_length=SHORT_MAX)
+    fixture: dict | None = None
 
 
 class Claim(StrictModel):
@@ -535,7 +558,7 @@ def create_app(db_url=None, secure_cookies=None):
             "corrected": e.payload["type"] in COUNTED_EVENTS and not e.cancelled and e.id not in available_ids} for e in events]
         if private:
             s.update(description=b.description, board_created_at=round(b.created_at * 1000),
-                     private=bool(b.private), overlay_key=b.overlay_key)
+                     private=bool(b.private), overlay_key=b.overlay_key, fixture=m.fixture)
             for team in ("home", "away"):
                 if s["sport"] == "basketball":
                     s[team]["statistics"] = player_statistics(s[team], [
@@ -610,12 +633,41 @@ def create_app(db_url=None, secure_cookies=None):
             b.owner_id = account.id if account else None
             db.add(b)
             db.flush()
-            db.add(Match(id=match_id, slug=slug, state=initial_state(body.period_count, body.period_length_min, body.sport, body.lineup_size),
+            s = initial_state(body.period_count, body.period_length_min, body.sport, body.lineup_size)
+            name_teams(s, body)
+            db.add(Match(id=match_id, slug=slug, state=s, fixture=fixtures.stored(body.fixture),
                          created_at=now, scheduled_at=body.scheduled_at / 1000 if body.scheduled_at else None))
             grant(db, slug, response, "Browser")
             db.commit()
             return {"slug": slug, "pin": pin, "links": {"public": f"/s/{slug}",
                     "overlay": f"/s/{slug}/overlay", "control": f"/s/{slug}/control"}}
+
+    @app.post("/api/fixtures/lookup")
+    def lookup_fixture(body: FixtureLookup, request: Request):
+        """Prefill a new game from a fussball.de or basketball-bund.net game link.
+        The site is fetched outside the lock; nothing is stored here."""
+        link = body.url.strip()
+        try:
+            fixtures.parse_link(link)
+        except fixtures.FixtureError as e:
+            raise HTTPException(422, e.code)
+        with lock, app.state.sessions() as db:
+            now = time.time()
+            key = "fixture:" + digest(request.client.host if request.client else "unknown")
+            limit = db.get(RateLimit, key)
+            if not limit:
+                limit = RateLimit(key=key, count=0, reset_at=now + 3600)
+                db.add(limit)
+            if limit.reset_at <= now:
+                limit.count, limit.reset_at = 0, now + 3600
+            if limit.count >= int(os.getenv("FIXTURE_LOOKUP_LIMIT", "60")):
+                raise HTTPException(429, "rate_limited")
+            limit.count += 1
+            db.commit()
+        try:
+            return fixtures.lookup(link)
+        except fixtures.FixtureError as e:
+            raise HTTPException({"fixture_not_found": 404, "fixture_url": 422}.get(e.code, 502), e.code)
 
     @app.get("/api/s/{slug}/location")
     def get_location(slug: str, request: Request):
@@ -949,7 +1001,7 @@ def create_app(db_url=None, secure_cookies=None):
                     s = state(db, b, m.id)
                     games.append({**{k: s[k] for k in ("sport", "team_fouls_enabled", "match_id", "revision", "phase", "home", "away", "period_count",
                         "period_length_min", "created_at", "scheduled_at", "archived", "active", "trashed", "trash_reason", "trashed_at")},
-                        "lineup_size": s.get("lineup_size")})
+                        "lineup_size": s.get("lineup_size"), "fixture": m.fixture})
                 boards.append({"slug": b.slug, "name": b.name, "active_match": b.active_match, "description": b.description, "stream_url": b.stream_url,
                                "created_at": round(b.created_at * 1000), "matches": games,
                                "owned": bool(account and b.owner_id == account.id)})
@@ -1037,10 +1089,8 @@ def create_app(db_url=None, secure_cookies=None):
             if not body.home.strip() or not body.away.strip():
                 raise HTTPException(422, "invalid_value")
             s = initial_state(body.period_count, body.period_length_min, body.sport, body.lineup_size)
-            for team in ("home", "away"):
-                name = getattr(body, team).strip()
-                s[team].update(name=name, short="".join(name.split())[:SHORT_MAX].upper())
-            m = Match(id=str(uuid4()), slug=slug, state=s,
+            name_teams(s, body)
+            m = Match(id=str(uuid4()), slug=slug, state=s, fixture=fixtures.stored(body.fixture),
                       scheduled_at=body.scheduled_at / 1000 if body.scheduled_at else None)
             db.add(m)
             db.add(Receipt(id=key, fingerprint=fingerprint))

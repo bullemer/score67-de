@@ -1,0 +1,85 @@
+{
+    "timestamp": "2026-10-06T09:46:39+0200",
+    "status": "0",
+    "message": "",
+    "data": {
+        "ligaData": {
+            "seasonId": 2026,
+            "seasonName": "2026/2027",
+            "actualMatchDay": {
+                "spieltag": 3,
+                "bezeichnung": "3. Spieltag"
+            },
+            "ligaId": 56091,
+            "liganame": "Jugend M11A (Ost)",
+            "liganr": 511023,
+            "skName": "Offene Runde A",
+            "skNameSmall": null,
+            "skEbeneId": 1,
+            "skEbeneName": "Bezirk",
+            "akName": "U11",
+            "geschlechtId": 3,
+            "geschlecht": "mix",
+            "verbandId": 5,
+            "verbandName": "Hamburg",
+            "bezirknr": null,
+            "bezirkName": null,
+            "kreisnr": null,
+            "kreisname": null,
+            "statisticType": 1,
+            "vorabliga": false,
+            "tableExists": true,
+            "crossTableExists": true
+        },
+        "matchId": 2978034,
+        "matchDay": 4,
+        "matchNo": 1542,
+        "kickoffDate": "2026-10-11",
+        "kickoffTime": "11:30",
+        "homeTeam": {
+            "seasonTeamId": 466444,
+            "teamCompetitionId": 466444,
+            "teamPermanentId": 315997,
+            "teamname": "BC Hamburg e.V. (1)",
+            "teamnameSmall": "BCH1",
+            "clubId": 1840,
+            "verzicht": false
+        },
+        "guestTeam": {
+            "seasonTeamId": 466445,
+            "teamCompetitionId": 466445,
+            "teamPermanentId": 315072,
+            "teamname": "Bramfelder SV von 1945 (1)",
+            "teamnameSmall": "BSV1",
+            "clubId": 1460,
+            "verzicht": false
+        },
+        "result": null,
+        "ergebnisbestaetigt": false,
+        "statisticType": 0,
+        "verzicht": false,
+        "abgesagt": false,
+        "matchResult": null,
+        "matchInfo": {
+            "topPerformances": [],
+            "spielfeld": {
+                "id": 105003,
+                "bezeichnung": "Handelsschule und Wirtschaftsgymnasium City Nord",
+                "strasse": "Tessenowweg 3",
+                "plz": "22297",
+                "ort": "Hamburg"
+            },
+            "srList": null
+        },
+        "matchBoxscore": null,
+        "playByPlay": null,
+        "hasPlayByPlay": false
+    },
+    "version": "12.01.1-f733da5",
+    "dateFormat": "yyyy-MM-dd",
+    "timeFormat": "yyyy-MM-dd'T'HH:mm:ssZ",
+    "timeFormatShort": "HH:mm",
+    "serverInstance": "www",
+    "username": null,
+    "appContext": "https://www.basketball-bund.net"
+}

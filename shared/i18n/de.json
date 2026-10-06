@@ -632,5 +632,21 @@
   "features.boxscore.text": "Minuten auf dem Feld, Punkte, Freiwürfe mit Quote, 2er, 3er, Fouls und Rebounds je Spieler – für das ganze Spiel oder jede Periode. Im Fußball Tore und Karten je Spieler.",
   "features.led.title": "LED-Anzeigetafel selbst bauen",
   "features.led.text": "Aus einem 64 × 32 LED-Panel und einem steckbaren ESP32 (Adafruit Matrix Portal S3) wird ohne Löten eine Tafel, die das Spiel live zeigt – Bauanleitung mit Bestellliste, LED-Vorschau für jedes Spiel, Kopplung per Code und Updates über WLAN. Die Firmware ist in Arbeit.",
-  "landing.guides": "Anleitungen & Ratgeber"
+  "landing.guides": "Anleitungen & Ratgeber",
+  "fixture.title": "Spiel übernehmen (optional)",
+  "fixture.hint": "Kopiere den kompletten Link der Spielseite von fussball.de oder basketball-bund.net und füge ihn hier ein. Teams, Anstoß, Spielort, Liga und Spielnummer werden übernommen. Andere Seiten werden noch nicht unterstützt.",
+  "fixture.link": "Link zum Spiel (fussball.de oder basketball-bund.net)",
+  "fixture.load": "Übernehmen",
+  "fixture.error.url": "Das ist kein Spiel-Link von fussball.de oder basketball-bund.net. Öffne dort die Seite des einzelnen Spiels und kopiere die komplette Adresse.",
+  "fixture.error.not_found": "Dieses Spiel wurde nicht gefunden. Prüfe den Link.",
+  "fixture.error.unavailable": "Die Seite ist gerade nicht erreichbar. Versuch es gleich noch einmal oder trage das Spiel von Hand ein.",
+  "fixture.cancelled": "Achtung: Das Spiel ist dort als abgesagt markiert.",
+  "fixture.no_time": "Keine Anstoßzeit gefunden – bitte Startzeit selbst wählen.",
+  "fixture.past": "Der Anstoß liegt in der Vergangenheit – die Startzeit wurde nicht übernommen.",
+  "fixture.check": "Bitte kurz prüfen: Namen, Kürzel und Spielformat kannst du unten ändern.",
+  "fixture.short": "Kürzel",
+  "fixture.number": "Spiel-Nr.",
+  "fixture.error.rate_limited": "Zu viele Abrufe in kurzer Zeit. Bitte in einer Stunde erneut versuchen.",
+  "features.import.title": "Spiel von fussball.de oder basketball-bund.net übernehmen",
+  "features.import.text": "Link der Spielseite einfügen – Teams mit Kürzeln, Anstoß, Spielort, Liga, Spieltag und Spielnummer werden übernommen, Spielzeit und Spieleranzahl passend zur Altersklasse vorgeschlagen. Alles bleibt änderbar. Seiten aus anderen Ländern können später dazukommen."
 }

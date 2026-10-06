@@ -1,6 +1,6 @@
 [project]
 name = "score67"
-version = "0.27.0"
+version = "0.29.0"
 requires-python = ">=3.11"
 dependencies = [
   "fastapi>=0.115,<1",
@@ -10,6 +10,8 @@ dependencies = [
   "jinja2>=3.1,<4",
   "alembic>=1.20.0",
   "pillow>=11,<13",
+  "fonttools>=4.50,<5",
+  "tzdata>=2024.1",
 ]
 
 [dependency-groups]

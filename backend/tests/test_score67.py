@@ -1698,3 +1698,90 @@ def test_firmware_releases_offer_and_download(system, monkeypatch):
     # Withdrawn releases are neither offered nor downloadable.
     client.put('/api/firmware/0.2.0', json={'channel': 'off'}, headers=admin)
     assert device.get('/fw/0.2.0.bin', headers=auth).status_code == 404
+
+
+DATA = Path(__file__).parent / 'samples'
+
+
+@pytest.fixture
+def offline_sites(monkeypatch):
+    """League websites served from saved copies; no network in tests."""
+    from score67 import fixtures
+    fixtures._fonts.clear()
+    files = {'https://www.fussball.de/spiel/-/spiel/031KHH4BP4000000VS5489BTVSRD0UH9': 'fussball_youth.html',
+             'https://www.fussball.de/export.fontface/-/format/ttf/id/azfc2urv/type/font': 'fussball_font_azfc2urv.ttf',
+             'https://www.basketball-bund.net/rest/match/id/2978034/matchInfo': 'basketball_2978034.json'}
+
+    def fetch(url, accept='text/html'):
+        if url.startswith('https://nominatim.openstreetmap.org/'):
+            return b'[{"lat": "53.5893", "lon": "10.0612"}]'
+        if url not in files:
+            raise fixtures.FixtureError('fixture_not_found')
+        return (DATA / files[url]).read_bytes()
+    monkeypatch.setattr(fixtures, 'fetch', fetch)
+    monkeypatch.setattr(fixtures, '_geo_last', [0.0])
+    return fixtures
+
+
+def test_fixture_lookup_fussball_de_youth_game(system, offline_sites):
+    _, client = system
+    r = client.post('/api/fixtures/lookup', json={
+        'url': 'https://www.fussball.de/spiel/urania-3c-jun-j1-7er-polonia-2c-jun-j1-7er/-/spiel/031KHH4BP4000000VS5489BTVSRD0UH9#!/'})
+    assert r.status_code == 200, r.text
+    f = r.json()
+    assert f['sport'] == 'football' and f['source'] == 'fussball.de'
+    assert f['home'] == {'name': 'Urania 3.C-Jun. (J1) 7er', 'club': 'Urania', 'team': '3.C-Jun. (J1) 7er', 'short': 'URA'}
+    assert f['away']['club'] == 'Polonia' and f['away']['short'] == 'POL'
+    # Date and time come from the scrambled web font.
+    assert (f['date'], f['time']) == ('07.11.2026', '13:00')
+    assert f['kickoff'] == 1794052800000  # 13:00 CET
+    assert f['league'] == 'C-Junioren Kreisklasse' and f['matchday'] == '6. Spieltag'
+    assert f['game_number'] == '035575016' and f['season'] == '2026/2027'
+    assert f['venue']['street'] == 'Habichtstr. 14' and f['venue']['zip'] == '22305'
+    assert f['format'] == {'period_count': 2, 'period_length_min': 35, 'lineup_size': 7}
+    assert f['location']['visible'] is False and f['location']['lat'] == 53.5893
+    assert f['description'] == 'C-Junioren Kreisklasse · 6. Spieltag'
+
+
+def test_fixture_lookup_basketball_bund(system, offline_sites):
+    _, client = system
+    f = client.post('/api/fixtures/lookup', json={'url': 'https://www.basketball-bund.net/static/#/spiel/2978034'}).json()
+    assert f['sport'] == 'basketball' and f['game_number'] == '1542'
+    assert f['home']['short'] == 'BCH' and f['away']['short'] == 'BSV'
+    assert f['home']['club'] == 'BC Hamburg e.V.' and f['home']['team'] == '(1)'
+    assert (f['date'], f['time']) == ('11.10.2026', '11:30')
+    assert f['format'] == {'period_count': 8, 'period_length_min': 5}  # U11 = mini basketball
+    assert f['venue']['address'] == 'Handelsschule und Wirtschaftsgymnasium City Nord, Tessenowweg 3, 22297 Hamburg'
+
+
+def test_fixture_lookup_rejects_other_links(system, offline_sites):
+    _, client = system
+    for url in ('https://example.com/spiel/2978034', 'https://www.fussball.de/verein/croatia-hamburg/-/id/00ES8GN8JC000037VV0AG08LVUPGND5I'):
+        r = client.post('/api/fixtures/lookup', json={'url': url})
+        assert r.status_code == 422 and r.json()['error'] == 'fixture_url'
+    r = client.post('/api/fixtures/lookup', json={'url': 'https://www.basketball-bund.net/static/#/spiel/1'})
+    assert r.status_code == 422  # too short to be a game id
+    r = client.post('/api/fixtures/lookup', json={'url': 'https://www.basketball-bund.net/static/#/spiel/12345'})
+    assert r.status_code == 404 and r.json()['error'] == 'fixture_not_found'
+
+
+def test_create_board_and_game_with_fixture(system, offline_sites):
+    _, client = system
+    f = client.post('/api/fixtures/lookup', json={'url': 'https://www.basketball-bund.net/static/#/spiel/2978034'}).json()
+    f['url'] = 'javascript:alert(1)'
+    f['home']['name'] = '<b>x</b>' * 30
+    r = client.post('/api/scoreboards', json={'sport': 'basketball', 'home': f['home']['name'][:60], 'away': 'Bramfelder SV (1)',
+                                              'home_short': 'bch', 'fixture': f, 'location': f['location']})
+    assert r.status_code == 201, r.text
+    slug = r.json()['slug']
+    s = client.get(f'/api/s/{slug}/control-state').json()
+    assert s['home']['short'] == 'BCH' and s['away']['short'] == 'BRA'  # guessed when not given
+    assert s['away']['name'] == 'Bramfelder SV (1)'
+    assert s['fixture']['game_number'] == '1542' and s['fixture']['url'] == ''  # only links to the source site
+    assert len(s['fixture']['home']['name']) <= 80
+    assert 'fixture' not in state(client, slug)  # controllers and dashboard only
+    r = client.post(f'/api/s/{slug}/matches', json={'command_id': str(uuid4()), 'sport': 'basketball', 'home': 'A', 'away': 'B',
+                                                   'fixture': {'source': 'elsewhere'}})
+    assert r.status_code == 201
+    games = client.get('/api/dashboard').json()['boards'][0]['matches']
+    assert sorted(bool(g['fixture']) for g in games) == [False, True]
