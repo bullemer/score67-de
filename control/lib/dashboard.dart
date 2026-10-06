@@ -440,6 +440,7 @@ class _DashboardState extends State<Dashboard> {
                       if (shorts[team]!.text.trim().isNotEmpty)
                         '${team}_short': shorts[team]!.text.trim(),
                     'fixture': fixture,
+                    'fixture_logos': fixture!['use_logos'] == true,
                   },
                 };
                 Navigator.pop(context);

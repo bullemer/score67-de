@@ -648,5 +648,6 @@
   "fixture.number": "Game no.",
   "fixture.error.rate_limited": "Too many lookups in a short time. Please try again in an hour.",
   "features.import.title": "Import a game from fussball.de or basketball-bund.net",
-  "features.import.text": "Paste the link of the game page – teams with short names, kickoff, venue, league, matchday and game number are filled in, and the playing time and number of players are suggested for the age group. Everything stays editable. Websites from other countries can be added later."
+  "features.import.text": "Paste the link of the game page – teams with short names and club logos (fussball.de), kickoff, venue, league, matchday and game number are filled in, and the playing time and number of players are suggested for the age group. Everything stays editable. Websites from other countries can be added later.",
+  "fixture.logos": "Use club logos"
 }

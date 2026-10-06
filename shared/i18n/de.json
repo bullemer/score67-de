@@ -648,5 +648,6 @@
   "fixture.number": "Spiel-Nr.",
   "fixture.error.rate_limited": "Zu viele Abrufe in kurzer Zeit. Bitte in einer Stunde erneut versuchen.",
   "features.import.title": "Spiel von fussball.de oder basketball-bund.net übernehmen",
-  "features.import.text": "Link der Spielseite einfügen – Teams mit Kürzeln, Anstoß, Spielort, Liga, Spieltag und Spielnummer werden übernommen, Spielzeit und Spieleranzahl passend zur Altersklasse vorgeschlagen. Alles bleibt änderbar. Seiten aus anderen Ländern können später dazukommen."
+  "features.import.text": "Link der Spielseite einfügen – Teams mit Kürzeln und Vereinslogos (fussball.de), Anstoß, Spielort, Liga, Spieltag und Spielnummer werden übernommen, Spielzeit und Spieleranzahl passend zur Altersklasse vorgeschlagen. Alles bleibt änderbar. Seiten aus anderen Ländern können später dazukommen.",
+  "fixture.logos": "Vereinslogos übernehmen"
 }

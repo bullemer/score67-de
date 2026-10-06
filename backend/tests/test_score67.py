@@ -1715,12 +1715,29 @@ def offline_sites(monkeypatch):
     def fetch(url, accept='text/html'):
         if url.startswith('https://nominatim.openstreetmap.org/'):
             return b'[{"lat": "53.5893", "lon": "10.0612"}]'
+        if url.startswith('https://www.fussball.de/export.media/-/action/getLogo/format/9/id/'):
+            if url.endswith(URANIA):
+                return logo_png(200)
+            raise fixtures.FixtureError('fixture_not_found')  # club without a logo
         if url not in files:
             raise fixtures.FixtureError('fixture_not_found')
         return (DATA / files[url]).read_bytes()
     monkeypatch.setattr(fixtures, 'fetch', fetch)
     monkeypatch.setattr(fixtures, '_geo_last', [0.0])
+    fixtures._logos.clear()
     return fixtures
+
+
+def logo_png(size):
+    import io
+    from PIL import Image
+    out = io.BytesIO()
+    Image.new('RGBA', (size, size), (0, 128, 0, 255)).save(out, 'PNG')
+    return out.getvalue()
+
+
+YOUTH = 'https://www.fussball.de/spiel/-/spiel/031KHH4BP4000000VS5489BTVSRD0UH9'
+URANIA, POLONIA = '00ES8GN8JC00001MVV0AG08LVUPGND5I', '00ES8GN8JC00002EVV0AG08LVUPGND5I'
 
 
 def test_fixture_lookup_fussball_de_youth_game(system, offline_sites):
@@ -1730,7 +1747,8 @@ def test_fixture_lookup_fussball_de_youth_game(system, offline_sites):
     assert r.status_code == 200, r.text
     f = r.json()
     assert f['sport'] == 'football' and f['source'] == 'fussball.de'
-    assert f['home'] == {'name': 'Urania 3.C-Jun. (J1) 7er', 'club': 'Urania', 'team': '3.C-Jun. (J1) 7er', 'short': 'URA'}
+    assert f['home'] == {'name': 'Urania 3.C-Jun. (J1) 7er', 'club': 'Urania', 'team': '3.C-Jun. (J1) 7er', 'short': 'URA',
+                         'club_id': URANIA}
     assert f['away']['club'] == 'Polonia' and f['away']['short'] == 'POL'
     # Date and time come from the scrambled web font.
     assert (f['date'], f['time']) == ('07.11.2026', '13:00')
@@ -1785,3 +1803,28 @@ def test_create_board_and_game_with_fixture(system, offline_sites):
     assert r.status_code == 201
     games = client.get('/api/dashboard').json()['boards'][0]['matches']
     assert sorted(bool(g['fixture']) for g in games) == [False, True]
+
+
+def test_fixture_logos_from_fussball_de(system, offline_sites):
+    _, client = system
+    f = client.post('/api/fixtures/lookup', json={'url': YOUTH}).json()
+    assert f['home']['club_id'] == URANIA and f['away']['club_id'] == POLONIA
+    preview = client.get(f'/api/fixtures/logo/{URANIA}.png')
+    assert preview.status_code == 200 and preview.headers['content-type'] == 'image/png'
+    assert client.get(f'/api/fixtures/logo/{POLONIA}.png').status_code == 404
+    assert client.get('/api/fixtures/logo/..%2Fx.png').status_code == 404
+    # Without the switch no logos; with it the club that has one gets it.
+    plain = client.post('/api/scoreboards', json={'home': 'Urania', 'away': 'Polonia', 'fixture': f}).json()
+    assert 'logo' not in client.get(f"/api/s/{plain['slug']}/control-state").json()['home']
+    r = client.post('/api/scoreboards', json={'home': 'Urania', 'away': 'Polonia', 'fixture': f, 'fixture_logos': True})
+    s = client.get(f"/api/s/{r.json()['slug']}/control-state").json()
+    assert s['home']['logo'].startswith('/media/') and not s['away'].get('logo')
+    assert s['fixture']['home']['club_id'] == URANIA
+    image = client.get(s['home']['logo'])
+    assert image.status_code == 200 and image.content.startswith(b'\x89PNG')
+    # Preparing the next game on the same board works the same way.
+    r = client.post(f"/api/s/{s['scoreboard']}/matches", json={'command_id': str(uuid4()), 'home': 'Urania', 'away': 'Polonia',
+                                                              'fixture': f, 'fixture_logos': True})
+    assert r.status_code == 201, r.text
+    game = client.get(f"/api/s/{s['scoreboard']}/matches/{r.json()['match_id']}/control-state").json()
+    assert game['home']['logo'].startswith('/media/')

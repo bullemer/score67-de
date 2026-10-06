@@ -52,6 +52,8 @@ class _FixtureImportState extends State<FixtureImport> {
       final result = Map<String, dynamic>.from(
         await widget.api('/api/fixtures/lookup', 'POST', {'url': url}),
       );
+      // The choice travels with the fixture; create sends it as fixture_logos.
+      result['use_logos'] = clubIds(result).isNotEmpty;
       loaded = result;
       widget.onLoaded(result);
     } catch (e) {
@@ -67,6 +69,27 @@ class _FixtureImportState extends State<FixtureImport> {
       );
     }
     if (mounted) setState(() => busy = false);
+  }
+
+  static List<String> clubIds(Map f) => [
+    for (final team in ['home', 'away'])
+      if ((f[team]['club_id'] ?? '').toString().isNotEmpty)
+        f[team]['club_id'] as String,
+  ];
+
+  Widget logo(Map team) {
+    final id = (team['club_id'] ?? '').toString();
+    return SizedBox(
+      width: 40,
+      height: 40,
+      child: id.isEmpty
+          ? const Icon(Icons.shield_outlined, color: Color(0xff8d9bb0))
+          : Image.network(
+              Uri.base.resolve('/api/fixtures/logo/$id.png').toString(),
+              errorBuilder: (_, _, _) =>
+                  const Icon(Icons.shield_outlined, color: Color(0xff8d9bb0)),
+            ),
+    );
   }
 
   @override
@@ -132,6 +155,23 @@ class _FixtureImportState extends State<FixtureImport> {
                 style: const TextStyle(color: Color(0xffb6f36e)),
               ),
               FixtureFacts(fixture: f, t: t, link: false, date: true),
+              if (clubIds(f).isNotEmpty)
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Row(
+                    children: [
+                      logo(f['home']),
+                      const SizedBox(width: 6),
+                      logo(f['away']),
+                      const SizedBox(width: 10),
+                      Expanded(child: Text(t('fixture.logos'))),
+                    ],
+                  ),
+                  value: f['use_logos'] == true,
+                  onChanged: widget.enabled
+                      ? (v) => setState(() => f['use_logos'] = v)
+                      : null,
+                ),
               if (f['cancelled'] == true)
                 Text(
                   t('fixture.cancelled'),

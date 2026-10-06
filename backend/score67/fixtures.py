@@ -206,7 +206,10 @@ def football(game_id):
     heading = clean(title.group(1)).partition("Ergebnis:")[2].strip()
     tier = heading.split(" - ")[0].strip() if heading else league
     league_name = tier if not age_group or age_group in tier else f"{tier} {age_group}"
-    home, away = ({"name": n, "club": team_parts(n)[0], "team": team_parts(n)[1], "short": guess_short(n)} for n in names[:2])
+    # Club IDs (for the logos) from the club links in front of each team name.
+    clubs = re.findall(r'href="https://www\.fussball\.de/verein/[^"]*/-/id/([0-9A-Z]{32})"', page[page.find('class="stage-body"'):])
+    home, away = ({"name": n, "club": team_parts(n)[0], "team": team_parts(n)[1], "short": guess_short(n),
+                   "club_id": clubs[i] if len(clubs) > i else ""} for i, n in enumerate(names[:2]))
     address = clean(venue.group(1)) if venue else ""
     return {
         "source": "fussball.de", "sport": "football", "external_id": game_id,
@@ -370,4 +373,31 @@ def stored(data):
     for side in ("home", "away"):
         team = data.get(side) if isinstance(data.get(side), dict) else {}
         result[side] = {k: text(team.get(k), 80) for k in ("name", "club", "team")}
+        if data["source"] == "fussball.de" and CLUB_ID.fullmatch(str(team.get("club_id") or "")):
+            result[side]["club_id"] = team["club_id"]
     return result
+
+
+CLUB_ID = re.compile(r"[0-9A-Z]{32}")
+_logos, _logos_lock = {}, threading.Lock()
+
+
+def club_logo(club_id):
+    """The club's logo on fussball.de (200 px PNG), None if the club has none.
+    Built from the club ID only; recent results are kept for the create step."""
+    if not CLUB_ID.fullmatch(club_id or ""):
+        return None
+    with _logos_lock:
+        if club_id in _logos:
+            return _logos[club_id]
+    try:
+        data = fetch(f"https://www.fussball.de/export.media/-/action/getLogo/format/9/id/{club_id}", "image/*")
+    except FixtureError as e:
+        if e.code != "fixture_not_found":
+            raise
+        data = None
+    with _logos_lock:
+        if len(_logos) > 200:
+            _logos.clear()
+        _logos[club_id] = data
+    return data

@@ -103,13 +103,21 @@ def encode_logo(data_url):
     Only the re-encoded pixels are stored, never the uploaded bytes; oversized
     or malformed images ("decompression bombs") are rejected before decoding."""
     import base64
-    import io
-    from PIL import Image
     match = re.fullmatch(r"data:image/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)", data_url or "")
     if not match:
         raise HTTPException(422, "logo_invalid")
     try:
         raw = base64.b64decode(match[2], validate=True)
+    except ValueError as exc:
+        raise HTTPException(422, "logo_invalid") from exc
+    return encode_logo_bytes(raw)
+
+
+def encode_logo_bytes(raw):
+    """Re-encode image bytes (PNG/JPEG/WebP) as PNG, max 256 px; 422 logo_invalid otherwise."""
+    import io
+    from PIL import Image
+    try:
         with Image.open(io.BytesIO(raw)) as image:
             if image.format not in ("PNG", "JPEG", "WEBP") or image.width * image.height > LOGO_MAX_PIXELS:
                 raise ValueError("unsupported")
@@ -167,10 +175,28 @@ class CreateBoard(StrictModel):
     home_short: str | None = Field(default=None, max_length=SHORT_MAX)
     away_short: str | None = Field(default=None, max_length=SHORT_MAX)
     fixture: dict | None = None
+    # Take the clubs' logos from the source site (fussball.de).
+    fixture_logos: bool = False
 
 
 class FixtureLookup(StrictModel):
     url: str = Field(min_length=10, max_length=500)
+
+
+def fixture_logos(body):
+    """Club logos for a new game from the source site, fetched before the
+    database lock: {"home": png, ...}. Missing or broken logos are skipped."""
+    fixture = fixtures.stored(body.fixture) if body.fixture_logos else None
+    logos = {}
+    for team in ("home", "away"):
+        club_id = (fixture or {}).get(team, {}).get("club_id")
+        try:
+            raw = fixtures.club_logo(club_id) if club_id else None
+            if raw:
+                logos[team] = encode_logo_bytes(raw)
+        except (fixtures.FixtureError, HTTPException):
+            continue
+    return logos
 
 
 def name_teams(s, body):
@@ -195,6 +221,7 @@ class CreateMatch(StrictModel):
     home_short: str | None = Field(default=None, max_length=SHORT_MAX)
     away_short: str | None = Field(default=None, max_length=SHORT_MAX)
     fixture: dict | None = None
+    fixture_logos: bool = False
 
 
 class Claim(StrictModel):
@@ -605,6 +632,7 @@ def create_app(db_url=None, secure_cookies=None):
 
     @app.post("/api/scoreboards", status_code=201)
     def create(body: CreateBoard, request: Request, response: Response):
+        logos = fixture_logos(body)
         with lock, app.state.sessions() as db:
             now = time.time()
             key = "create:" + digest(request.client.host if request.client else "unknown")
@@ -635,6 +663,7 @@ def create_app(db_url=None, secure_cookies=None):
             db.flush()
             s = initial_state(body.period_count, body.period_length_min, body.sport, body.lineup_size)
             name_teams(s, body)
+            add_logos(db, slug, s, logos)
             db.add(Match(id=match_id, slug=slug, state=s, fixture=fixtures.stored(body.fixture),
                          created_at=now, scheduled_at=body.scheduled_at / 1000 if body.scheduled_at else None))
             grant(db, slug, response, "Browser")
@@ -707,20 +736,7 @@ def create_app(db_url=None, secure_cookies=None):
             m = db.get(Match, match_id)
             if not m or m.slug != slug or m.deleted_at:
                 raise HTTPException(404, "not_found")
-            url = None
-            if png is not None:
-                assets = db.scalars(select(Asset).where(Asset.slug == slug).order_by(Asset.created_at)).all()
-                if len(assets) >= 30:
-                    used = " ".join(json.dumps(x.state) for x in db.scalars(select(Match).where(Match.slug == slug)))
-                    for asset in assets:
-                        if asset.id not in used:
-                            db.delete(asset)
-                    db.flush()
-                    if db.scalar(select(func.count()).select_from(Asset).where(Asset.slug == slug)) >= 30:
-                        raise HTTPException(422, "logo_quota")
-                asset = Asset(id=uuid4().hex, slug=slug, content_type="image/png", data=png, created_at=time.time())
-                db.add(asset)
-                url = f"/media/{asset.id}.png"
+            url = store_logo(db, slug, png) if png is not None else None
             try:
                 updated, payload, before = apply(m.state, "settings", {body.team: {"logo": url}}, round(time.time() * 1000))
             except RuleError as exc:
@@ -731,6 +747,41 @@ def create_app(db_url=None, secure_cookies=None):
             m.revision += 1
             db.commit()
             return state(db, b, m.id, private=True)
+
+    def store_logo(db, slug, png):
+        """Keep a re-encoded logo for a board (max 30, unused ones are dropped first); its URL."""
+        assets = db.scalars(select(Asset).where(Asset.slug == slug).order_by(Asset.created_at)).all()
+        if len(assets) >= 30:
+            used = " ".join(json.dumps(x.state) for x in db.scalars(select(Match).where(Match.slug == slug)))
+            for asset in assets:
+                if asset.id not in used:
+                    db.delete(asset)
+            db.flush()
+            if db.scalar(select(func.count()).select_from(Asset).where(Asset.slug == slug)) >= 30:
+                raise HTTPException(422, "logo_quota")
+        asset = Asset(id=uuid4().hex, slug=slug, content_type="image/png", data=png, created_at=time.time())
+        db.add(asset)
+        return f"/media/{asset.id}.png"
+
+    def add_logos(db, slug, s, logos):
+        for team, png in logos.items():
+            try:
+                s[team]["logo"] = store_logo(db, slug, png)
+            except HTTPException:
+                break  # Logo quota: the game is created without them.
+
+    @app.get("/api/fixtures/logo/{club_id}.png")
+    def fixture_logo_preview(club_id: str):
+        """Preview of a club logo on the source site, served from here (same origin)."""
+        if not fixtures.CLUB_ID.fullmatch(club_id):
+            raise HTTPException(404, "not_found")
+        try:
+            raw = fixtures.club_logo(club_id)
+        except fixtures.FixtureError:
+            raise HTTPException(502, "fixture_unavailable")
+        if not raw:
+            raise HTTPException(404, "not_found")
+        return Response(encode_logo_bytes(raw), media_type="image/png", headers={"Cache-Control": "public, max-age=86400"})
 
     @app.get("/media/{name}")
     def media(name: str):
@@ -1074,6 +1125,7 @@ def create_app(db_url=None, secure_cookies=None):
 
     @app.post("/api/s/{slug}/matches", status_code=201)
     def create_match(slug: str, body: CreateMatch, request: Request):
+        logos = fixture_logos(body)
         with lock, app.state.sessions() as db:
             authorize(db, slug, request)
             b = board(db, slug)
@@ -1090,6 +1142,7 @@ def create_app(db_url=None, secure_cookies=None):
                 raise HTTPException(422, "invalid_value")
             s = initial_state(body.period_count, body.period_length_min, body.sport, body.lineup_size)
             name_teams(s, body)
+            add_logos(db, slug, s, logos)
             m = Match(id=str(uuid4()), slug=slug, state=s, fixture=fixtures.stored(body.fixture),
                       scheduled_at=body.scheduled_at / 1000 if body.scheduled_at else None)
             db.add(m)

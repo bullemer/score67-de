@@ -875,6 +875,7 @@ class _Score67State extends State<Score67> {
               if (entry.value.text.trim().isNotEmpty)
                 entry.key: entry.value.text.trim(),
             'fixture': draftFixture,
+            'fixture_logos': draftFixture!['use_logos'] == true,
           },
         },
       );
