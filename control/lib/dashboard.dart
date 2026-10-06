@@ -260,6 +260,7 @@ class _DashboardState extends State<Dashboard> {
                     api: widget.api,
                     t: t,
                     enabled: enabled,
+                    open: widget.openLink,
                     onLoaded: (f) => update(() {
                       fixture = f;
                       sport = f['sport'];

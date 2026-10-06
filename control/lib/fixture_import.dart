@@ -15,7 +15,11 @@ class FixtureImport extends StatefulWidget {
   final String Function(String) t;
   final void Function(Map<String, dynamic>) onLoaded;
   final bool enabled;
+
+  /// Opens a link in a new tab (injected, browser only; null hides the site links).
+  final void Function(String)? open;
   const FixtureImport({
+    this.open,
     super.key,
     required this.api,
     required this.t,
@@ -112,6 +116,24 @@ class _FixtureImportState extends State<FixtureImport> {
               t('fixture.hint'),
               style: const TextStyle(fontSize: 14, color: Color(0xffb5c2d4)),
             ),
+            if (widget.open != null)
+              Wrap(
+                spacing: 4,
+                children: [
+                  for (final site in const [
+                    ('fussball.de', 'https://www.fussball.de/'),
+                    (
+                      'basketball-bund.net',
+                      'https://www.basketball-bund.net/static/#/',
+                    ),
+                  ])
+                    TextButton.icon(
+                      onPressed: () => widget.open!(site.$2),
+                      icon: const Icon(Icons.open_in_new, size: 16),
+                      label: Text(site.$1),
+                    ),
+                ],
+              ),
             const SizedBox(height: 8),
             TextField(
               controller: link,

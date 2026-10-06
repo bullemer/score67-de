@@ -634,7 +634,7 @@
   "features.led.text": "Aus einem 64 × 32 LED-Panel und einem steckbaren ESP32 (Adafruit Matrix Portal S3) wird ohne Löten eine Tafel, die das Spiel live zeigt – Bauanleitung mit Bestellliste, LED-Vorschau für jedes Spiel, Kopplung per Code und Updates über WLAN. Die Firmware ist in Arbeit.",
   "landing.guides": "Anleitungen & Ratgeber",
   "fixture.title": "Spiel übernehmen (optional)",
-  "fixture.hint": "Kopiere den kompletten Link der Spielseite von fussball.de oder basketball-bund.net und füge ihn hier ein. Teams, Anstoß, Spielort, Liga und Spielnummer werden übernommen. Andere Seiten werden noch nicht unterstützt.",
+  "fixture.hint": "Öffne fussball.de oder basketball-bund.net, suche dort dein Spiel, öffne die Seite des einzelnen Spiels und kopiere den kompletten Link hierher. Teams, Anstoß, Spielort, Liga und Spielnummer werden übernommen. Andere Seiten werden noch nicht unterstützt.",
   "fixture.link": "Link zum Spiel (fussball.de oder basketball-bund.net)",
   "fixture.load": "Übernehmen",
   "fixture.error.url": "Das ist kein Spiel-Link von fussball.de oder basketball-bund.net. Öffne dort die Seite des einzelnen Spiels und kopiere die komplette Adresse.",

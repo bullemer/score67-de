@@ -1771,6 +1771,7 @@ class _Score67State extends State<Score67> {
       t: t,
       enabled: !busy,
       onLoaded: applyFixture,
+      open: (url) => web.window.open(url, '_blank'),
     ),
     Wrap(
       spacing: 12,
