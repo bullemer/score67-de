@@ -76,6 +76,34 @@ class _BoardDisplaysPanelState extends State<BoardDisplaysPanel> {
     if (mounted) setState(() => busy = false);
   }
 
+  Future<void> setFollow(Map<String, dynamic> d, bool value) => run(
+    () => widget.api('/api/displays/${d['id']}', 'PUT', {'follow': value}),
+    'error.generic',
+  );
+
+  /// What the panel shows, and for my own panels the follow switch.
+  Widget subtitle(Map<String, dynamic> d, String label, bool can) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(label),
+      if (d['managed'] == true)
+        Row(
+          children: [
+            Switch(
+              value: d['follow'] == true,
+              onChanged: can ? (v) => setFollow(d, v) : null,
+            ),
+            Expanded(
+              child: Text(
+                t('ledlink.follow'),
+                style: const TextStyle(fontSize: 12),
+              ),
+            ),
+          ],
+        ),
+    ],
+  );
+
   Future<void> connect() async {
     final value = code.text.trim();
     if (value.length < 6) return;
@@ -137,7 +165,7 @@ class _BoardDisplaysPanelState extends State<BoardDisplaysPanel> {
             contentPadding: EdgeInsets.zero,
             leading: dot(d),
             title: Text(d['name'] ?? ''),
-            subtitle: Text(t('ledlink.shows_this')),
+            subtitle: subtitle(d, t('ledlink.shows_this'), can),
             trailing: TextButton(
               onPressed: can
                   ? () => run(
@@ -153,12 +181,14 @@ class _BoardDisplaysPanelState extends State<BoardDisplaysPanel> {
             contentPadding: EdgeInsets.zero,
             leading: dot(d),
             title: Text(d['name'] ?? ''),
-            subtitle: Text(
+            subtitle: subtitle(
+              d,
               t(
                 d['board'] == null
                     ? 'ledlink.shows_nothing'
                     : 'ledlink.shows_other',
               ),
+              can,
             ),
             trailing: TextButton(
               onPressed: can

@@ -106,7 +106,7 @@
   "dashboard.empty": "No scoreboards on this device yet. Create one, or open an existing Controller link and enter its PIN.",
   "back": "Back",
   "refresh": "Refresh",
-  "app.settings": "App settings",
+  "app.settings": "Settings",
   "language": "Language",
   "app.defaults": "Defaults for new games",
   "app.local": "Saved on this device. Existing games are not changed.",
@@ -651,7 +651,7 @@
   "features.import.text": "Paste the link of the game page – teams with short names and club logos (fussball.de), kickoff, venue, league, matchday and game number are filled in, and the playing time and number of players are suggested for the age group. Everything stays editable. Websites from other countries can be added later.",
   "fixture.logos": "Use club logos",
   "ledlink.title": "LED panel",
-  "ledlink.hint": "The Score67 LED panel shows a 6-character code (large when no game is shown, otherwise after a short press of the lower button). Enter it and the panel shows this game right away.",
+  "ledlink.hint": "The Score67 LED panel shows a 6-digit code (large when no game is shown, otherwise after a short press of the lower button). Enter it here once – after that the panel follows whichever game you open.",
   "ledlink.connect": "Connect",
   "ledlink.shows_this": "shows this game",
   "ledlink.shows_other": "shows another game right now",
@@ -675,5 +675,6 @@
   "ledmsg.showing": "On the panel – {s} s left",
   "ledmsg.stop": "Stop",
   "ledmsg.failed": "Not sent. Is a game running, and is there a text or picture?",
-  "ledmsg.preview_note": "See it without a panel: Viewer menu → LED preview."
+  "ledmsg.preview_note": "See it without a panel: Viewer menu → LED preview.",
+  "ledlink.follow": "Follows my console: shows whichever game I open in the control center."
 }

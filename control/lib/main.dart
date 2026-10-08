@@ -9,6 +9,7 @@ import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'account.dart';
+import 'app_settings.dart';
 import 'dashboard.dart';
 import 'dates.dart';
 import 'squad.dart';
@@ -64,7 +65,7 @@ class _Score67State extends State<Score67> {
   Map<String, dynamic> words = {}, state = {};
   Map<String, dynamic>? draftLocation;
   String lang = 'en', slug = '', error = '';
-  bool dashboardPage = false, loginPage = false;
+  bool dashboardPage = false, loginPage = false, appSettingsPage = false;
   String loginToken = '';
 
   /// The live match console (both sports, landscape only).
@@ -197,6 +198,7 @@ class _Score67State extends State<Score67> {
     super.initState();
     final url = Uri.parse(web.window.location.href);
     dashboardPage = url.path == '/dashboard';
+    appSettingsPage = url.path == '/settings';
     loginPage = url.path == '/login';
     loginToken = Uri.splitQueryString(url.fragment)['t'] ?? '';
     try {
@@ -307,168 +309,29 @@ class _Score67State extends State<Score67> {
     );
   }
 
-  Future<void> appSettings() async {
-    String chosenLanguage = lang;
-    final periods = TextEditingController(text: '$defaultPeriods');
-    final minutes = TextEditingController(text: '$defaultMinutes');
-    final bPeriods = TextEditingController(text: '$basketballPeriods');
-    final bMinutes = TextEditingController(text: '$basketballMinutes');
-    Widget presets(
-      List<List<int>> formats,
-      TextEditingController count,
-      TextEditingController length,
-      void Function(VoidCallback) update,
-    ) => Wrap(
-      spacing: 8,
-      runSpacing: 4,
-      children: [
-        for (final format in formats)
-          ChoiceChip(
-            label: Text('${format[0]} × ${format[1]}'),
-            selected:
-                count.text == '${format[0]}' && length.text == '${format[1]}',
-            onSelected: (_) => update(() {
-              count.text = '${format[0]}';
-              length.text = '${format[1]}';
-            }),
-          ),
-      ],
-    );
-    await showDialog<void>(
-      context: navigator.currentContext!,
-      builder: (context) => StatefulBuilder(
-        builder: (context, update) => AlertDialog(
-          title: Text(t('app.settings')),
-          content: SizedBox(
-            width: 400,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  DropdownButtonFormField<String>(
-                    initialValue: chosenLanguage,
-                    decoration: InputDecoration(labelText: t('language')),
-                    items: const [
-                      DropdownMenuItem(value: 'de', child: Text('Deutsch')),
-                      DropdownMenuItem(value: 'en', child: Text('English')),
-                    ],
-                    onChanged: (value) =>
-                        update(() => chosenLanguage = value ?? lang),
-                  ),
-                  const SizedBox(height: 18),
-                  Text(t('app.defaults')),
-                  const SizedBox(height: 8),
-                  Text(
-                    t('football'),
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  presets(
-                    const [
-                      [2, 45],
-                      [2, 40],
-                      [2, 35],
-                      [2, 30],
-                      [2, 20],
-                      [1, 10],
-                    ],
-                    periods,
-                    minutes,
-                    update,
-                  ),
-                  field(t('period_count'), periods, numeric: true),
-                  field(t('period_length'), minutes, numeric: true),
-                  const SizedBox(height: 12),
-                  Text(
-                    t('basketball'),
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  presets(
-                    const [
-                      [4, 10],
-                      [4, 12],
-                      [8, 5],
-                      [2, 20],
-                    ],
-                    bPeriods,
-                    bMinutes,
-                    update,
-                  ),
-                  field(t('period_count'), bPeriods, numeric: true),
-                  field(t('period_length'), bMinutes, numeric: true),
-                  Text(t('app.local'), style: const TextStyle(fontSize: 14)),
-                  const Divider(height: 28),
-                  OutlinedButton.icon(
-                    onPressed: openDisplays,
-                    icon: const Icon(Icons.scoreboard_outlined),
-                    label: Text(t('display.title')),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text(t('cancel')),
-            ),
-            FilledButton(
-              onPressed: () async {
-                final p = int.tryParse(periods.text),
-                    m = int.tryParse(minutes.text),
-                    bp = int.tryParse(bPeriods.text),
-                    bm = int.tryParse(bMinutes.text);
-                bool valid(int? count, int? length) =>
-                    count != null &&
-                    count >= 1 &&
-                    count <= 12 &&
-                    length != null &&
-                    length >= 1 &&
-                    length <= 120;
-                if (!valid(p, m) || !valid(bp, bm)) {
-                  notify(t('error.invalid_value'));
-                  return;
-                }
-                try {
-                  final translated = await api('/i18n/$chosenLanguage.json');
-                  web.window.localStorage.setItem(
-                    'score67-settings',
-                    jsonEncode({
-                      'periods': p,
-                      'minutes': m,
-                      'basketball_periods': bp,
-                      'basketball_minutes': bm,
-                    }),
-                  );
-                  web.window.localStorage.setItem(
-                    'score67-language',
-                    chosenLanguage,
-                  );
-                  if (!mounted || !context.mounted) return;
-                  setState(() {
-                    defaultPeriods = p!;
-                    defaultMinutes = m!;
-                    basketballPeriods = bp!;
-                    basketballMinutes = bm!;
-                    applyDefaultFormat(draftSport);
-                    lang = chosenLanguage;
-                    words = Map<String, dynamic>.from(translated);
-                  });
-                  updateLanguageUrl(chosenLanguage);
-                  Navigator.pop(context);
-                  notify(t('saved'));
-                } catch (_) {
-                  notify(t('error.network'));
-                }
-              },
-              child: Text(t('save')),
-            ),
-          ],
-        ),
-      ),
-    );
-    await Future<void>.delayed(const Duration(milliseconds: 300));
-    periods.dispose();
-    minutes.dispose();
+  /// Defaults for new games, kept in this browser (the /settings page).
+  Future<bool> saveDefaults(int p, int m, int bp, int bm) async {
+    try {
+      web.window.localStorage.setItem(
+        'score67-settings',
+        jsonEncode({
+          'periods': p,
+          'minutes': m,
+          'basketball_periods': bp,
+          'basketball_minutes': bm,
+        }),
+      );
+    } catch (_) {}
+    if (!mounted) return false;
+    setState(() {
+      defaultPeriods = p;
+      defaultMinutes = m;
+      basketballPeriods = bp;
+      basketballMinutes = bm;
+      applyDefaultFormat(draftSport);
+    });
+    notify(t('saved'));
+    return true;
   }
 
   /// Sends the current frame to each connected Bluetooth display when it
@@ -679,10 +542,26 @@ class _Score67State extends State<Score67> {
     if (mounted) setState(() {});
   }
 
+  bool followed = false;
+
+  /// My LED panels that follow the console switch to this game (once per visit).
+  void followDisplays() {
+    if (followed || slug.isEmpty) return;
+    followed = true;
+    unawaited(
+      api(
+        '/api/s/$slug/displays/follow',
+        method: 'POST',
+        body: {},
+      ).catchError((_) => null),
+    );
+  }
+
   Future<void> checkAdmin() async {
     try {
       await api('/api/s/$slug/admins');
       admin = true;
+      followDisplays();
     } on ApiError catch (e) {
       if (e.code == 'admin_required') admin = false;
     } catch (_) {
@@ -3813,28 +3692,6 @@ class _Score67State extends State<Score67> {
             ),
           ],
         ]),
-        settingsCard(t('display.title'), [
-          DisplaysDialog(
-            api: (path, method, body) => api(path, method: method, body: body),
-            t: t,
-            inline: true,
-          ),
-        ]),
-        settingsCard(t('language'), [
-          Wrap(
-            spacing: 8,
-            children: [
-              for (final entry in {'de': 'Deutsch', 'en': 'English'}.entries)
-                ChoiceChip(
-                  label: Text(entry.value),
-                  selected: lang == entry.key,
-                  onSelected: (_) {
-                    if (lang != entry.key) switchLanguage();
-                  },
-                ),
-            ],
-          ),
-        ]),
         Wrap(
           spacing: 12,
           children: [
@@ -3871,7 +3728,8 @@ class _Score67State extends State<Score67> {
               // Everything else lives in the console tabs (Team, Teilen) and
               // the 🏁 button; settings get a full page, easier in portrait.
               for (final entry in [
-                ('settings', Icons.settings_outlined, t('console.settings')),
+                ('settings', Icons.tune, t('console.settings')),
+                ('app', Icons.settings_outlined, t('app.settings')),
                 ('start', Icons.home_outlined, t('menu.start')),
                 ('dashboard', Icons.dashboard_outlined, t('dashboard')),
                 ('viewer', Icons.visibility_outlined, t('viewer')),
@@ -3892,6 +3750,8 @@ class _Score67State extends State<Score67> {
     switch (kind) {
       case 'settings':
         await openSettings();
+      case 'app':
+        navigate('/settings');
       case 'start':
         navigate('/');
       case 'dashboard':
@@ -4173,7 +4033,9 @@ class _Score67State extends State<Score67> {
                           IconButton(
                             tooltip: t('app.settings'),
                             icon: const Icon(Icons.settings_outlined),
-                            onPressed: ready ? appSettings : null,
+                            onPressed: ready && !appSettingsPage
+                                ? () => navigate('/settings')
+                                : null,
                           ),
                           TextButton(
                             onPressed: ready ? switchLanguage : null,
@@ -4210,7 +4072,20 @@ class _Score67State extends State<Score67> {
                                       ),
                                     ),
                                   ),
-                                if (loginPage)
+                                if (appSettingsPage)
+                                  AppSettingsPage(
+                                    api: (path, method, body) =>
+                                        api(path, method: method, body: body),
+                                    t: t,
+                                    lang: lang,
+                                    periods: defaultPeriods,
+                                    minutes: defaultMinutes,
+                                    basketballPeriods: basketballPeriods,
+                                    basketballMinutes: basketballMinutes,
+                                    onLanguage: (_) => switchLanguage(),
+                                    onDefaults: saveDefaults,
+                                  )
+                                else if (loginPage)
                                   LoginConfirm(
                                     api: (path, method, body) =>
                                         api(path, method: method, body: body),

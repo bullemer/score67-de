@@ -69,6 +69,7 @@ class DisplayUpdate(StrictModel):
     board: str | None = Field(default=None, max_length=10)
     brightness: int | None = Field(default=None, ge=10, le=100)
     beta: bool | None = None   # also install "test" firmware releases
+    follow: bool | None = None   # switch to the game the owner opens in the control center
 
 
 class DisplayRegister(StrictModel):
@@ -1407,7 +1408,7 @@ def create_app(db_url=None, secure_cookies=None):
                 "code_expires_at": round(d.pairing_expires_at * 1000) if pending else None,
                 "board": b.slug if b else None, "board_description": b.description if b else None,
                 "device": d.device_key_hash is not None, "brightness": d.brightness or 60,
-                "fw_version": d.fw_version, "rssi": d.rssi, "beta": d.fw_channel == "test",
+                "fw_version": d.fw_version, "rssi": d.rssi, "beta": d.fw_channel == "test", "follow": bool(d.follow),
                 "ota_status": d.ota_status, "update": (firmware.offer(db, d) or {}).get("version")}
 
     def device_display(db, token):
@@ -1536,7 +1537,7 @@ def create_app(db_url=None, secure_cookies=None):
         for d in db.scalars(select(Display).where(
                 (Display.board_slug == slug) | Display.id.in_(mine or {""}))).all():
             info = display_info(db, d)
-            result.append({key: info[key] for key in ("id", "name", "online", "board", "fw_version")}
+            result.append({key: info[key] for key in ("id", "name", "online", "board", "fw_version", "follow")}
                           | {"managed": d.id in mine})
         return {"displays": sorted(result, key=lambda d: d["name"].lower())}
 
@@ -1570,6 +1571,18 @@ def create_app(db_url=None, secure_cookies=None):
             d.pairing_code, d.pairing_expires_at = pairing_code(db), now + CLAIM_CODE_SECONDS
             db.commit()
             return display_info(db, d)
+
+    @app.post("/api/s/{slug}/displays/follow")
+    def follow_board_displays(slug: str, request: Request):
+        """The control center was opened: the owner's panels that follow switch to this game."""
+        with lock, app.state.sessions() as db:
+            authorize(db, slug, request)
+            for display_id in managed_ids(db, request.cookies):
+                d = db.get(Display, display_id)
+                if d and d.follow and d.board_slug != slug:
+                    d.board_slug = slug
+            db.commit()
+            return board_displays(db, slug, request.cookies)
 
     @app.put("/api/s/{slug}/displays/{display_id}")
     def show_on_board_display(slug: str, display_id: str, request: Request):
@@ -1644,6 +1657,8 @@ def create_app(db_url=None, secure_cookies=None):
                 d.brightness = body.brightness
             if body.beta is not None:
                 d.fw_channel = "test" if body.beta else None
+            if body.follow is not None:
+                d.follow = body.follow
             if "board" in body.model_fields_set:
                 if body.board is not None:
                     authorize(db, body.board, request)  # Only boards this browser controls.

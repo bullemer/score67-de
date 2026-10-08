@@ -91,6 +91,8 @@ class Display(Base):
     # OTA: "test" panels also get beta releases; the last update status the device reported.
     fw_channel: Mapped[str | None] = mapped_column(String(10), nullable=True)
     ota_status: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    # Switches to whatever game its owner opens in the control center.
+    follow: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
 
 
 class FirmwareRelease(Base):
@@ -205,6 +207,6 @@ def database(url: str | None = None):
     else:
         with engine.connect() as connection:
             version = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            if version != "0014_fixture":
+            if version != "0015_display_follow":
                 raise RuntimeError("Database schema does not match this release; run migrations first")
     return engine, sessionmaker(engine, expire_on_commit=False)

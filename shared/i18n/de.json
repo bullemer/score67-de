@@ -106,7 +106,7 @@
   "dashboard.empty": "Noch keine Scoreboards auf diesem Gerät. Lege eines an oder öffne einen vorhandenen Controller-Link und gib die PIN ein.",
   "back": "Zurück",
   "refresh": "Aktualisieren",
-  "app.settings": "App-Einstellungen",
+  "app.settings": "Einstellungen",
   "language": "Sprache",
   "app.defaults": "Vorgaben für neue Spiele",
   "app.local": "Gilt nur auf diesem Gerät. Bestehende Spiele bleiben unverändert.",
@@ -290,7 +290,7 @@
   "console.pick_action": "Erst rechts die Aktion wählen, dann den Spieler. Spieler ohne Aktion antippen: aufs Feld / auf die Bank.",
   "console.flow": "Spielverlauf",
   "console.period": "Perioden",
-  "console.settings": "Einstellungen",
+  "console.settings": "Spieleinstellungen",
   "console.lineup": "Auf dem Feld (max. 5)",
   "console.remove": "Eintrag entfernen",
   "technical_foul": "Technisches Foul",
@@ -651,7 +651,7 @@
   "features.import.text": "Link der Spielseite einfügen – Teams mit Kürzeln und Vereinslogos (fussball.de), Anstoß, Spielort, Liga, Spieltag und Spielnummer werden übernommen, Spielzeit und Spieleranzahl passend zur Altersklasse vorgeschlagen. Alles bleibt änderbar. Seiten aus anderen Ländern können später dazukommen.",
   "fixture.logos": "Vereinslogos übernehmen",
   "ledlink.title": "LED-Tafel",
-  "ledlink.hint": "Die Score67-LED-Tafel zeigt einen 6-stelligen Code (ohne Spiel groß, sonst nach kurzem Druck auf die untere Taste). Code eingeben – die Tafel zeigt sofort dieses Spiel.",
+  "ledlink.hint": "Die Score67-LED-Tafel zeigt einen 6-stelligen Code (ohne Spiel groß, sonst nach kurzem Druck auf die untere Taste). Einmal hier eingeben – danach folgt die Tafel automatisch dem Spiel, das du öffnest.",
   "ledlink.connect": "Verbinden",
   "ledlink.shows_this": "zeigt dieses Spiel",
   "ledlink.shows_other": "zeigt gerade ein anderes Spiel",
@@ -675,5 +675,6 @@
   "ledmsg.showing": "Auf der Tafel – noch {s} s",
   "ledmsg.stop": "Stopp",
   "ledmsg.failed": "Nicht gesendet. Läuft ein Spiel, und ist Text oder Bild gewählt?",
-  "ledmsg.preview_note": "Ansehen ohne Tafel: Menü des Viewers → LED-Vorschau."
+  "ledmsg.preview_note": "Ansehen ohne Tafel: Menü des Viewers → LED-Vorschau.",
+  "ledlink.follow": "Folgt meiner Konsole: zeigt automatisch das Spiel, das ich im Control Center öffne."
 }

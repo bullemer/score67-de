@@ -1670,6 +1670,15 @@ def test_led_panel_connected_from_sharing_tab(system):
     # The first browser still manages it and switches it back without a code.
     assert client.put(f'/api/s/{slug}/displays/{info["id"]}', json={}).json()['board'] == slug
     assert stranger.put(f'/api/s/{slug}/displays/{info["id"]}', json={}).status_code == 401
+    # Opening another of my games in the control center takes my following panels along;
+    # a panel pinned to its game (follow off) stays.
+    third = client.post('/api/scoreboards', json={'sport': 'football'}).json()['slug']
+    moved = client.post(f'/api/s/{third}/displays/follow', json={}).json()['displays']
+    assert [(d['id'], d['board'], d['follow']) for d in moved] == [(info['id'], third, True)]
+    assert client.put(f'/api/displays/{info["id"]}', json={'follow': False}).json()['follow'] is False
+    assert client.post(f'/api/s/{slug}/displays/follow', json={}).json()['displays'][0]['board'] == third
+    client.put(f'/api/s/{slug}/displays/{info["id"]}', json={})   # explicit "show here" still works
+    assert stranger.post(f'/api/s/{slug}/displays/follow', json={}).status_code == 401
     # Disconnect: the panel goes idle and shows its code for the next game.
     assert coach.delete(f'/api/s/{other}/displays/{info["id"]}').status_code == 404   # not showing their game
     assert client.delete(f'/api/s/{slug}/displays/{info["id"]}').json() == {'ok': True}
