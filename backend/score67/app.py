@@ -1033,7 +1033,7 @@ def create_app(db_url=None, secure_cookies=None):
             common = {"now_ms": now_ms, "name": b.name, "brightness": 100, "identify": False}
             if not b.active_match:
                 return display_feed.payload(mode="idle", **common)
-            return display_feed.payload(mode="game", s=state(db, b), msg=led_messages.feed_part(b.slug), **common)
+            return display_feed.payload(mode="game", s=state(db, b), msg=led_messages.feed_part(b.slug), lang=b.language, **common)
 
     @app.post("/api/s/{slug}/led/message")
     def send_led_message(slug: str, body: LedMessage, request: Request):
@@ -1445,7 +1445,7 @@ def create_app(db_url=None, secure_cookies=None):
             common["code"] = claim_code(db, d, now)
         if not b:
             return display_feed.payload(mode="idle", **common)
-        return display_feed.payload(mode="game", s=state(db, b), msg=led_messages.feed_part(b.slug), **common)
+        return display_feed.payload(mode="game", s=state(db, b), msg=led_messages.feed_part(b.slug), lang=b.language, **common)
 
     def device_status(db, d, message):
         """Status a device reports over its socket: {"fw": "0.1.0", "rssi": -61, "uptime": 3600}."""

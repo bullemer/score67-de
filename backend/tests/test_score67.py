@@ -1617,7 +1617,7 @@ def test_self_registering_led_display_flow(system):
     game = feed()
     assert game['mode'] == 'game' and game['home']['short'] == 'BRA' and game['home']['score'] == 3
     assert game['period'] == '1/8' and game['clock']['direction'] == 'down' and game['clock']['ms'] == 300_000
-    assert game['brightness'] == 40 and 'events' not in str(game) and len(str(game)) < 800
+    assert game['brightness'] == 40 and game['lang'] == 'de' and 'events' not in str(game) and len(str(game)) < 800
     # Identify, live socket and status from the device.
     assert client.post(f'/api/displays/{info["id"]}/identify', json={}).status_code == 200
     with device.websocket_connect(f'/ws/display?token={token}&format=compact') as ws:

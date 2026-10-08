@@ -51,7 +51,7 @@ def team(s, side):
             "red_cards": counters.get("red_cards", 0) if s.get("sport") != "basketball" else None}
 
 
-def payload(*, now_ms, name, brightness, identify, mode, code=None, s=None, firmware=None, msg=None):
+def payload(*, now_ms, name, brightness, identify, mode, code=None, s=None, firmware=None, msg=None, lang=None):
     """mode: "pairing" (not claimed: show ``code``), "idle" (no scoreboard
     assigned) or "game" (``s`` = public state of the assigned board)."""
     out = {"v": FORMAT_VERSION, "seq": now_ms, "server_now": now_ms, "mode": mode, "name": name,
@@ -61,6 +61,8 @@ def payload(*, now_ms, name, brightness, identify, mode, code=None, s=None, firm
     if code:
         # pairing: claim the panel; idle/game: connect a game in its Sharing tab
         out["code"] = code
+    if lang:
+        out["lang"] = lang   # the board's language: "ENDE" or "FINAL" on the panel
     if mode == "game" and s is not None:
         out.update(sport=s.get("sport"), phase=s.get("phase"), period=period_label(s),
                    home=team(s, "home"), guest=team(s, "away"), possession=s.get("possession"),

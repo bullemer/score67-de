@@ -1,3 +1,4 @@
 .pio/
 *.uf2
 backup-factory/
+include/secrets.h

@@ -19,8 +19,10 @@ layout reference `../backend/score67/static/led.mjs`.
 
 ```bash
 uv tool install platformio          # once
-pio run                             # build
+pio run                             # production build (score67.de)
 tools/flash.sh                      # then BOOT + RESET on the board, RESET again after "written"
+# development against the server on this laptop:
+SCORE67_DEV_HOST=192.168.x.y pio run -e matrixportal_s3_dev && tools/flash.sh matrixportal_s3_dev
 ```
 
 `pio run -t upload` and the UF2 drive do not work reliably with this board on
@@ -36,4 +38,13 @@ terminal at 115200 on /dev/ttyACM0.
    for pixel over 25 feeds. Verified on the panel with the samples in
    `include/samples.h` (serial: `n`, `0`-`9`).
 3. Server side — done (`../backend`).
-4. Wi-Fi, registration, WSS live feed, code display — next.
+4. Live connection — done and verified against the dev server on this laptop
+   (`src/net.cpp`): Wi-Fi, `POST /api/display/register` with a device key kept
+   in NVS, the compact feed over the WebSocket, status every 30 s, re-register
+   after 3 failed connections (removed in the app), DOWN = code for 10 s,
+   UP + DOWN 10 s = factory reset. Development build `matrixportal_s3_dev`
+   talks to `SCORE67_DEV_HOST:8067` without TLS and uses the network from
+   `~/.score67-wifi` (`tools/gen_secrets.py`); the production build talks to
+   score67.de over TLS (Let's Encrypt roots in `include/certs.h`).
+5. Open: Wi-Fi setup portal (hotspot, up to 3 networks), web flasher, OTA
+   with boot counter, field test over a phone hotspot.
