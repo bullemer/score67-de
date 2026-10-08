@@ -1,25 +1,14 @@
 # Display (Anzeigetafel) API
 
-A display is a device that drives a physical scoreboard, typically a Raspberry Pi next to an LED board. It is managed in the app under **Settings → Anzeigetafeln** (also in the console menu). It shows whichever scoreboard the user assigns and follows that board's current game automatically, including private games.
+A display is a Score67 LED panel (ESP32 firmware in `firmware/`) that shows one scoreboard's current game, including private games. It is managed in the app under **Einstellungen → Anzeigetafeln** and, per game, under **Teilen → LED-Tafel**.
 
-## Pairing flow
+## Registration and claim (self-registering panels)
 
-1. In the app, the user taps **Connect display**. The server creates the display and a pairing code (6 characters, `A–Z` without `O`/`I`, digits `2–9`), valid for 10 minutes. The browser receives a management cookie `score67d_<display id>`.
-2. The user enters the code on the device's setup page (the Pi's own setup Wi-Fi with a captive portal, where the venue Wi-Fi and password are also entered).
-3. The device exchanges the code for its own token:
+1. The panel registers itself with a device key it generated once (`POST /api/display/register`, see below) and gets a token plus a 6-digit code, which it shows.
+2. The user enters the code in the app (`POST /api/displays/claim`, or `POST /api/s/{slug}/displays` to connect a game at the same time). The browser receives a management cookie `score67d_<display id>`; from then on the panel follows the games its owner opens (`display.follow`).
+3. The panel keeps its token persistently; it is the only credential. Removing the panel in the app invalidates it (the socket closes with 1008), and the panel registers again and shows a new code.
 
-```http
-POST /api/display/pair
-Content-Type: application/json
-
-{"code": "K7M2P9"}
-```
-
-```json
-{"display_id": "q3x8…", "name": "Halle 1", "token": "<secret>"}
-```
-
-Case, spaces and dashes in the code are ignored. Each code works once. Invalid or expired codes return `404 {"error": "pairing_code_invalid"}`. There are at most 30 attempts per IP per hour (`429 rate_limited`). Store the token persistently on the device; it is the only credential. **New code** in the app followed by pairing again replaces the token; removing the display invalidates it.
+The earlier flow where the app created a display and a device typed its code (Raspberry Pi idea) was removed on 9 October 2026; such displays were deleted (migration 0016).
 
 ## Following the assigned board
 

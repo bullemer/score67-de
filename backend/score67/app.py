@@ -55,13 +55,8 @@ class LocationUpdate(StrictModel):
 
 
 DISPLAY_CODE_ALPHABET = "0123456789"   # digits only: read off a panel, typed on a number pad
-PAIRING_SECONDS = 600
 CLAIM_CODE_SECONDS = 24 * 3600   # code shown on a self-registered panel until someone claims it
 IDENTIFY_SECONDS = 10
-
-
-class DisplayCreate(StrictModel):
-    name: str = Field(default="Anzeigetafel", min_length=1, max_length=60)
 
 
 class DisplayUpdate(StrictModel):
@@ -94,10 +89,6 @@ class LedMessage(StrictModel):
 
 
 class DisplayConnect(StrictModel):
-    code: str = Field(min_length=6, max_length=12)
-
-
-class DisplayPair(StrictModel):
     code: str = Field(min_length=6, max_length=12)
 
 
@@ -1375,10 +1366,10 @@ def create_app(db_url=None, secure_cookies=None):
         except (WebSocketDisconnect, RuntimeError):
             pass
 
-    # --- Anzeigetafeln (physical displays) -------------------------------
-    # A browser that creates a display gets a management cookie for it. The
-    # device (e.g. a Raspberry Pi) pairs once with a short code and then uses
-    # its own bearer token to follow the assigned board's current game.
+    # --- Anzeigetafeln (Score67 LED panels) --------------------------------
+    # A panel registers itself with a device key and shows a code; the browser
+    # that enters the code gets a management cookie for it. The panel follows
+    # the assigned board's current game with its own bearer token.
 
     def display_cookie(display_id):
         return f"score67d_{display_id}"
@@ -1619,22 +1610,6 @@ def create_app(db_url=None, secure_cookies=None):
         header = request.headers.get("authorization", "")
         return header[7:].strip() if header.lower().startswith("bearer ") else ""
 
-    @app.post("/api/displays", status_code=201)
-    def create_display(body: DisplayCreate, response: Response):
-        with lock, app.state.sessions() as db:
-            now = time.time()
-            display_id = "".join(secrets.choice("abcdefghijklmnopqrstuvwxyz0123456789") for _ in range(12))
-            d = Display(id=display_id, name=body.name.strip(), created_at=now,
-                        pairing_code=pairing_code(db), pairing_expires_at=now + PAIRING_SECONDS)
-            db.add(d)
-            db.flush()
-            token = secrets.token_urlsafe(32)
-            db.add(DisplayAdmin(id=str(uuid4()), display_id=d.id, token_hash=digest(token), created_at=now))
-            response.set_cookie(display_cookie(d.id), token, httponly=True, secure=secure,
-                                samesite="lax", max_age=365 * 86400, path="/")
-            db.commit()
-            return display_info(db, d)
-
     @app.get("/api/displays")
     def list_displays(request: Request):
         with lock, app.state.sessions() as db:
@@ -1666,14 +1641,6 @@ def create_app(db_url=None, secure_cookies=None):
             db.commit()
             return display_info(db, d)
 
-    @app.post("/api/displays/{display_id}/code")
-    def renew_display_code(display_id: str, request: Request):
-        with lock, app.state.sessions() as db:
-            d = managed_display(db, display_id, request.cookies)
-            d.pairing_code, d.pairing_expires_at = pairing_code(db), time.time() + PAIRING_SECONDS
-            db.commit()
-            return display_info(db, d)
-
     @app.delete("/api/displays/{display_id}")
     def delete_display(display_id: str, request: Request, response: Response):
         with lock, app.state.sessions() as db:
@@ -1685,34 +1652,6 @@ def create_app(db_url=None, secure_cookies=None):
             db.commit()
             response.delete_cookie(display_cookie(display_id), path="/")
             return {"ok": True}
-
-    @app.post("/api/display/pair")
-    def pair_display(body: DisplayPair, request: Request):
-        with lock, app.state.sessions() as db:
-            now = time.time()
-            key = "pair:" + digest(request.client.host if request.client else "unknown")
-            limit = db.get(RateLimit, key)
-            if not limit:
-                limit = RateLimit(key=key, count=0, reset_at=now + 3600)
-                db.add(limit)
-            if limit.reset_at <= now:
-                limit.count, limit.reset_at = 0, now + 3600
-            limit.count += 1
-            if limit.count > 30:
-                db.commit()
-                raise HTTPException(429, "rate_limited")
-            code = body.code.strip().upper().replace("-", "").replace(" ", "")
-            # Only displays created in the app; a self-registered panel's code would
-            # otherwise hand its token to whoever reads the code off the panel.
-            d = db.scalar(select(Display).where(Display.pairing_code == code, Display.device_key_hash.is_(None)))
-            if not d or (d.pairing_expires_at or 0) <= now:
-                db.commit()
-                raise HTTPException(404, "pairing_code_invalid")
-            token = secrets.token_urlsafe(32)
-            d.token_hash, d.pairing_code, d.pairing_expires_at = digest(token), None, None
-            d.paired_at = d.last_seen_at = now
-            db.commit()
-            return {"display_id": d.id, "name": d.name, "token": token}
 
     @app.get("/api/display/state")
     def display_state(request: Request):
