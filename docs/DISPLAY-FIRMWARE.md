@@ -49,8 +49,9 @@ Ein kleiner Zustandsautomat: WLAN → Registrieren → (Code zeigen) → Verbind
 | WLAN-Einrichtung | „WLAN: score67-XXXX“ | keine Zugangsdaten gespeichert, oder UP 5 s gehalten |
 | Verbinden | Laufpunkte + Netzname | WLAN bzw. Server wird gesucht |
 | Kopplung | „CODE“ + 6 Zeichen, z. B. 4F7K2Q | `mode: "pairing"` |
-| Bereit | Name der Tafel, „kein Scoreboard“ | `mode: "idle"` |
+| Bereit | Name der Tafel + Verbindungscode (`code`) | `mode: "idle"` |
 | Spiel | Kürzel, Spielstand, Periode, Uhr | `mode: "game"` |
+| Code zeigen | Verbindungscode 10 s groß, dann zurück zum Spiel | DOWN kurz gedrückt |
 | Offline-Hinweis | roter Punkt oben rechts, letzter Stand bleibt | Verbindung weg |
 | Identifizieren | Rahmen blinkt | `identify: true` |
 
@@ -68,6 +69,8 @@ Ein kleiner Zustandsautomat: WLAN → Registrieren → (Code zeigen) → Verbind
 4. Solange sie niemandem gehört, schickt der Server `mode: "pairing"` mit dem Code (24 h gültig, wird danach automatisch erneuert); die Tafel zeigt ihn.
 5. Der Admin gibt den Code in der App ein (Einstellungen → Anzeigetafeln → „Code von der LED-Tafel“). Die Tafel gehört nun diesem Browser; dort wählt er das Scoreboard, die Helligkeit, und kann „Identifizieren“ drücken.
 6. Ab jetzt schickt der Server bei jeder Änderung den vollständigen Stand.
+
+**Spiel verbinden über den Teilen-Tab (8. Oktober 2026):** Auch eine übernommene Tafel bekommt im Feed immer einen `code` (24 h gültig, nach jeder Verwendung neu). Ohne Spiel zeigt sie ihn groß, im Spiel nach kurzem Druck auf DOWN. Wer ein Spiel steuert, gibt ihn im **Teilen-Tab → LED-Tafel → Verbinden** ein (`POST /api/s/<code>/displays`): Die Tafel zeigt sofort dieses Spiel, und der Browser verwaltet sie ab dann mit (eine noch freie Tafel wird dabei gleich übernommen). So kann in einer Halle jedes Team die Tafel für sein Spiel holen, ohne Zugriff auf das Konto des Besitzers. „Trennen“ setzt die Tafel auf „kein Spiel“, „Hier anzeigen“ holt eine selbst verwaltete Tafel ohne Code zurück.
 
 Erneute Registrierung mit **demselben** Schlüssel (z. B. Token verloren): neues Token, Besitzer und Scoreboard bleiben. Ein **neuer** Schlüssel (Werksreset: beide Taster 10 s) ist eine neue Tafel mit neuem Code – niemand kann mit einer fremden Display-ID eine laufende Tafel übernehmen. Wird die Tafel in der App entfernt, schließt der Server die Verbindung mit Code 1008; die Tafel registriert sich neu und zeigt wieder einen Code.
 
@@ -121,6 +124,10 @@ Die App zeigt Firmware-Version, WLAN-Stärke und Online-Status.
 | `PUT /api/displays/{id}` | App | Name, Scoreboard, Helligkeit (10–100) |
 | `POST /api/displays/{id}/identify` | App | Tafel blinkt 10 s |
 | `DELETE /api/displays/{id}` | App | Tafel entfernen (Tafel zeigt danach wieder einen Code) |
+| `GET /api/s/{code}/displays` | Spiel-Controller | Tafeln, die dieses Spiel zeigen, und die selbst verwalteten |
+| `POST /api/s/{code}/displays` | Spiel-Controller | Tafel per Code mit diesem Spiel verbinden |
+| `PUT /api/s/{code}/displays/{id}` | Spiel-Controller | selbst verwaltete Tafel auf dieses Spiel umschalten |
+| `DELETE /api/s/{code}/displays/{id}` | Spiel-Controller | Tafel von diesem Spiel trennen |
 
 Kompaktes Format: siehe `docs/DISPLAY-API.md`, erzeugt in `backend/score67/display_feed.py`. Zum Testen ohne Hardware simuliert `tools/display_sim.py` eine Tafel (Registrieren, Code, Live-Feed, lokale Uhr, Status).
 

@@ -83,6 +83,10 @@ class DisplayClaim(StrictModel):
     name: str | None = Field(default=None, min_length=1, max_length=60)
 
 
+class DisplayConnect(StrictModel):
+    code: str = Field(min_length=6, max_length=12)
+
+
 class DisplayPair(StrictModel):
     code: str = Field(min_length=6, max_length=12)
 
@@ -1362,7 +1366,7 @@ def create_app(db_url=None, secure_cookies=None):
     def display_info(db, d):
         now = time.time()
         b = db.get(Board, d.board_slug) if d.board_slug else None
-        pending = bool(d.pairing_code and (d.pairing_expires_at or 0) > now)
+        pending = bool(d.pairing_code and (d.pairing_expires_at or 0) > now and d.device_key_hash is None)
         return {"id": d.id, "name": d.name, "paired": d.token_hash is not None,
                 "online": bool(d.last_seen_at and d.last_seen_at > now - 30),
                 "last_seen_at": round(d.last_seen_at * 1000) if d.last_seen_at else None,
@@ -1388,7 +1392,9 @@ def create_app(db_url=None, secure_cookies=None):
         return db.scalar(select(DisplayAdmin.id).where(DisplayAdmin.display_id == d.id).limit(1)) is not None
 
     def claim_code(db, d, now):
-        """The code an unclaimed self-registered panel shows; renewed once it expires."""
+        """The code a self-registered panel shows: to claim it while nobody owns it,
+        afterwards to connect a game from that game's Sharing tab. Renewed once it
+        expires and after every use."""
         if not d.pairing_code or (d.pairing_expires_at or 0) <= now:
             d.pairing_code, d.pairing_expires_at = pairing_code(db), now + CLAIM_CODE_SECONDS
         return d.pairing_code
@@ -1402,6 +1408,8 @@ def create_app(db_url=None, secure_cookies=None):
         if d.device_key_hash and not claimed(db, d):
             return display_feed.payload(mode="pairing", code=claim_code(db, d, now), **common)
         b = db.get(Board, d.board_slug) if d.board_slug else None
+        if d.device_key_hash:
+            common["code"] = claim_code(db, d, now)
         if not b:
             return display_feed.payload(mode="idle", **common)
         return display_feed.payload(mode="game", s=state(db, b), **common)
@@ -1473,6 +1481,84 @@ def create_app(db_url=None, secure_cookies=None):
             return display_info(db, d)
 
     firmware.register(app, lock=lock, device_display=device_display)
+
+    # --- LED panels per game (Sharing tab) ---------------------------------
+    # Whoever controls a game and can read the code on a panel connects that
+    # panel to the game; the browser then also manages the panel. The code is
+    # renewed after each use, so a code seen once does not work later.
+
+    def managed_ids(db, cookies):
+        ids = set()
+        for cookie in cookies:
+            if cookie.startswith("score67d_"):
+                try:
+                    ids.add(managed_display(db, cookie[9:], cookies).id)
+                except HTTPException:
+                    continue
+        return ids
+
+    def board_displays(db, slug, cookies):
+        mine = managed_ids(db, cookies)
+        result = []
+        for d in db.scalars(select(Display).where(
+                (Display.board_slug == slug) | Display.id.in_(mine or {""}))).all():
+            info = display_info(db, d)
+            result.append({key: info[key] for key in ("id", "name", "online", "board", "fw_version")}
+                          | {"managed": d.id in mine})
+        return {"displays": sorted(result, key=lambda d: d["name"].lower())}
+
+    @app.get("/api/s/{slug}/displays")
+    def list_board_displays(slug: str, request: Request):
+        """Panels showing this game, and the panels this browser manages."""
+        with lock, app.state.sessions() as db:
+            authorize(db, slug, request)
+            return board_displays(db, slug, request.cookies)
+
+    @app.post("/api/s/{slug}/displays")
+    def connect_board_display(slug: str, body: DisplayConnect, request: Request, response: Response):
+        """Show this game on the LED panel whose code was typed in."""
+        with lock, app.state.sessions() as db:
+            authorize(db, slug, request)
+            now = time.time()
+            if limited(db, "claim:" + digest(request.client.host if request.client else "unknown"), 30, 3600, now):
+                db.commit()
+                raise HTTPException(429, "rate_limited")
+            code = body.code.strip().upper().replace("-", "").replace(" ", "")
+            d = db.scalar(select(Display).where(Display.pairing_code == code, Display.device_key_hash.is_not(None)))
+            if not d or (d.pairing_expires_at or 0) <= now:
+                db.commit()
+                raise HTTPException(404, "pairing_code_invalid")
+            if d.id not in managed_ids(db, request.cookies):
+                token = secrets.token_urlsafe(32)
+                db.add(DisplayAdmin(id=str(uuid4()), display_id=d.id, token_hash=digest(token), created_at=now))
+                response.set_cookie(display_cookie(d.id), token, httponly=True, secure=secure,
+                                    samesite="lax", max_age=365 * 86400, path="/")
+            d.board_slug = slug
+            d.pairing_code, d.pairing_expires_at = pairing_code(db), now + CLAIM_CODE_SECONDS
+            db.commit()
+            return display_info(db, d)
+
+    @app.put("/api/s/{slug}/displays/{display_id}")
+    def show_on_board_display(slug: str, display_id: str, request: Request):
+        """A panel this browser manages switches to this game."""
+        with lock, app.state.sessions() as db:
+            authorize(db, slug, request)
+            d = managed_display(db, display_id, request.cookies)
+            d.board_slug = slug
+            db.commit()
+            return display_info(db, d)
+
+    @app.delete("/api/s/{slug}/displays/{display_id}")
+    def disconnect_board_display(slug: str, display_id: str, request: Request):
+        """The panel stops showing this game (it stays registered and shows its code)."""
+        with lock, app.state.sessions() as db:
+            authorize(db, slug, request)
+            d = db.get(Display, display_id)
+            if not d or d.board_slug != slug:
+                raise HTTPException(404, "not_found")
+            d.board_slug = None
+            db.commit()
+            return {"ok": True}
 
     @app.post("/api/displays/{display_id}/identify")
     def identify_display(display_id: str, request: Request):
@@ -1568,7 +1654,9 @@ def create_app(db_url=None, secure_cookies=None):
                 db.commit()
                 raise HTTPException(429, "rate_limited")
             code = body.code.strip().upper().replace("-", "").replace(" ", "")
-            d = db.scalar(select(Display).where(Display.pairing_code == code))
+            # Only displays created in the app; a self-registered panel's code would
+            # otherwise hand its token to whoever reads the code off the panel.
+            d = db.scalar(select(Display).where(Display.pairing_code == code, Display.device_key_hash.is_(None)))
             if not d or (d.pairing_expires_at or 0) <= now:
                 db.commit()
                 raise HTTPException(404, "pairing_code_invalid")
@@ -1611,7 +1699,8 @@ def create_app(db_url=None, secure_cookies=None):
                     m = db.get(Match, b.active_match) if b and b.active_match else None
                     current = (d.board_slug, d.name, m.id if m else None, m.revision if m else 0,
                                d.brightness, bool(d.identify_until and d.identify_until > time.time()),
-                               d.pairing_code, claimed(db, d) if compact else None,
+                               d.pairing_code, (d.pairing_expires_at or 0) <= time.time(),  # expired → renewed code
+                               claimed(db, d) if compact else None,
                                (firmware.offer(db, d) or {}).get("version") if compact else None)
                     if current != signature:
                         payload = compact_payload(db, d) if compact else device_payload(db, d)

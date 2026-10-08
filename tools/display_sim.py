@@ -9,7 +9,9 @@ testing the server side without hardware:
 2. Follows wss://…/ws/display?format=compact and prints what the panel would
    draw; the clock runs locally from server_now (no NTP), once per second.
 3. Reports a status message (fw, rssi, uptime) like the firmware.
-Enter the code in the app: Einstellungen → Anzeigetafeln → Code von der LED-Tafel."""
+Enter the code in the app: in a game's Teilen tab (LED-Tafel → Verbinden), or
+Einstellungen → Anzeigetafeln → Code von der LED-Tafel. A claimed panel keeps
+showing a code when idle; the firmware shows it in a game on a button press."""
 import asyncio
 import json
 import secrets
@@ -61,7 +63,7 @@ def frame(feed, received):
     if feed["mode"] == "pairing":
         return f"CODE {feed['code']}"
     if feed["mode"] == "idle":
-        return f"{feed['name']}: kein Scoreboard zugewiesen"
+        return f"{feed['name']}: kein Spiel · CODE {feed.get('code', '-')}"
     c, line = feed.get("clock") or {}, ""
     if c.get("visible"):
         ms = c["ms"]

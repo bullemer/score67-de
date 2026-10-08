@@ -1638,6 +1638,45 @@ def test_self_registering_led_display_flow(system):
     assert device.get('/api/display/state?format=compact', headers={'Authorization': f'Bearer {third["token"]}'}).status_code == 401
 
 
+def test_led_panel_connected_from_sharing_tab(system):
+    app, client = system
+    device = TestClient(app)
+    reg = device.post('/api/display/register', json={'device_key': 'g' * 40, 'fw': '0.1.0'}).json()
+    auth = {'Authorization': f'Bearer {reg["token"]}'}
+    feed = lambda: device.get('/api/display/state?format=compact', headers=auth).json()
+    slug = client.post('/api/scoreboards', json={'sport': 'basketball'}).json()['slug']
+    command(client, slug, 'settings', {'home': {'name': 'Bramfeld', 'short': 'BRA'}})
+    # Only the game's controllers; a stranger with the code gets nowhere.
+    stranger = TestClient(app)
+    assert stranger.post(f'/api/s/{slug}/displays', json={'code': reg['code']}).status_code == 401
+    assert client.post(f'/api/s/{slug}/displays', json={'code': 'ZZZZZZ'}).status_code == 404
+    # The unclaimed panel's code connects it straight to this game; the code changes after use.
+    info = client.post(f'/api/s/{slug}/displays', json={'code': reg['code'].lower()}).json()
+    assert info['board'] == slug and info['code'] is None
+    game = feed()
+    assert game['mode'] == 'game' and game['home']['short'] == 'BRA' and game['code'] != reg['code']
+    assert client.post(f'/api/s/{slug}/displays', json={'code': reg['code']}).status_code == 404
+    listed = client.get(f'/api/s/{slug}/displays').json()['displays']
+    assert [(d['id'], d['board'], d['managed']) for d in listed] == [(info['id'], slug, True)]
+    assert client.get('/api/displays').json()['displays'][0]['id'] == info['id']
+    # The legacy pairing endpoint never accepts a panel's code (it would steal the token).
+    assert device.post('/api/display/pair', json={'code': game['code']}).status_code == 404
+    # A second coach in the hall reads the current code off the panel and takes it for their game.
+    coach = TestClient(app)
+    other = coach.post('/api/scoreboards', json={'sport': 'football'}).json()['slug']
+    assert coach.post(f'/api/s/{other}/displays', json={'code': game['code']}).json()['board'] == other
+    assert feed()['mode'] == 'game' and feed()['sport'] == 'football'
+    assert client.get(f'/api/s/{slug}/displays').json()['displays'][0]['board'] == other
+    # The first browser still manages it and switches it back without a code.
+    assert client.put(f'/api/s/{slug}/displays/{info["id"]}', json={}).json()['board'] == slug
+    assert stranger.put(f'/api/s/{slug}/displays/{info["id"]}', json={}).status_code == 401
+    # Disconnect: the panel goes idle and shows its code for the next game.
+    assert coach.delete(f'/api/s/{other}/displays/{info["id"]}').status_code == 404   # not showing their game
+    assert client.delete(f'/api/s/{slug}/displays/{info["id"]}').json() == {'ok': True}
+    idle = feed()
+    assert idle['mode'] == 'idle' and len(idle['code']) == 6
+
+
 def test_led_preview_page_and_feed(system):
     app, client = system
     slug = client.post('/api/scoreboards', json={'sport': 'basketball'}).json()['slug']

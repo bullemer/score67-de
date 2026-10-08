@@ -15,6 +15,7 @@ import 'squad.dart';
 import 'match_console.dart';
 import 'team_editor.dart';
 import 'displays.dart';
+import 'board_displays.dart';
 import 'logo_picker.dart';
 import 'fixture_import.dart';
 import 'location_frame.dart';
@@ -125,6 +126,9 @@ class _Score67State extends State<Score67> {
   int retryMs = 500;
   web.WakeLockSentinel? wakeLock;
   bool landscapeRequested = false;
+
+  /// Settings open as a full page from the ☰ menu (portrait allowed there).
+  bool settingsOpen = false;
   // Bluetooth LED displays driven directly by this phone (Android Chrome).
   List<LedConfig> ledConfigs = loadLedConfigs();
   final ledSent = <int, String>{};
@@ -2554,7 +2558,6 @@ class _Score67State extends State<Score67> {
         (t('console.flow'), gameFlow()),
         (t('console.team'), teamTab()),
         (t('console.period'), periodPanel()),
-        (t('console.settings'), settingsPanel()),
         (t('console.sharing'), sharingPanel()),
         (
           t('console.box_score'),
@@ -3280,6 +3283,15 @@ class _Score67State extends State<Score67> {
           language: lang,
           enabled: admin && connected,
         ),
+        if (admin) ...[
+          const Divider(height: 28),
+          BoardDisplaysPanel(
+            api: (path, method, body) => api(path, method: method, body: body),
+            t: t,
+            slug: slug,
+            enabled: connected,
+          ),
+        ],
         const Divider(height: 28),
         const SizedBox(height: 8),
         ...linkWidgets(),
@@ -3844,9 +3856,10 @@ class _Score67State extends State<Score67> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Everything else lives in the console tabs (Team, Einstellungen,
-              // Teilen) and the 🏁 button; the menu only leaves the console.
+              // Everything else lives in the console tabs (Team, Teilen) and
+              // the 🏁 button; settings get a full page, easier in portrait.
               for (final entry in [
+                ('settings', Icons.settings_outlined, t('console.settings')),
                 ('start', Icons.home_outlined, t('menu.start')),
                 ('dashboard', Icons.dashboard_outlined, t('dashboard')),
                 ('viewer', Icons.visibility_outlined, t('viewer')),
@@ -3865,6 +3878,8 @@ class _Score67State extends State<Score67> {
     if (choice == null) return;
     final [kind, ...] = choice.split(':');
     switch (kind) {
+      case 'settings':
+        await openSettings();
       case 'start':
         navigate('/');
       case 'dashboard':
@@ -3881,6 +3896,70 @@ class _Score67State extends State<Score67> {
         navigate('/');
     }
   }
+
+  /// The settings page from the ☰ menu: the landscape lock is released so the
+  /// phone can be turned upright, where the forms are easier to edit.
+  Future<void> openSettings() async {
+    try {
+      web.window.screen.orientation.unlock();
+    } catch (_) {}
+    landscapeRequested = false;
+    setState(() => settingsOpen = true);
+  }
+
+  void closeSettings() {
+    setState(() => settingsOpen = false);
+    // The back tap is a user gesture: lock landscape for the console again.
+    if (liveConsole) unawaited(lockLandscape());
+  }
+
+  Widget settingsPage(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Material(
+        color: const Color(0xff0b1018),
+        child: Row(
+          children: [
+            IconButton(
+              tooltip: t('back'),
+              icon: const Icon(Icons.arrow_back),
+              onPressed: closeSettings,
+            ),
+            Expanded(
+              child: Text(
+                t('console.settings'),
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      if (MediaQuery.orientationOf(context) == Orientation.landscape)
+        Container(
+          color: const Color(0xff1e293b),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Row(
+            children: [
+              const Icon(Icons.screen_rotation, color: Color(0xffb6f36e)),
+              const SizedBox(width: 10),
+              Expanded(child: Text(t('settings.portrait_hint'))),
+            ],
+          ),
+        ),
+      Expanded(
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 760),
+            child: settingsPanel(),
+          ),
+        ),
+      ),
+    ],
+  );
 
   /// Choose the players on court (5 basketball, 11 football); the console
   /// shows only them.
@@ -4012,7 +4091,9 @@ class _Score67State extends State<Score67> {
       builder: (context) => Listener(
         // Fullscreen and orientation lock need a user gesture: use the first tap.
         onPointerUp: (_) {
-          if (liveConsole && !landscapeRequested) unawaited(lockLandscape());
+          if (liveConsole && !landscapeRequested && !settingsOpen) {
+            unawaited(lockLandscape());
+          }
         },
         child: Scaffold(
           bottomNavigationBar: liveConsole
@@ -4055,7 +4136,7 @@ class _Score67State extends State<Score67> {
                     ),
                   ),
                 ),
-          appBar: console(context)
+          appBar: console(context) || (settingsOpen && liveConsole)
               ? null
               : AppBar(
                   leading: IconButton(
@@ -4089,7 +4170,9 @@ class _Score67State extends State<Score67> {
                           const SizedBox(width: 12),
                         ],
                 ),
-          body: console(context)
+          body: settingsOpen && liveConsole
+              ? SafeArea(child: settingsPage(context))
+              : console(context)
               ? SafeArea(child: basketballConsole())
               : SafeArea(
                   child: Align(

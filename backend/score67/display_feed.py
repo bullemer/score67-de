@@ -58,7 +58,8 @@ def payload(*, now_ms, name, brightness, identify, mode, code=None, s=None, firm
            "brightness": brightness, "identify": identify}
     if firmware:
         out["firmware"] = firmware   # an update to install when idle (see firmware.offer)
-    if mode == "pairing":
+    if code:
+        # pairing: claim the panel; idle/game: connect a game in its Sharing tab
         out["code"] = code
     if mode == "game" and s is not None:
         out.update(sport=s.get("sport"), phase=s.get("phase"), period=period_label(s),
