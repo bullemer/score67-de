@@ -353,7 +353,7 @@
   "console.admin_adjust": "Admin correction",
   "score_adjust": "Score corrected",
   "display.title": "Displays",
-  "display.intro": "Connect a physical scoreboard driver (e.g. a Raspberry Pi next to the LED board) and choose which of your scoreboards it shows. You can switch at any time.",
+  "display.intro": "Your Score67 LED panels. A new panel shows its own 6-digit code – enter it here and it is yours. Choose the game it shows here, or right in the game under Sharing → LED panel.",
   "display.name": "Name of the new display",
   "display.connect": "Connect display",
   "display.code_hint": "Enter this code on the display's setup page:",

@@ -353,7 +353,7 @@
   "console.admin_adjust": "Admin-Korrektur",
   "score_adjust": "Spielstand korrigiert",
   "display.title": "Anzeigetafeln",
-  "display.intro": "Verbinde eine Anzeigetafel (z. B. einen Raspberry Pi an der LED-Tafel) und wähle, welches deiner Scoreboards sie zeigt. Du kannst jederzeit umschalten.",
+  "display.intro": "Deine Score67-LED-Tafeln. Eine neue Tafel zeigt ihren 6-stelligen Code selbst an – hier eingeben, dann gehört sie dir. Welches Spiel sie zeigt, wählst du hier oder direkt im Spiel unter Teilen → LED-Tafel.",
   "display.name": "Name der neuen Anzeigetafel",
   "display.connect": "Anzeigetafel verbinden",
   "display.code_hint": "Diesen Code auf der Einrichtungsseite der Anzeigetafel eingeben:",

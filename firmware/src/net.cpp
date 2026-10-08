@@ -124,11 +124,12 @@ void socketEvent(WStype_t type, uint8_t *payload, size_t length) {
     case WStype_DISCONNECTED:
       if (socketOpen) Serial.println("[net] socket closed");
       socketOpen = false;
-      // Closed right after connecting and never fed: the token is gone (panel
-      // removed in the app, code 1008) or the server rejected it. Re-register.
-      if (st.state == NetState::ONLINE && st.lastMessageAt < st.connectedAt) st.failures++;
-      else if (st.state == NetState::ONLINE) st.failures = 0;
-      st.state = NetState::OFFLINE;
+      // No feed since this socket was opened: the handshake was refused (token
+      // unknown, e.g. after a server change) or it closed right away (panel
+      // removed in the app, code 1008). Three times in a row: register again.
+      if (st.state == NetState::CONNECTING || st.lastMessageAt < st.connectedAt) st.failures++;
+      else st.failures = 0;
+      if (st.state != NetState::PORTAL && st.state != NetState::WIFI_CONNECTING) st.state = NetState::OFFLINE;
       break;
     case WStype_TEXT:
       if (length < sizeof lastFeed) {
@@ -356,10 +357,12 @@ void Net::loop() {
     nextAttempt = 0;
   }
   if (st.failures >= 3) {   // the token no longer works: register again (same key keeps owner and game)
+    Serial.println("[net] token refused, registering again");
     st.failures = 0;
     st.haveToken = false;
     socket.disconnect();
     st.state = NetState::REGISTERING;
+    nextAttempt = 0;
   }
   if ((st.state == NetState::REGISTERING || st.state == NetState::OFFLINE) && now >= nextAttempt) {
     bool ok = st.haveToken || registerDevice();

@@ -36,7 +36,6 @@ class _DisplaysDialogState extends State<DisplaysDialog> {
   bool loading = true, busy = false;
   String error = '';
   Timer? timer;
-  final name = TextEditingController(text: 'Anzeigetafel');
 
   /// The code a Score67 LED panel shows until it is added here.
   final claim = TextEditingController();
@@ -54,7 +53,6 @@ class _DisplaysDialogState extends State<DisplaysDialog> {
   @override
   void dispose() {
     timer?.cancel();
-    name.dispose();
     claim.dispose();
     super.dispose();
   }
@@ -210,22 +208,6 @@ class _DisplaysDialogState extends State<DisplaysDialog> {
               status(d),
             ],
           ),
-          if (d['code'] != null) ...[
-            const SizedBox(height: 8),
-            Text(t('display.code_hint'), style: const TextStyle(fontSize: 13)),
-            SelectableText(
-              d['code'],
-              style: const TextStyle(
-                fontSize: 30,
-                letterSpacing: 6,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            Text(
-              '${t('display.code_valid')} ${clock(d['code_expires_at'])}',
-              style: const TextStyle(fontSize: 12, color: Colors.grey),
-            ),
-          ],
           const SizedBox(height: 8),
           DropdownButtonFormField<String?>(
             key: ValueKey('board:${d['id']}:${d['board']}:${boards.length}'),
@@ -322,34 +304,19 @@ class _DisplaysDialogState extends State<DisplaysDialog> {
           Wrap(
             spacing: 8,
             children: [
-              if (d['device'] == true)
-                TextButton.icon(
-                  onPressed: busy
-                      ? null
-                      : () => run(
-                          () => widget.api(
-                            '/api/displays/${d['id']}/identify',
-                            'POST',
-                            {},
-                          ),
+              TextButton.icon(
+                onPressed: busy
+                    ? null
+                    : () => run(
+                        () => widget.api(
+                          '/api/displays/${d['id']}/identify',
+                          'POST',
+                          {},
                         ),
-                  icon: const Icon(Icons.flare),
-                  label: Text(t('display.identify')),
-                ),
-              if (d['device'] != true)
-                TextButton.icon(
-                  onPressed: busy
-                      ? null
-                      : () => run(
-                          () => widget.api(
-                            '/api/displays/${d['id']}/code',
-                            'POST',
-                            {},
-                          ),
-                        ),
-                  icon: const Icon(Icons.qr_code_2),
-                  label: Text(t('display.new_code')),
-                ),
+                      ),
+                icon: const Icon(Icons.flare),
+                label: Text(t('display.identify')),
+              ),
               TextButton.icon(
                 onPressed: busy
                     ? null
@@ -420,35 +387,6 @@ class _DisplaysDialogState extends State<DisplaysDialog> {
           onPressed: busy ? null : claimPanel,
           icon: const Icon(Icons.add),
           label: Text(t('display.claim')),
-        ),
-      ],
-    ),
-    const SizedBox(height: 16),
-    Row(
-      children: [
-        Expanded(
-          child: TextField(
-            controller: name,
-            maxLength: 60,
-            decoration: InputDecoration(
-              labelText: t('display.name'),
-              counterText: '',
-              isDense: true,
-              border: const OutlineInputBorder(),
-            ),
-          ),
-        ),
-        const SizedBox(width: 8),
-        FilledButton.icon(
-          onPressed: busy || name.text.trim().isEmpty
-              ? null
-              : () => run(
-                  () => widget.api('/api/displays', 'POST', {
-                    'name': name.text.trim(),
-                  }),
-                ),
-          icon: const Icon(Icons.add_link),
-          label: Text(t('display.connect')),
         ),
       ],
     ),
