@@ -178,7 +178,6 @@ class _DisplaysDialogState extends State<DisplaysDialog> {
   }
 
   Widget card(Map<String, dynamic> d) {
-    final known = boards.any((b) => b['slug'] == d['board']);
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(12),
@@ -209,33 +208,17 @@ class _DisplaysDialogState extends State<DisplaysDialog> {
             ],
           ),
           const SizedBox(height: 8),
-          DropdownButtonFormField<String?>(
-            key: ValueKey('board:${d['id']}:${d['board']}:${boards.length}'),
-            initialValue: known ? d['board'] : null,
-            isExpanded: true,
-            decoration: InputDecoration(
-              labelText: t('display.shows'),
-              border: const OutlineInputBorder(),
-              isDense: true,
-            ),
-            items: [
-              DropdownMenuItem<String?>(
-                value: null,
-                child: Text(t('display.nothing')),
-              ),
-              for (final b in boards)
-                DropdownMenuItem<String?>(
-                  value: b['slug'],
-                  child: Text(boardLabel(b), overflow: TextOverflow.ellipsis),
-                ),
-            ],
-            onChanged: busy
-                ? null
-                : (slug) => run(
-                    () => widget.api('/api/displays/${d['id']}', 'PUT', {
-                      'board': slug,
-                    }),
-                  ),
+          // What the panel shows right now; chosen per game in Sharing → LED panel.
+          Builder(
+            builder: (context) {
+              final current = boards
+                  .where((b) => b['slug'] == d['board'])
+                  .firstOrNull;
+              return Text(
+                '${t('display.shows')}: ${current == null ? t('display.nothing') : boardLabel(current)}',
+                style: const TextStyle(fontSize: 14),
+              );
+            },
           ),
           if (d['device'] == true) ...[
             const SizedBox(height: 8),
