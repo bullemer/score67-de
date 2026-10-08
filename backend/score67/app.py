@@ -1593,10 +1593,14 @@ def create_app(db_url=None, secure_cookies=None):
         """The control center was opened: the owner's panels that follow switch to this game."""
         with lock, app.state.sessions() as db:
             authorize(db, slug, request)
-            for display_id in managed_ids(db, request.cookies):
-                d = db.get(Display, display_id)
-                if d and d.follow and d.board_slug != slug:
-                    d.board_slug = slug
+            b = board(db, slug)
+            m = db.get(Match, b.active_match) if b.active_match else None
+            # Looking at an old game must not pull the panel away from a live one.
+            if m and m.state.get("phase") != "finished":
+                for display_id in managed_ids(db, request.cookies):
+                    d = db.get(Display, display_id)
+                    if d and d.follow and d.board_slug != slug:
+                        d.board_slug = slug
             db.commit()
             return board_displays(db, slug, request.cookies)
 

@@ -1631,6 +1631,11 @@ def test_led_panel_connected_from_sharing_tab(system):
     assert client.post(f'/api/s/{slug}/displays/follow', json={}).json()['displays'][0]['board'] == third
     client.put(f'/api/s/{slug}/displays/{info["id"]}', json={})   # explicit "show here" still works
     assert stranger.post(f'/api/s/{slug}/displays/follow', json={}).status_code == 401
+    # A finished game does not pull a following panel away from its current one.
+    client.put(f'/api/displays/{info["id"]}', json={'follow': True})
+    command(client, third, 'period_start')
+    command(client, third, 'game_end')
+    assert client.post(f'/api/s/{third}/displays/follow', json={}).json()['displays'][0]['board'] == slug
     # Disconnect: the panel goes idle and shows its code for the next game.
     assert coach.delete(f'/api/s/{other}/displays/{info["id"]}').status_code == 404   # not showing their game
     assert client.delete(f'/api/s/{slug}/displays/{info["id"]}').json() == {'ok': True}
