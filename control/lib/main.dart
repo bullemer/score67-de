@@ -3181,6 +3181,7 @@ class _Score67State extends State<Score67> {
             t: t,
             slug: slug,
             enabled: connected,
+            onSettings: () => navigate('/settings'),
           ),
         ],
         const Divider(height: 28),

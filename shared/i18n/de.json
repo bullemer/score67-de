@@ -650,13 +650,10 @@
   "features.import.title": "Spiel von fussball.de oder basketball-bund.net übernehmen",
   "features.import.text": "Link der Spielseite einfügen – Teams mit Kürzeln und Vereinslogos (fussball.de), Anstoß, Spielort, Liga, Spieltag und Spielnummer werden übernommen, Spielzeit und Spieleranzahl passend zur Altersklasse vorgeschlagen. Alles bleibt änderbar. Seiten aus anderen Ländern können später dazukommen.",
   "fixture.logos": "Vereinslogos übernehmen",
-  "ledlink.title": "LED-Tafel",
-  "ledlink.hint": "Die Score67-LED-Tafel zeigt einen 6-stelligen Code (ohne Spiel groß, sonst nach kurzem Druck auf die untere Taste). Einmal hier eingeben – danach folgt die Tafel automatisch dem Spiel, das du öffnest.",
-  "ledlink.connect": "Verbinden",
+  "ledlink.title": "Anzeigetafel",
   "ledlink.shows_this": "zeigt dieses Spiel",
   "ledlink.shows_other": "zeigt gerade ein anderes Spiel",
-  "ledlink.shows_nothing": "zeigt kein Spiel",
-  "ledlink.show_here": "Hier anzeigen",
+  "ledlink.shows_nothing": "zeigt kein Spiel (Code)",
   "ledlink.disconnect": "Trennen",
   "settings.portrait_hint": "Tipp: Handy hochkant halten – so lassen sich die Einstellungen leichter bearbeiten.",
   "ledmsg.hint": "Kurze Nachricht oder Grafik auf allen LED-Tafeln dieses Spiels – danach kommt automatisch wieder der Spielstand.",
@@ -676,6 +673,9 @@
   "ledmsg.stop": "Stopp",
   "ledmsg.failed": "Nicht gesendet. Läuft ein Spiel, und ist Text oder Bild gewählt?",
   "ledmsg.preview_note": "Ansehen ohne Tafel: Menü des Viewers → LED-Vorschau.",
-  "ledlink.follow": "Folgt meiner Konsole: zeigt automatisch das Spiel, das ich im Control Center öffne.",
-  "ble.other_kind": "Nicht für die Score67-LED-Tafel – die verbindet sich selbst über WLAN."
+  "ble.other_kind": "Nicht für die Score67-LED-Tafel – die verbindet sich selbst über WLAN.",
+  "ledlink.show_on": "Auf „{name}“ zeigen",
+  "ledlink.none": "Keine Anzeigetafel verbunden. Eine Score67-LED-Tafel zeigt beim Einschalten einen 6-stelligen Code – den einmal unter Einstellungen → Anzeigetafeln eingeben.",
+  "display.follow": "Folgt meiner Konsole",
+  "display.follow_note": "Zeigt automatisch das Spiel, das du im Control Center öffnest. Aus: die Tafel bleibt bei ihrem Spiel."
 }

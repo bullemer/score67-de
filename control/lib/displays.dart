@@ -289,6 +289,20 @@ class _DisplaysDialogState extends State<DisplaysDialog> {
             SwitchListTile(
               dense: true,
               contentPadding: EdgeInsets.zero,
+              title: Text(t('display.follow')),
+              subtitle: Text(t('display.follow_note')),
+              value: d['follow'] == true,
+              onChanged: busy
+                  ? null
+                  : (on) => run(
+                      () => widget.api('/api/displays/${d['id']}', 'PUT', {
+                        'follow': on,
+                      }),
+                    ),
+            ),
+            SwitchListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
               title: Text(t('display.beta')),
               subtitle: Text(t('display.beta_note')),
               value: d['beta'] == true,
