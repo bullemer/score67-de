@@ -84,6 +84,26 @@ Erneute Registrierung mit **demselben** Schlüssel (z. B. Token verloren): neues
 
 **Referenz:** Layout, Farben und die Pixelschriften (3×5, 5×7, 10×14, 8×14) sind in `backend/score67/static/led.mjs` umgesetzt; die LED-Vorschau `/s/<code>/led` zeigt jedes Spiel genau so. `fonts.h` der Firmware wird aus denselben Bitmaps erzeugt.
 
+### Nachrichten und Grafiken (8. Oktober 2026)
+
+Im Spiel kann der Feed ein Feld `msg` tragen. Solange es gilt, zeichnet die Tafel die Nachricht **statt** des Spielstands, danach wieder den Spielstand – ohne weitere Nachricht vom Server:
+
+```json
+"msg": {"id": "a1b2c3d4", "kind": "text", "text": "LOS BRA!", "icon": "flame",
+        "effect": "static", "color": "#ffa31a", "ms": 7400}
+```
+
+- `ms` = Restdauer bei `server_now` (wie die Uhr): sichtbar, solange `millis() − received < ms`. Neue `id` = neue Nachricht; fehlt `msg`, ist sie beendet oder gestoppt.
+- `kind: "text"`: `text` ist schon bereinigt (Großbuchstaben, Umlaute ausgeschrieben, nur Zeichen der 3×5-Schrift). Schrift doppelt (6×10, 8 px je Zeichen, 8 Zeichen auf 64 px). Ohne Bild: passt der Text in 1–2 Zeilen à 8 Zeichen, steht er mittig, sonst läuft er (24 px/s). Mit Bild: 12×12-Bild oben mittig, Text darunter (1 Zeile oder Lauftext). Nur Bild: doppelt groß. `icon`: heart, star, basketball, football, trophy, flame. `effect`: static, blink (500 ms an/aus), rainbow (Farbe je Zeichen wandert).
+- `kind: "periods"`: `periods` = [[heim, gast], …] Punkte je Periode, dazu `home`/`guest` mit `short`, `color` – Balkenpaare je Periode, Nummer darunter.
+- `kind: "lead"`: `lead` = 62 Werte (Führung Heim, negativ = Gast) – Säulen nach oben/unten von einer Mittellinie.
+
+Senden: Konsole → Tab **LED** (`POST /api/s/<code>/led/message`, Stopp per `DELETE`). Bilder, Schrift und Layout: `static/led.mjs` (Referenz, Tests in `tests/led.test.mjs`).
+
+### Panelgrößen
+
+Das Layout ist pro Panelgröße in der Firmware festgelegt; der Server schickt nur Daten, nie Pixel. Die Tafel meldet ihre Größe im Status (`{"panel": "64x32", …}`). Für eine weitere Größe (z. B. 128×64 aus 2×2 Panels) kommen ein eigenes Layout in `led.mjs` und der Firmware dazu – Feed und App bleiben gleich.
+
 ### Uhr
 
 Beim Empfang merkt sich die Tafel `received = millis()`. Läuft die Uhr:
@@ -108,7 +128,7 @@ Gestoppt wird `clock.ms` direkt angezeigt. Bei 0:00 bleibt sie stehen und blinkt
 Über dieselbe Verbindung, nach dem Verbinden und dann alle 30 s:
 
 ```json
-{"fw": "0.1.0", "rssi": -61, "uptime": 3600}
+{"fw": "0.1.0", "rssi": -61, "uptime": 3600, "panel": "64x32"}
 ```
 
 Die App zeigt Firmware-Version, WLAN-Stärke und Online-Status.

@@ -658,5 +658,22 @@
   "ledlink.shows_nothing": "shows no game",
   "ledlink.show_here": "Show here",
   "ledlink.disconnect": "Disconnect",
-  "settings.portrait_hint": "Tip: hold the phone upright – settings are easier to edit in portrait."
+  "settings.portrait_hint": "Tip: hold the phone upright – settings are easier to edit in portrait.",
+  "ledmsg.hint": "A short message or graphic on every LED panel showing this game – then the score comes back by itself.",
+  "ledmsg.preset.welcome": "WELCOME!",
+  "ledmsg.preset.go": "GO {team}!",
+  "ledmsg.preset.thanks": "THANK YOU!",
+  "ledmsg.preset.timeout": "TIME-OUT",
+  "ledmsg.periods": "Points per period",
+  "ledmsg.lead": "Game flow",
+  "ledmsg.own": "Your text",
+  "ledmsg.send": "Send",
+  "ledmsg.no_icon": "No picture",
+  "ledmsg.effect.static": "Steady",
+  "ledmsg.effect.blink": "Blink",
+  "ledmsg.effect.rainbow": "Rainbow",
+  "ledmsg.showing": "On the panel – {s} s left",
+  "ledmsg.stop": "Stop",
+  "ledmsg.failed": "Not sent. Is a game running, and is there a text or picture?",
+  "ledmsg.preview_note": "See it without a panel: Viewer menu → LED preview."
 }

@@ -17,6 +17,8 @@ const SMALL = {
   U: [5, 5, 5, 5, 7], V: [5, 5, 5, 5, 2], W: [5, 5, 7, 7, 5], X: [5, 5, 2, 5, 5], Y: [5, 5, 2, 2, 2],
   Z: [7, 1, 2, 4, 7], '/': [1, 1, 2, 4, 4], ':': [0, 2, 0, 2, 0], '-': [0, 0, 7, 0, 0], '.': [0, 0, 0, 0, 2],
   '<': [1, 2, 4, 2, 1], '>': [4, 2, 1, 2, 4], '+': [0, 2, 7, 2, 0], ' ': [0, 0, 0, 0, 0],
+  '!': [2, 2, 2, 0, 2], '?': [6, 1, 2, 0, 2], ',': [0, 0, 0, 2, 4], "'": [2, 2, 0, 0, 0], '=': [0, 7, 0, 7, 0],
+  '#': [5, 7, 5, 7, 5], '(': [1, 2, 2, 2, 1], ')': [4, 2, 2, 2, 4], '*': [5, 2, 7, 2, 5],
 };
 // 5×7 digits (clock), and 4×7 digits for the narrow score font; doubled for the score.
 const CLOCK = {
@@ -30,6 +32,29 @@ const NARROW = {
   '4': [2, 6, 10, 10, 15, 2, 2], '5': [15, 8, 14, 1, 1, 9, 6], '6': [6, 8, 8, 14, 9, 9, 6], '7': [15, 1, 2, 2, 4, 4, 4],
   '8': [6, 9, 9, 6, 9, 9, 6], '9': [6, 9, 9, 7, 1, 1, 6],
 };
+// 12×12 message icons; letters are colours (ICON_COLORS), '.' is off.
+const ICONS = {
+  heart: [
+    '............', '..rr....rr..', '.rrrr..rrrr.', 'rrwrrrrrrrrr', 'rwrrrrrrrrrr', 'rrrrrrrrrrrr',
+    '.rrrrrrrrrr.', '..rrrrrrrr..', '...rrrrrr...', '....rrrr....', '.....rr.....', '............'],
+  star: [
+    '.....yy.....', '.....yy.....', '....yyyy....', '....yyyy....', 'yyyyyyyyyyyy', '.yyyyyyyyyy.',
+    '..yyyyyyyy..', '...yyyyyy...', '..yyyyyyyy..', '..yyy..yyy..', '.yyy....yyy.', '.yy......yy.'],
+  basketball: [
+    '....oono....', '..onoonoon..', '.onooonooon.', '.onooonooon.', 'oonooonooono', 'nnnnnnnnnnnn',
+    'oonooonooono', 'oonooonooono', '.onooonooon.', '.onooonooon.', '..onoonoon..', '....oono....'],
+  football: [
+    '....wddw....', '..wwwddwww..', '.wwwwwwwwww.', '.wwwwwwwwww.', 'wwwwwddwwwww', 'dwwwddddwwwd',
+    'dwwwddddwwwd', 'wwwwwddwwwww', '.wwwwwwwwww.', '.wwwwwwwwww.', '..ddwwwwdd..', '....wwww....'],
+  trophy: [
+    '.yyyyyyyyyy.', 'y.yyyyyyyy.y', 'y.yyyyyyyy.y', 'y.yyyyyyyy.y', '.yyyyyyyyyy.', '...yyyyyy...',
+    '....yyyy....', '.....yy.....', '.....yy.....', '....yyyy....', '...oooooo...', '...oooooo...'],
+  flame: [
+    '.....r......', '....rr......', '....rrr.....', '...rrrr..r..', '...rrorr.rr.', '..rrroorrrr.',
+    '.rrrooorrrr.', '.rroooyoorr.', '.rrooyyyorr.', '.rooyyyyoor.', '..roowyyor..', '...rrooor...'],
+};
+// n and d are dim: seams and patches stay visible without holes in the shape.
+const ICON_COLORS = {r: '#ef4444', o: '#f97316', y: '#facc15', w: '#ffffff', g: '#22c55e', b: '#3b82f6', n: '#5a1e06', d: '#555b66'};
 const COLORS = {score: '#ffa31a', running: '#34d399', stopped: '#facc15', text: '#e5e7eb', dim: '#9ca3af', red: '#ef4444'};
 
 const rgb = hex => {
@@ -58,11 +83,25 @@ export class Frame {
   // 3×5 text; returns the width drawn.
   text(value, x, y, color) {
     let cx = x;
-    for (const ch of String(value).toUpperCase().replace('Ä', 'A').replace('Ö', 'O').replace('Ü', 'U')) {
+    for (const ch of String(value).toUpperCase().replaceAll('Ä', 'A').replaceAll('Ö', 'O').replaceAll('Ü', 'U')) {
       this.glyph(SMALL[ch] || SMALL[' '], 3, cx, y, color);
       cx += 4;
     }
     return Math.max(0, cx - x - 1);
+  }
+  // 3×5 text doubled (6×10, 8 px per character); colour may be a function of the index.
+  big(value, x, y, color) {
+    [...String(value)].forEach((ch, i) => {
+      this.glyph(SMALL[ch] || SMALL[' '], 3, x + i * 8, y, typeof color === 'function' ? color(i) : color, 2);
+    });
+  }
+  // A multi-colour icon (rows of letters, '.' = off), optionally scaled.
+  icon(name, x, y, scale = 1) {
+    (ICONS[name] || []).forEach((row, ry) => [...row].forEach((ch, rx) => {
+      const color = ICON_COLORS[ch];
+      if (!color) return;
+      for (let dy = 0; dy < scale; dy++) for (let dx = 0; dx < scale; dx++) this.set(x + rx * scale + dx, y + ry * scale + dy, color);
+    }));
   }
 }
 
@@ -99,6 +138,10 @@ export function render(feed, sinceMs = 0, {lang = 'de'} = {}) {
   if (feed.mode === 'pairing') {
     frame.text('CODE', Math.round((WIDTH - textWidth('CODE')) / 2), 4, COLORS.dim);
     frame.text(feed.code || '', Math.round((WIDTH - textWidth(feed.code || '')) / 2), 16, COLORS.text);
+    return frame;
+  }
+  if (feed.mode === 'game' && feed.msg && sinceMs < (feed.msg.ms ?? 0)) {
+    renderMessage(frame, feed.msg, sinceMs);
     return frame;
   }
   if (feed.mode !== 'game') {
@@ -141,6 +184,90 @@ export function render(feed, sinceMs = 0, {lang = 'de'} = {}) {
     for (let y = 0; y < HEIGHT; y++) { frame.set(0, y, COLORS.text); frame.set(WIDTH - 1, y, COLORS.text); }
   }
   return frame;
+}
+
+const SCROLL_PX_PER_S = 24, BIG_CHARS = Math.floor((WIDTH + 2) / 8);   // 8 on 64 px
+
+/** Words into lines of at most `max` characters; null when a word is longer. */
+export function wrap(text, max = BIG_CHARS) {
+  const lines = [];
+  for (const word of String(text).split(' ').filter(Boolean)) {
+    if (word.length > max) return null;
+    const last = lines.length ? lines[lines.length - 1] : null;
+    if (last !== null && last.length + 1 + word.length <= max) lines[lines.length - 1] = `${last} ${word}`;
+    else lines.push(word);
+  }
+  return lines;
+}
+
+const hue = h => {
+  const f = n => { const k = (n + h / 60) % 6; return Math.round(255 * (1 - Math.max(0, Math.min(k, 4 - k, 1)))); };
+  return `#${[f(5), f(3), f(1)].map(v => v.toString(16).padStart(2, '0')).join('')}`;
+};
+
+/** A message (feed.msg) instead of the score: text with icon, or a small chart. */
+function renderMessage(frame, msg, sinceMs) {
+  if (msg.kind === 'periods') return drawPeriods(frame, msg);
+  if (msg.kind === 'lead') return drawLead(frame, msg);
+  if (msg.effect === 'blink' && Math.floor(sinceMs / 500) % 2 === 1) return;
+  const color = msg.effect === 'rainbow' ? i => hue((sinceMs / 8 + i * 45) % 360) : (msg.color || COLORS.score);
+  const text = msg.text || '';
+  if (!text) { frame.icon(msg.icon, 20, 4, 2); return; }
+  const lines = wrap(text);
+  const scroll = (y) => {
+    const width = text.length * 8 - 2, period = width + WIDTH;
+    frame.big(text, WIDTH - Math.floor(sinceMs * SCROLL_PX_PER_S / 1000) % period, y, color);
+  };
+  if (msg.icon) {
+    frame.icon(msg.icon, 26, 1);
+    if (lines && lines.length === 1) frame.big(lines[0], Math.round((WIDTH - (lines[0].length * 8 - 2)) / 2), 19, color);
+    else scroll(19);
+    return;
+  }
+  if (lines && lines.length <= 2) {
+    const top = lines.length === 1 ? 11 : 4;
+    lines.forEach((line, i) => frame.big(line, Math.round((WIDTH - (line.length * 8 - 2)) / 2), top + i * 14, color));
+  } else scroll(11);
+}
+
+function chartHeader(frame, msg) {
+  const home = msg.home || {}, guest = msg.guest || {};
+  frame.text(home.short || '', 1, 1, readable(home.color));
+  frame.text(guest.short || '', WIDTH - 1 - textWidth(guest.short || ''), 1, readable(guest.color));
+}
+
+/** Points per period: a pair of bars per period (home left, guest right), number below. */
+function drawPeriods(frame, msg) {
+  chartHeader(frame, msg);
+  const periods = (msg.periods || []).slice(-8);
+  if (!periods.length) return;
+  const top = 8, bottom = 24, slot = Math.floor(WIDTH / periods.length);
+  const max = Math.max(1, ...periods.flat());
+  const home = readable(msg.home?.color), guest = readable(msg.guest?.color);
+  const width = Math.max(1, Math.min(3, Math.floor((slot - 2) / 2)));
+  periods.forEach(([h, g], i) => {
+    const x = i * slot + Math.floor((slot - 2 * width - 1) / 2);
+    for (const [value, bx, color] of [[h, x, home], [g, x + width + 1, guest]]) {
+      const height = value ? Math.max(1, Math.round((bottom - top) * value / max)) : 0;
+      for (let y = bottom - height; y < bottom; y++) for (let dx = 0; dx < width; dx++) frame.set(bx + dx, y, color);
+    }
+    const label = String(i + 1);
+    frame.text(label, i * slot + Math.floor((slot - textWidth(label)) / 2), 26, COLORS.dim);
+  });
+}
+
+/** The lead over the game: columns up (home ahead) or down (guest ahead) from a middle line. */
+function drawLead(frame, msg) {
+  chartHeader(frame, msg);
+  const lead = msg.lead || [];
+  const axis = 19, reach = 11;
+  const max = Math.max(1, ...lead.map(Math.abs));
+  const home = readable(msg.home?.color), guest = readable(msg.guest?.color);
+  for (let x = 0; x < WIDTH; x++) frame.set(x, axis, COLORS.dim);
+  lead.forEach((value, i) => {
+    const x = 1 + i, height = Math.round(reach * Math.abs(value) / max);
+    for (let d = 1; d <= height; d++) frame.set(x, value > 0 ? axis - d : axis + d, value > 0 ? home : guest);
+  });
 }
 
 /** Draws a frame as round LEDs (unlit ones dark grey) onto a canvas. */

@@ -64,6 +64,11 @@ def frame(feed, received):
         return f"CODE {feed['code']}"
     if feed["mode"] == "idle":
         return f"{feed['name']}: kein Spiel · CODE {feed.get('code', '-')}"
+    msg = feed.get("msg")
+    if msg and (time.monotonic() - received) * 1000 < msg.get("ms", 0):
+        if msg["kind"] == "text":
+            return f"[{msg.get('icon') or ''}] {msg.get('text', '')} ({msg.get('effect')})"
+        return f"[Grafik {msg['kind']}] {msg.get('periods') or msg.get('lead')}"
     c, line = feed.get("clock") or {}, ""
     if c.get("visible"):
         ms = c["ms"]

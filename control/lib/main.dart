@@ -16,6 +16,7 @@ import 'match_console.dart';
 import 'team_editor.dart';
 import 'displays.dart';
 import 'board_displays.dart';
+import 'led_messages.dart';
 import 'logo_picker.dart';
 import 'fixture_import.dart';
 import 'location_frame.dart';
@@ -2559,6 +2560,17 @@ class _Score67State extends State<Score67> {
         (t('console.team'), teamTab()),
         (t('console.period'), periodPanel()),
         (t('console.sharing'), sharingPanel()),
+        (
+          'LED',
+          LedMessagePanel(
+            api: (path, method, body) => api(path, method: method, body: body),
+            t: t,
+            slug: slug,
+            homeShort: '${state['home']['short'] ?? ''}',
+            awayShort: '${state['away']['short'] ?? ''}',
+            enabled: canWrite,
+          ),
+        ),
         (
           t('console.box_score'),
           BoxScorePanel(

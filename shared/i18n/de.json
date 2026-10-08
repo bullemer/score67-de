@@ -658,5 +658,22 @@
   "ledlink.shows_nothing": "zeigt kein Spiel",
   "ledlink.show_here": "Hier anzeigen",
   "ledlink.disconnect": "Trennen",
-  "settings.portrait_hint": "Tipp: Handy hochkant halten – so lassen sich die Einstellungen leichter bearbeiten."
+  "settings.portrait_hint": "Tipp: Handy hochkant halten – so lassen sich die Einstellungen leichter bearbeiten.",
+  "ledmsg.hint": "Kurze Nachricht oder Grafik auf allen LED-Tafeln dieses Spiels – danach kommt automatisch wieder der Spielstand.",
+  "ledmsg.preset.welcome": "WILLKOMMEN!",
+  "ledmsg.preset.go": "LOS {team}!",
+  "ledmsg.preset.thanks": "DANKE!",
+  "ledmsg.preset.timeout": "AUSZEIT",
+  "ledmsg.periods": "Punkte je Periode",
+  "ledmsg.lead": "Spielverlauf",
+  "ledmsg.own": "Eigener Text",
+  "ledmsg.send": "Senden",
+  "ledmsg.no_icon": "Ohne Bild",
+  "ledmsg.effect.static": "Fest",
+  "ledmsg.effect.blink": "Blinken",
+  "ledmsg.effect.rainbow": "Regenbogen",
+  "ledmsg.showing": "Auf der Tafel – noch {s} s",
+  "ledmsg.stop": "Stopp",
+  "ledmsg.failed": "Nicht gesendet. Läuft ein Spiel, und ist Text oder Bild gewählt?",
+  "ledmsg.preview_note": "Ansehen ohne Tafel: Menü des Viewers → LED-Vorschau."
 }

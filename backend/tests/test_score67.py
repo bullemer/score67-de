@@ -1677,6 +1677,47 @@ def test_led_panel_connected_from_sharing_tab(system):
     assert idle['mode'] == 'idle' and len(idle['code']) == 6
 
 
+def test_led_messages_interrupt_the_score(system, monkeypatch):
+    import time
+    from score67 import led_messages
+    app, client = system
+    slug = client.post('/api/scoreboards', json={'sport': 'basketball', 'period_count': 4, 'period_length_min': 10}).json()['slug']
+    command(client, slug, 'settings', {'home': {'name': 'Bramfeld', 'short': 'BRA', 'color': '#1d4ed8'}})
+    command(client, slug, 'period_start')
+    command(client, slug, 'score', {'team': 'home', 'points': 3})
+    command(client, slug, 'score', {'team': 'away', 'points': 2})
+    command(client, slug, 'period_end')
+    command(client, slug, 'period_start')
+    command(client, slug, 'score', {'team': 'away', 'points': 2})
+    command(client, slug, 'score', {'team': 'away', 'points': 3})
+    url = f'/api/s/{slug}/led/message'
+    # Only controllers; texts the font cannot draw are cleaned, umlauts spelled out.
+    assert TestClient(app).post(url, json={'text': 'Hallo'}).status_code == 401
+    assert client.post(url, json={'text': '  '}).status_code == 422
+    assert client.post(url, json={'text': 'x', 'icon': 'unicorn'}).status_code == 422
+    msg = client.post(url, json={'text': 'Grüße an alle 💪 Fans!', 'icon': 'heart', 'effect': 'blink', 'seconds': 5}).json()
+    assert msg['text'] == 'GRUESSE AN ALLE FANS!' and msg['icon'] == 'heart' and 0 < msg['ms'] <= 5000
+    feed = client.get(f'/api/s/{slug}/led').json()
+    assert feed['mode'] == 'game' and feed['msg']['id'] == msg['id'] and feed['home']['short'] == 'BRA'
+    # Graphics are computed from the game: points per period and the lead over time.
+    periods = client.post(url, json={'kind': 'periods'}).json()
+    assert periods['periods'] == [[3, 2], [0, 5]] and periods['home'] == {'short': 'BRA', 'color': '#1d4ed8'}
+    lead = client.post(url, json={'kind': 'lead'}).json()['lead']
+    assert len(lead) == led_messages.LEAD_COLUMNS and lead[0] == 0 and lead[-1] == -4 and max(lead) == 3
+    # Panels showing the game get it too; it ends by itself or when cleared.
+    device = TestClient(app)
+    reg = device.post('/api/display/register', json={'device_key': 'm' * 40}).json()
+    client.post(f'/api/s/{slug}/displays', json={'code': reg['code']})
+    panel = lambda: device.get('/api/display/state?format=compact', headers={'Authorization': f'Bearer {reg["token"]}'}).json()
+    assert panel()['msg']['kind'] == 'lead'
+    later = time.time() + 61
+    monkeypatch.setattr(led_messages.time, 'time', lambda: later)
+    assert 'msg' not in panel()
+    monkeypatch.undo()
+    client.post(url, json={'text': 'Defense'})
+    assert client.delete(url).json() == {'ok': True} and 'msg' not in panel()
+
+
 def test_led_preview_page_and_feed(system):
     app, client = system
     slug = client.post('/api/scoreboards', json={'sport': 'basketball'}).json()['slug']

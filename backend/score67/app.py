@@ -22,7 +22,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 
-from . import display_feed, firmware, fixtures, forum, guides, mail, preview, seo
+from . import display_feed, firmware, fixtures, forum, guides, led_messages, mail, preview, seo
 from .db import Account, AccountSession, Admin, Asset, LoginToken, Board, Display, DisplayAdmin, Match, MatchEvent, RateLimit, Receipt, database
 from .domain import FOOTBALL, BASKETBALL, RuleError, apply, period_ms, initial_state, normalize_clock, foul_mode, BASKETBALL_STATS, player_statistics, SHORT_MAX, FOOTBALL_EVENTS
 
@@ -81,6 +81,15 @@ class DisplayRegister(StrictModel):
 class DisplayClaim(StrictModel):
     code: str = Field(min_length=6, max_length=12)
     name: str | None = Field(default=None, min_length=1, max_length=60)
+
+
+class LedMessage(StrictModel):
+    kind: str = Field(default="text", max_length=10)
+    text: str | None = Field(default=None, max_length=200)
+    icon: str | None = Field(default=None, max_length=20)
+    effect: str | None = Field(default=None, max_length=10)
+    color: str | None = Field(default=None, max_length=7)
+    seconds: int = Field(default=8, ge=1, le=600)
 
 
 class DisplayConnect(StrictModel):
@@ -1024,7 +1033,31 @@ def create_app(db_url=None, secure_cookies=None):
             common = {"now_ms": now_ms, "name": b.name, "brightness": 100, "identify": False}
             if not b.active_match:
                 return display_feed.payload(mode="idle", **common)
-            return display_feed.payload(mode="game", s=state(db, b), **common)
+            return display_feed.payload(mode="game", s=state(db, b), msg=led_messages.feed_part(b.slug), **common)
+
+    @app.post("/api/s/{slug}/led/message")
+    def send_led_message(slug: str, body: LedMessage, request: Request):
+        """Greeting, cheer or small graphic on every LED panel showing this game,
+        for a few seconds; then the score again."""
+        with lock, app.state.sessions() as db:
+            authorize(db, slug, request)
+            b = board(db, slug)
+            if not b.active_match:
+                raise HTTPException(409, "no_match")
+            events = db.scalars(select(MatchEvent).where(
+                MatchEvent.match_id == b.active_match, MatchEvent.cancelled.is_(False)).order_by(MatchEvent.id)).all()
+            try:
+                return led_messages.create(slug, state(db, b), events, kind=body.kind, text=body.text, icon=body.icon,
+                                           effect=body.effect, color=body.color, seconds=body.seconds)
+            except ValueError as error:
+                raise HTTPException(422, f"invalid_{error}")
+
+    @app.delete("/api/s/{slug}/led/message")
+    def clear_led_message(slug: str, request: Request):
+        with lock, app.state.sessions() as db:
+            authorize(db, slug, request)
+            led_messages.clear(slug)
+            return {"ok": True}
 
     @app.get("/api/s/{slug}/control-state")
     @app.get("/api/s/{slug}/matches/{match_id}/control-state")
@@ -1412,7 +1445,7 @@ def create_app(db_url=None, secure_cookies=None):
             common["code"] = claim_code(db, d, now)
         if not b:
             return display_feed.payload(mode="idle", **common)
-        return display_feed.payload(mode="game", s=state(db, b), **common)
+        return display_feed.payload(mode="game", s=state(db, b), msg=led_messages.feed_part(b.slug), **common)
 
     def device_status(db, d, message):
         """Status a device reports over its socket: {"fw": "0.1.0", "rssi": -61, "uptime": 3600}."""
@@ -1701,6 +1734,7 @@ def create_app(db_url=None, secure_cookies=None):
                                d.brightness, bool(d.identify_until and d.identify_until > time.time()),
                                d.pairing_code, (d.pairing_expires_at or 0) <= time.time(),  # expired → renewed code
                                claimed(db, d) if compact else None,
+                               led_messages.signature(d.board_slug) if compact and d.board_slug else None,
                                (firmware.offer(db, d) or {}).get("version") if compact else None)
                     if current != signature:
                         payload = compact_payload(db, d) if compact else device_payload(db, d)
