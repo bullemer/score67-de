@@ -1679,6 +1679,35 @@ def test_led_messages_interrupt_the_score(system, monkeypatch):
     assert client.delete(url).json() == {'ok': True} and 'msg' not in panel()
 
 
+def test_idle_panels_go_back_to_their_code(system):
+    import time
+    from score67.app import release_idle_displays
+    app, client = system
+    device = TestClient(app)
+    reg = device.post('/api/display/register', json={'device_key': 'i' * 40}).json()
+    slug = client.post('/api/scoreboards', json={'sport': 'basketball', 'period_count': 1, 'period_length_min': 1}).json()['slug']
+    client.post(f'/api/s/{slug}/displays', json={'code': reg['code']})
+    command(client, slug, 'period_start')
+    command(client, slug, 'score', {'team': 'home', 'points': 2})
+    feed = lambda: device.get('/api/display/state?format=compact', headers={'Authorization': f'Bearer {reg["token"]}'}).json()
+    assert feed()['mode'] == 'game'
+    now = time.time()
+    with app.state.sessions() as db:
+        # Running game, recent activity: stays. Quiet for 7 h: released.
+        assert release_idle_displays(db, now + 3600) == 0
+        assert release_idle_displays(db, now + 7 * 3600) == 1
+        db.commit()
+    assert feed()['mode'] == 'idle' and len(feed()['code']) == 6
+    # Shown again, then the game ends: released two hours after the final whistle.
+    client.put(f'/api/s/{slug}/displays/{reg["display_id"]}', json={})
+    command(client, slug, 'game_end')
+    with app.state.sessions() as db:
+        assert release_idle_displays(db, time.time() + 3600) == 0
+        assert release_idle_displays(db, time.time() + 2.5 * 3600) == 1
+        db.commit()
+    assert feed()['mode'] == 'idle'
+
+
 def test_led_preview_page_and_feed(system):
     app, client = system
     slug = client.post('/api/scoreboards', json={'sport': 'basketball'}).json()['slug']

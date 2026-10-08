@@ -323,6 +323,30 @@ def clean_matches(db, now=None):
     return trashed, purged
 
 
+def release_idle_displays(db, now=None):
+    """LED panels go back to their code when the game they show is over.
+
+    A panel is released LED_RELEASE_FINISHED_MINUTES after its game ended,
+    LED_RELEASE_IDLE_HOURS after the last activity of a game that never ended,
+    and at once when the board has no game. Returns the number released."""
+    now = now or time.time()
+    finished = float(os.getenv("LED_RELEASE_FINISHED_MINUTES", 120)) * 60
+    idle = float(os.getenv("LED_RELEASE_IDLE_HOURS", 6)) * 3600
+    released = 0
+    for d in db.scalars(select(Display).where(Display.board_slug.is_not(None))).all():
+        b = db.get(Board, d.board_slug)
+        m = db.get(Match, b.active_match) if b and b.active_match else None
+        if m and not m.deleted_at and not m.trashed_at:
+            last = db.scalar(select(MatchEvent).where(MatchEvent.match_id == m.id).order_by(MatchEvent.id.desc()).limit(1))
+            activity = max(m.created_at, m.touched_at or 0, (last.payload.get("occurred_at", 0) / 1000) if last else 0)
+            limit = finished if m.state.get("phase") == "finished" else idle
+            if now < activity + limit:
+                continue
+        d.board_slug = None
+        released += 1
+    return released
+
+
 def finish_overdue_matches(db, now=None):
     """End started games the user forgot to end.
 
@@ -395,6 +419,7 @@ def create_app(db_url=None, secure_cookies=None):
         def clean():
             with lock, sessions() as db:
                 finish_overdue_matches(db)
+                release_idle_displays(db)
                 return clean_matches(db)
 
         async def cleaner():

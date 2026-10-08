@@ -8,6 +8,8 @@ A display is a Score67 LED panel (ESP32 firmware in `firmware/`) that shows one 
 2. The user enters the code in the app (`POST /api/displays/claim`, or `POST /api/s/{slug}/displays` to connect a game at the same time). The browser receives a management cookie `score67d_<display id>`; from then on the panel follows the games its owner opens (`display.follow`).
 3. The panel keeps its token persistently; it is the only credential. Removing the panel in the app invalidates it (the socket closes with 1008), and the panel registers again and shows a new code.
 
+A panel goes back to showing its code by itself (`board` cleared) two hours after its game ended, six hours after the last activity of a game that never ended, or at once when the board has no game (`LED_RELEASE_FINISHED_MINUTES`, `LED_RELEASE_IDLE_HOURS`; maintenance loop). **Freigeben** in the app deletes the display; the panel registers again with a new code for the next owner.
+
 The earlier flow where the app created a display and a device typed its code (Raspberry Pi idea) was removed on 9 October 2026; such displays were deleted (migration 0016).
 
 ## Following the assigned board
