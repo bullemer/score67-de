@@ -54,7 +54,7 @@ class LocationUpdate(StrictModel):
     location: Location | None = None
 
 
-DISPLAY_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no 0/O/1/I
+DISPLAY_CODE_ALPHABET = "0123456789"   # digits only: read off a panel, typed on a number pad
 PAIRING_SECONDS = 600
 CLAIM_CODE_SECONDS = 24 * 3600   # code shown on a self-registered panel until someone claims it
 IDENTIFY_SECONDS = 10

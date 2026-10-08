@@ -106,7 +106,7 @@ class _BoardDisplaysPanelState extends State<BoardDisplaysPanel> {
               child: TextField(
                 controller: code,
                 enabled: can,
-                textCapitalization: TextCapitalization.characters,
+                keyboardType: TextInputType.number,
                 maxLength: 6,
                 onSubmitted: (_) => connect(),
                 decoration: InputDecoration(
@@ -154,7 +154,11 @@ class _BoardDisplaysPanelState extends State<BoardDisplaysPanel> {
             leading: dot(d),
             title: Text(d['name'] ?? ''),
             subtitle: Text(
-              t(d['board'] == null ? 'ledlink.shows_nothing' : 'ledlink.shows_other'),
+              t(
+                d['board'] == null
+                    ? 'ledlink.shows_nothing'
+                    : 'ledlink.shows_other',
+              ),
             ),
             trailing: TextButton(
               onPressed: can

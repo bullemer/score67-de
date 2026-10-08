@@ -405,7 +405,7 @@ class _DisplaysDialogState extends State<DisplaysDialog> {
           child: TextField(
             controller: claim,
             maxLength: 7,
-            textCapitalization: TextCapitalization.characters,
+            keyboardType: TextInputType.number,
             onSubmitted: (_) => claimPanel(),
             decoration: InputDecoration(
               labelText: t('display.claim_label'),

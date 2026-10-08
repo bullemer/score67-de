@@ -30,6 +30,10 @@ terminal at 115200 on /dev/ttyACM0.
 ## Status
 
 1. Panel test pattern — done (colours, orientation, text verified).
-2. Scoreboard layout with the led.mjs fonts — next.
+2. Scoreboard layout — done: `src/render.cpp` is a port of led.mjs `render()`,
+   `include/tables.h` is generated from led.mjs (`node tools/gen_tables.mjs`),
+   and `node tools/compare.mjs` (after `pio run -e native`) checks both pixel
+   for pixel over 25 feeds. Verified on the panel with the samples in
+   `include/samples.h` (serial: `n`, `0`-`9`).
 3. Server side — done (`../backend`).
-4. Wi-Fi, registration, WSS live feed, code display — open.
+4. Wi-Fi, registration, WSS live feed, code display — next.

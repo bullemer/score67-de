@@ -48,7 +48,7 @@ Ein kleiner Zustandsautomat: WLAN → Registrieren → (Code zeigen) → Verbind
 | Boot | score67-Logo, Firmware-Version | nach dem Einschalten, ca. 2 s |
 | WLAN-Einrichtung | „WLAN: score67-XXXX“ | keine Zugangsdaten gespeichert, oder UP 5 s gehalten |
 | Verbinden | Laufpunkte + Netzname | WLAN bzw. Server wird gesucht |
-| Kopplung | „CODE“ + 6 Zeichen, z. B. 4F7K2Q | `mode: "pairing"` |
+| Kopplung | „CODE“ + 6 Ziffern groß, z. B. 472 913 | `mode: "pairing"` |
 | Bereit | Name der Tafel + Verbindungscode (`code`) | `mode: "idle"` |
 | Spiel | Kürzel, Spielstand, Periode, Uhr | `mode: "game"` |
 | Code zeigen | Verbindungscode 10 s groß, dann zurück zum Spiel | DOWN kurz gedrückt |

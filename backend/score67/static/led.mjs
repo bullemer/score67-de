@@ -7,7 +7,7 @@
 export const WIDTH = 64, HEIGHT = 32;
 
 // 3×5 font: five rows of three bits (MSB = left).
-const SMALL = {
+export const SMALL = {
   '0': [7, 5, 5, 5, 7], '1': [2, 6, 2, 2, 7], '2': [7, 1, 7, 4, 7], '3': [7, 1, 7, 1, 7], '4': [5, 5, 7, 1, 1],
   '5': [7, 4, 7, 1, 7], '6': [7, 4, 7, 5, 7], '7': [7, 1, 2, 2, 2], '8': [7, 5, 7, 5, 7], '9': [7, 5, 7, 1, 7],
   A: [2, 5, 7, 5, 5], B: [6, 5, 6, 5, 6], C: [3, 4, 4, 4, 3], D: [6, 5, 5, 5, 6], E: [7, 4, 6, 4, 7],
@@ -21,19 +21,19 @@ const SMALL = {
   '#': [5, 7, 5, 7, 5], '(': [1, 2, 2, 2, 1], ')': [4, 2, 2, 2, 4], '*': [5, 2, 7, 2, 5],
 };
 // 5×7 digits (clock), and 4×7 digits for the narrow score font; doubled for the score.
-const CLOCK = {
+export const CLOCK = {
   '0': [14, 17, 19, 21, 25, 17, 14], '1': [4, 12, 4, 4, 4, 4, 14], '2': [14, 17, 1, 2, 4, 8, 31],
   '3': [31, 2, 4, 2, 1, 17, 14], '4': [2, 6, 10, 18, 31, 2, 2], '5': [31, 16, 30, 1, 1, 17, 14],
   '6': [6, 8, 16, 30, 17, 17, 14], '7': [31, 1, 2, 4, 8, 8, 8], '8': [14, 17, 17, 14, 17, 17, 14],
   '9': [14, 17, 17, 15, 1, 2, 12],
 };
-const NARROW = {
+export const NARROW = {
   '0': [6, 9, 9, 9, 9, 9, 6], '1': [2, 6, 2, 2, 2, 2, 7], '2': [6, 9, 1, 2, 4, 8, 15], '3': [15, 1, 2, 1, 1, 9, 6],
   '4': [2, 6, 10, 10, 15, 2, 2], '5': [15, 8, 14, 1, 1, 9, 6], '6': [6, 8, 8, 14, 9, 9, 6], '7': [15, 1, 2, 2, 4, 4, 4],
   '8': [6, 9, 9, 6, 9, 9, 6], '9': [6, 9, 9, 7, 1, 1, 6],
 };
 // 12×12 message icons; letters are colours (ICON_COLORS), '.' is off.
-const ICONS = {
+export const ICONS = {
   heart: [
     '............', '..rr....rr..', '.rrrr..rrrr.', 'rrwrrrrrrrrr', 'rwrrrrrrrrrr', 'rrrrrrrrrrrr',
     '.rrrrrrrrrr.', '..rrrrrrrr..', '...rrrrrr...', '....rrrr....', '.....rr.....', '............'],
@@ -54,8 +54,8 @@ const ICONS = {
     '.rrrooorrrr.', '.rroooyoorr.', '.rrooyyyorr.', '.rooyyyyoor.', '..roowyyor..', '...rrooor...'],
 };
 // n and d are dim: seams and patches stay visible without holes in the shape.
-const ICON_COLORS = {r: '#ef4444', o: '#f97316', y: '#facc15', w: '#ffffff', g: '#22c55e', b: '#3b82f6', n: '#5a1e06', d: '#555b66'};
-const COLORS = {score: '#ffa31a', running: '#34d399', stopped: '#facc15', text: '#e5e7eb', dim: '#9ca3af', red: '#ef4444'};
+export const ICON_COLORS = {r: '#ef4444', o: '#f97316', y: '#facc15', w: '#ffffff', g: '#22c55e', b: '#3b82f6', n: '#5a1e06', d: '#555b66'};
+export const COLORS = {score: '#ffa31a', running: '#34d399', stopped: '#facc15', text: '#e5e7eb', dim: '#9ca3af', red: '#ef4444'};
 
 const rgb = hex => {
   const n = parseInt((hex || '#ffffff').slice(1), 16);
@@ -135,17 +135,18 @@ function drawScore(frame, value, rightEdge, leftStart, narrow) {
 export function render(feed, sinceMs = 0, {lang = 'de'} = {}) {
   const frame = new Frame();
   if (!feed) return frame;
-  if (feed.mode === 'pairing') {
-    frame.text('CODE', Math.round((WIDTH - textWidth('CODE')) / 2), 4, COLORS.dim);
-    frame.text(feed.code || '', Math.round((WIDTH - textWidth(feed.code || '')) / 2), 16, COLORS.text);
-    return frame;
-  }
   if (feed.mode === 'game' && feed.msg && sinceMs < (feed.msg.ms ?? 0)) {
     renderMessage(frame, feed.msg, sinceMs);
     return frame;
   }
   if (feed.mode !== 'game') {
-    frame.text('SCORE67', Math.round((WIDTH - textWidth('SCORE67')) / 2), 13, COLORS.dim);
+    // Pairing (unclaimed) or idle (no game): the connection code large enough
+    // to read across the hall, with what it is above it.
+    const label = feed.mode === 'pairing' ? 'CODE' : 'SCORE67', code = feed.code || '';
+    if (!code) { frame.text(label, Math.round((WIDTH - textWidth(label)) / 2), 13, COLORS.dim); return frame; }
+    frame.text(label, Math.round((WIDTH - textWidth(label)) / 2), 2, COLORS.dim);
+    const shown = code.length === 6 ? `${code.slice(0, 3)} ${code.slice(3)}` : code;
+    frame.big(shown, Math.round((WIDTH - (shown.length * 8 - 2)) / 2), 13, COLORS.text);
     return frame;
   }
   const home = feed.home || {}, guest = feed.guest || {};
