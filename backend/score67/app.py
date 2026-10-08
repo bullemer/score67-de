@@ -1517,16 +1517,20 @@ def create_app(db_url=None, secure_cookies=None):
                 raise HTTPException(429, "rate_limited")
             code = body.code.strip().upper().replace("-", "").replace(" ", "")
             d = db.scalar(select(Display).where(Display.pairing_code == code, Display.device_key_hash.is_not(None)))
-            if not d or (d.pairing_expires_at or 0) <= now or claimed(db, d):
+            if not d or (d.pairing_expires_at or 0) <= now:
                 db.commit()
                 raise HTTPException(404, "pairing_code_invalid")
+            # The code on the panel is the key: whoever reads it (idle, or DOWN
+            # pressed during a game) becomes an owner too, so a panel in a shared
+            # hall never waits for someone who went home. The code is renewed.
             if body.name:
                 d.name = body.name.strip()
-            d.pairing_code = d.pairing_expires_at = None
-            token = secrets.token_urlsafe(32)
-            db.add(DisplayAdmin(id=str(uuid4()), display_id=d.id, token_hash=digest(token), created_at=now))
-            response.set_cookie(display_cookie(d.id), token, httponly=True, secure=secure,
-                                samesite="lax", max_age=365 * 86400, path="/")
+            if d.id not in managed_ids(db, request.cookies):
+                token = secrets.token_urlsafe(32)
+                db.add(DisplayAdmin(id=str(uuid4()), display_id=d.id, token_hash=digest(token), created_at=now))
+                response.set_cookie(display_cookie(d.id), token, httponly=True, secure=secure,
+                                    samesite="lax", max_age=365 * 86400, path="/")
+            d.pairing_code, d.pairing_expires_at = pairing_code(db), now + CLAIM_CODE_SECONDS
             db.commit()
             return display_info(db, d)
 

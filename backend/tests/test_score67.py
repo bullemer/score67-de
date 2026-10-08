@@ -1559,8 +1559,13 @@ def test_self_registering_led_display_flow(system):
     assert client.post('/api/displays/claim', json={'code': 'ZZZZZZ'}).status_code == 404
     info = client.post('/api/displays/claim', json={'code': first['code'].lower(), 'name': 'Halle 1'}).json()
     assert info['device'] and info['name'] == 'Halle 1' and info['fw_version'] == '0.1.0'
-    assert client.post('/api/displays/claim', json={'code': first['code']}).status_code == 404
+    assert client.post('/api/displays/claim', json={'code': first['code']}).status_code == 404   # used codes expire
     assert feed()['mode'] == 'idle'
+    # The panel keeps showing a (new) code; a second person who reads it becomes an owner too.
+    coach = TestClient(app)
+    assert coach.post('/api/displays/claim', json={'code': feed()['code']}).json()['id'] == info['id']
+    assert coach.get('/api/displays').json()['displays'][0]['id'] == info['id']
+    assert len(client.get('/api/displays').json()['displays']) == 1
     # Assign a basketball board; the compact feed carries the game, not the whole state.
     slug = client.post('/api/scoreboards', json={'sport': 'basketball', 'period_count': 8, 'period_length_min': 5}).json()['slug']
     command(client, slug, 'settings', {'home': {'name': 'Bramfeld', 'short': 'BRA'}})
