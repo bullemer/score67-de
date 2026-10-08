@@ -2,7 +2,9 @@
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
+#include <DNSServer.h>
 #include <HTTPClient.h>
+#include <WebServer.h>
 #include <Preferences.h>
 #include <WebSocketsClient.h>
 #include <WiFi.h>
@@ -16,6 +18,88 @@ Net net;
 namespace {
 Preferences prefs;
 WebSocketsClient socket;
+DNSServer dns;
+WebServer *portal = nullptr;
+char portalMessage[80] = "";
+
+struct Network { String ssid, pass; };
+Network networks[WIFI_SLOTS];
+
+int storedNetworks() {
+  int n = 0;
+  for (auto &w : networks) if (w.ssid.length()) n++;
+  return n;
+}
+
+void loadNetworks() {
+  for (int i = 0; i < WIFI_SLOTS; i++) {
+    networks[i].ssid = prefs.getString((String("wifi") + i + "_ssid").c_str(), "");
+    networks[i].pass = prefs.getString((String("wifi") + i + "_pass").c_str(), "");
+  }
+}
+
+void saveNetwork(const String &ssid, const String &pass) {
+  int target = -1;
+  for (int i = 0; i < WIFI_SLOTS; i++) if (networks[i].ssid == ssid) target = i;          // update
+  for (int i = 0; target < 0 && i < WIFI_SLOTS; i++) if (!networks[i].ssid.length()) target = i;   // free slot
+  if (target < 0) target = WIFI_SLOTS - 1;                                                // replace the last one
+  networks[target] = {ssid, pass};
+  prefs.putString((String("wifi") + target + "_ssid").c_str(), ssid);
+  prefs.putString((String("wifi") + target + "_pass").c_str(), pass);
+}
+
+void deleteNetwork(int i) {
+  if (i < 0 || i >= WIFI_SLOTS) return;
+  networks[i] = {"", ""};
+  prefs.remove((String("wifi") + i + "_ssid").c_str());
+  prefs.remove((String("wifi") + i + "_pass").c_str());
+}
+
+String htmlEscape(const String &s) {
+  String out;
+  for (char c : s) {
+    if (c == '&') out += "&amp;"; else if (c == '<') out += "&lt;"; else if (c == '"') out += "&quot;";
+    else if (c == '\'') out += "&#39;"; else out += c;
+  }
+  return out;
+}
+
+// The setup page: nearby networks to tap, the form, the stored networks.
+void portalPage() {
+  String page = F("<!doctype html><html lang=de><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>"
+                  "<title>Score67 LED-Tafel</title><style>body{font-family:system-ui,sans-serif;margin:16px;max-width:420px}"
+                  "button,input{font-size:18px;padding:10px;margin:4px 0;width:100%;box-sizing:border-box}"
+                  ".n{text-align:left;background:#eef;border:1px solid #99c;border-radius:6px}.m{background:#dfd;padding:8px;border-radius:6px}"
+                  "small{color:#666}</style><script>function fill(b){document.getElementById('s').value=b.dataset.s}</script>"
+                  "</head><body><h2>Score67 LED-Tafel</h2>");
+  if (portalMessage[0]) page += String("<p class=m>") + portalMessage + "</p>";
+  page += F("<p>WLAN wählen (nur 2,4 GHz; iPhone-Hotspot: „Maximale Kompatibilität“ einschalten) und Passwort eingeben.<br>"
+            "<small>Choose a 2.4 GHz network and enter its password.</small></p><form method=post action=/save>");
+  int found = WiFi.scanComplete();
+  for (int i = 0; i < found; i++) {
+    String ssid = WiFi.SSID(i);
+    if (!ssid.length()) continue;
+    page += "<button type=button class=n onclick='fill(this)' data-s='" + htmlEscape(ssid) + "'>" +
+            htmlEscape(ssid) + " <small>" + WiFi.RSSI(i) + " dBm" + (WiFi.encryptionType(i) == WIFI_AUTH_OPEN ? ", offen" : "") + "</small></button>";
+            htmlEscape(ssid) + " <small>" + WiFi.RSSI(i) + " dBm" + (WiFi.encryptionType(i) == WIFI_AUTH_OPEN ? ", offen" : "") + "</small></button>";
+  }
+  page += F("<input id=s name=ssid placeholder='WLAN-Name' required maxlength=32><input name=pass type=password placeholder='Passwort' maxlength=63>"
+            "<button type=submit>Speichern und verbinden</button></form><form method=post action=/scan><button type=submit>Erneut suchen</button></form>");
+  if (storedNetworks()) {
+    page += F("<h3>Gespeicherte WLANs</h3>");
+    for (int i = 0; i < WIFI_SLOTS; i++)
+      if (networks[i].ssid.length())
+        page += "<form method=post action=/delete><input type=hidden name=i value=" + String(i) + "><button type=submit>" + htmlEscape(networks[i].ssid) + " – löschen</button></form>";
+    page += F("<form method=post action=/done><button type=submit>Fertig (Tafel verbindet sich)</button></form>");
+  }
+  page += F("<p><small>Die Tafel merkt sich bis zu 3 WLANs und probiert sie der Reihe nach.</small></p></body></html>");
+  portal->send(200, "text/html; charset=utf-8", page);
+}
+
+void portalRedirect() {
+  portal->sendHeader("Location", "http://192.168.4.1/", true);
+  portal->send(302, "text/plain", "");
+}
 char deviceKey[48] = "", token[64] = "";
 bool socketOpen = false;
 char lastFeed[4096];   // the newest message, parsed in loop() (the callback must stay short)
@@ -76,6 +160,99 @@ void Net::loadIdentity() {
   st.haveToken = token[0] != 0;
 }
 
+void Net::startPortal() {
+  if (st.state == NetState::PORTAL) return;
+  socket.disconnect();
+  socketOpen = false;
+  uint8_t mac[6];
+  WiFi.macAddress(mac);
+  snprintf(st.apName, sizeof st.apName, "score67-%02X%02X", mac[4], mac[5]);
+  WiFi.mode(WIFI_AP_STA);
+  WiFi.softAP(st.apName);
+  strncpy(st.apIp, WiFi.softAPIP().toString().c_str(), sizeof st.apIp - 1);
+  dns.start(53, "*", WiFi.softAPIP());
+  WiFi.scanNetworks(true);   // async; the page shows what is there by the time it is opened
+  if (!portal) {
+    portal = new WebServer(80);
+    portal->on("/", HTTP_GET, portalPage);
+    portal->on("/scan", HTTP_POST, [] { WiFi.scanNetworks(true); delay(2500); portalRedirect(); });
+    portal->on("/save", HTTP_POST, [] {
+      String ssid = portal->arg("ssid"), pass = portal->arg("pass");
+      ssid.trim();
+      if (!ssid.length()) { portalRedirect(); return; }
+      saveNetwork(ssid, pass);
+      snprintf(portalMessage, sizeof portalMessage, "Gespeichert: %.32s. Die Tafel verbindet sich jetzt.", ssid.c_str());
+      portalRedirect();
+      net.stopPortal();
+    });
+    portal->on("/delete", HTTP_POST, [] { deleteNetwork(portal->arg("i").toInt()); portalMessage[0] = 0; portalRedirect(); });
+    portal->on("/done", HTTP_POST, [] { portalRedirect(); net.stopPortal(); });
+    portal->onNotFound(portalRedirect);   // captive-portal probes (generate_204, hotspot-detect ...) land on the page
+    portal->begin();
+  }
+  portalMessage[0] = 0;
+  portalIdle = millis();
+  st.state = NetState::PORTAL;
+  Serial.printf("[net] portal: hotspot %s at %s\n", st.apName, st.apIp);
+}
+
+void Net::stopPortal() {
+  if (st.state != NetState::PORTAL) return;
+  delay(300);   // let the redirect reach the phone
+  dns.stop();
+  WiFi.softAPdisconnect(true);
+  WiFi.mode(WIFI_STA);
+  st.networks = storedNetworks();
+  st.state = NetState::WIFI_CONNECTING;
+  connecting = false;
+  slot = -2;   // nextNetwork() starts at slot 0, i.e. the network just saved when it is the first
+  Serial.println("[net] portal closed");
+}
+
+void Net::portalLoop() {
+  dns.processNextRequest();
+  portal->handleClient();
+  // Without anyone using it, a panel that knows a network goes back to work after 5 minutes.
+  if (portal->client()) portalIdle = millis();
+  if (storedNetworks() && millis() - portalIdle > 300000) stopPortal();
+}
+
+// Starts the next connection attempt. A scan first: of the stored networks in
+// range the strongest wins (club Wi-Fi next to a weak phone hotspot). With
+// none in range the stored networks are tried in turn anyway, since a hotspot
+// is often switched on only later. False when nothing is configured at all.
+bool Net::nextNetwork() {
+  int best = -2, bestRssi = -1000;
+  int found = WiFi.scanNetworks(false, false, false, 200);
+  for (int i = 0; i < found; i++) {
+    String seen = WiFi.SSID(i);
+    for (int j = -1; j < WIFI_SLOTS; j++) {
+      const char *ssid = j >= 0 ? networks[j].ssid.c_str() : DEV_WIFI_SSID;
+      if (ssid[0] && seen == ssid && WiFi.RSSI(i) > bestRssi) { best = j; bestRssi = WiFi.RSSI(i); }
+    }
+  }
+  WiFi.scanDelete();
+  if (best > -2) {
+    slot = best;
+  } else {
+    bool any = false;
+    for (int tries = 0; tries < WIFI_SLOTS + 1 && !any; tries++) {
+      slot = slot + 1 > WIFI_SLOTS - 1 ? -1 : slot + 1;
+      any = (slot >= 0 ? networks[slot].ssid.c_str() : DEV_WIFI_SSID)[0] != 0;
+    }
+    if (!any) return false;
+  }
+  const char *ssid = slot >= 0 ? networks[slot].ssid.c_str() : DEV_WIFI_SSID;
+  const char *pass = slot >= 0 ? networks[slot].pass.c_str() : DEV_WIFI_PASSWORD;
+  strncpy(st.ssid, ssid, sizeof st.ssid - 1);
+  WiFi.disconnect();
+  WiFi.begin(ssid, pass);
+  attemptSince = millis();
+  connecting = true;
+  Serial.printf("[net] wifi %s%s ...\n", st.ssid, best > -2 ? " (strongest in range)" : "");
+  return true;
+}
+
 void Net::forgetDevice() {
   prefs.clear();
   token[0] = deviceKey[0] = st.displayId[0] = 0;
@@ -88,14 +265,15 @@ void Net::forgetDevice() {
 
 void Net::begin() {
   loadIdentity();
+  loadNetworks();
+  st.networks = storedNetworks();
   WiFi.mode(WIFI_STA);
-  WiFi.setAutoReconnect(true);
+  WiFi.setAutoReconnect(false);   // we rotate through the stored networks ourselves
+  WiFi.persistent(false);
+  slot = -2;
   // Networks saved by the setup portal come first; the development network
-  // from secrets.h is the fallback (empty in the field).
-  String ssid = prefs.getString("wifi_ssid", DEV_WIFI_SSID), pass = prefs.getString("wifi_pass", DEV_WIFI_PASSWORD);
-  strncpy(st.ssid, ssid.c_str(), sizeof st.ssid - 1);
-  if (ssid.length()) WiFi.begin(ssid.c_str(), pass.c_str());
-  Serial.printf("[net] wifi %s ...\n", st.ssid);
+  // from secrets.h is the fallback (empty in the field). Nothing at all: portal.
+  if (!nextNetwork()) startPortal();
   socket.onEvent(socketEvent);
   socket.setReconnectInterval(5000);
   socket.enableHeartbeat(15000, 5000, 2);
@@ -155,18 +333,25 @@ void Net::sendStatus() {
 
 void Net::loop() {
   uint32_t now = millis();
+  if (st.state == NetState::PORTAL) { portalLoop(); return; }
   st.rssi = WiFi.RSSI();
   if (WiFi.status() != WL_CONNECTED) {
     if (st.state != NetState::WIFI_CONNECTING) {
       Serial.println("[net] wifi lost");
       socket.disconnect();
       socketOpen = false;
+      st.state = NetState::WIFI_CONNECTING;
+      connecting = false;
     }
-    st.state = NetState::WIFI_CONNECTING;
+    // 15 s per network, then the next one; the hotspot may be switched on later.
+    if (!connecting || now - attemptSince > 15000) {
+      if (!nextNetwork()) startPortal();
+    }
     return;
   }
   if (st.state == NetState::WIFI_CONNECTING) {
-    Serial.printf("[net] wifi connected, %s\n", WiFi.localIP().toString().c_str());
+    connecting = false;
+    Serial.printf("[net] wifi connected to %s, %s\n", st.ssid, WiFi.localIP().toString().c_str());
     st.state = st.haveToken ? NetState::OFFLINE : NetState::REGISTERING;
     nextAttempt = 0;
   }

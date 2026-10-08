@@ -1,7 +1,8 @@
 // Score67 LED panel: Wi-Fi → register at score67.de → live feed over WSS →
 // the scoreboard (render.cpp). Buttons: DOWN short = show the connection
-// code for 10 s during a game; UP + DOWN held 10 s = factory reset (new
-// display, new code). Serial (115200): ? status, c code, r factory reset.
+// code for 10 s during a game; UP held 5 s = Wi-Fi setup hotspot; UP + DOWN
+// held 10 s = factory reset (new display, new code).
+// Serial (115200): ? status, c code, w portal, r factory reset.
 #include <Arduino.h>
 #include <Adafruit_Protomatter.h>
 #include "config.h"
@@ -52,7 +53,12 @@ void statusScreen(const NetStatus &st, uint32_t now) {
   char dots[4] = "";
   for (int i = 0; i < (int)((now / 500) % 4); i++) strcat(dots, ".");
   char line[20];
-  if (st.state == NetState::WIFI_CONNECTING) {
+  if (st.state == NetState::PORTAL) {
+    // Setup: connect the phone to this hotspot; the page opens by itself.
+    centred("HOTSPOT", 10, COLOR_TEXT);
+    centred(st.apName, 18, COLOR_SCORE);
+    centred(st.apIp, 26, COLOR_DIM);
+  } else if (st.state == NetState::WIFI_CONNECTING) {
     snprintf(line, sizeof line, "WLAN%s", dots);
     centred(line, 13, COLOR_TEXT);
     char ssid[16];
@@ -72,9 +78,13 @@ void codeScreen() {
 }
 
 void buttons(uint32_t now) {
-  static bool downWas = false;
-  static uint32_t downSince = 0;
+  static bool downWas = false, upWas = false, upUsed = false;
+  static uint32_t downSince = 0, upSince = 0;
   bool up = digitalRead(PIN_BUTTON_UP) == LOW, down = digitalRead(PIN_BUTTON_DOWN) == LOW;
+  // UP held 5 s: Wi-Fi setup hotspot (a short DOWN press in the portal leaves it again).
+  if (up && !upWas) { upSince = now; upUsed = false; }
+  if (up && !upUsed && now - upSince > 5000 && !down) { upUsed = true; net.startPortal(); feed = Feed(); }
+  upWas = up;
   if (up && down) {
     if (!bothSince) bothSince = now;
     if (now - bothSince > 10000) {
@@ -87,7 +97,10 @@ void buttons(uint32_t now) {
   }
   bothSince = 0;
   if (down && !downWas) downSince = now;
-  if (!down && downWas && now - downSince < 1000 && feed.code[0]) showCodeUntil = now + 10000;
+  if (!down && downWas && now - downSince < 1000) {
+    if (net.status().state == NetState::PORTAL && net.status().networks) net.stopPortal();
+    else if (feed.code[0]) showCodeUntil = now + 10000;
+  }
   downWas = down;
 }
 
@@ -119,6 +132,7 @@ void loop() {
       if (line == "?") Serial.printf("state %d wifi %s rssi %d id %s token %d feed %s code %s heap %u\n", (int)st.state, st.ssid, st.rssi,
                                      st.displayId, st.haveToken, feed.valid ? feed.mode : "-", feed.code, ESP.getFreeHeap());
       else if (line == "c") showCodeUntil = now + 10000;
+      else if (line == "w") { net.startPortal(); feed = Feed(); }
       else if (line == "r") { net.forgetDevice(); feed = Feed(); }
       line = "";
     } else line += ch;
