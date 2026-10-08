@@ -676,5 +676,6 @@
   "ledmsg.stop": "Stop",
   "ledmsg.failed": "Not sent. Is a game running, and is there a text or picture?",
   "ledmsg.preview_note": "See it without a panel: Viewer menu → LED preview.",
-  "ledlink.follow": "Follows my console: shows whichever game I open in the control center."
+  "ledlink.follow": "Follows my console: shows whichever game I open in the control center.",
+  "ble.other_kind": "Not for the Score67 LED panel – that one connects over Wi-Fi by itself."
 }

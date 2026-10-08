@@ -676,5 +676,6 @@
   "ledmsg.stop": "Stopp",
   "ledmsg.failed": "Nicht gesendet. Läuft ein Spiel, und ist Text oder Bild gewählt?",
   "ledmsg.preview_note": "Ansehen ohne Tafel: Menü des Viewers → LED-Vorschau.",
-  "ledlink.follow": "Folgt meiner Konsole: zeigt automatisch das Spiel, das ich im Control Center öffne."
+  "ledlink.follow": "Folgt meiner Konsole: zeigt automatisch das Spiel, das ich im Control Center öffne.",
+  "ble.other_kind": "Nicht für die Score67-LED-Tafel – die verbindet sich selbst über WLAN."
 }

@@ -391,7 +391,14 @@ class _DisplaysDialogState extends State<DisplaysDialog> {
       ],
     ),
     const Divider(height: 32),
-    BleDisplaysSection(t: widget.t),
+    // A different kind of panel (Bluetooth signs driven by this phone);
+    // folded away so it is not mistaken for the Score67 panels above.
+    ExpansionTile(
+      tilePadding: EdgeInsets.zero,
+      title: Text(t('ble.title'), style: const TextStyle(fontSize: 15)),
+      subtitle: Text(t('ble.other_kind'), style: const TextStyle(fontSize: 12)),
+      children: [BleDisplaysSection(t: widget.t)],
+    ),
   ];
 
   @override
