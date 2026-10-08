@@ -1718,6 +1718,13 @@ def test_idle_panels_go_back_to_their_code(system):
     assert feed()['mode'] == 'idle'
 
 
+def test_app_pages_are_served(system):
+    app, client = system
+    for path in ('/dashboard', '/settings', '/login'):
+        r = client.get(path)
+        assert r.status_code in (200, 503) and r.headers.get('x-robots-tag', 'noindex') == 'noindex', path
+
+
 def test_led_preview_page_and_feed(system):
     app, client = system
     slug = client.post('/api/scoreboards', json={'sport': 'basketball'}).json()['slug']

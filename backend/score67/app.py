@@ -480,7 +480,7 @@ def create_app(db_url=None, secure_cookies=None):
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin" if request.url.path == "/location-picker" else "no-referrer"
-        if request.url.path.startswith("/api/") or request.url.path.endswith("/control") or request.url.path in ("/new", "/dashboard", "/login"):
+        if request.url.path.startswith("/api/") or request.url.path.endswith("/control") or request.url.path in ("/new", "/dashboard", "/login", "/settings"):
             response.headers["Cache-Control"] = "no-store"
         return response
 
@@ -1910,6 +1910,7 @@ def create_app(db_url=None, secure_cookies=None):
     @app.get("/new")
     @app.get("/login")
     @app.get("/dashboard")
+    @app.get("/settings")
     @app.get("/s/{slug}/control")
     def control(slug: str | None = None):
         if not (build / "index.html").exists():
