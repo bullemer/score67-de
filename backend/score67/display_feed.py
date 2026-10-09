@@ -16,6 +16,8 @@ def period_label(s):
     period, count = s.get("period") or 0, s.get("period_count") or 1
     if not period or count == 1:
         return ""
+    if s.get("sport") == "tennis":
+        return f"S{period}"
     if s.get("sport") == "basketball" and period > count:
         return f"OT{period - count}"
     if count == 4:
@@ -48,7 +50,7 @@ def team(s, side):
         fouls = counters.get("team_fouls")
     return {"short": (t.get("short") or "")[:3].upper(), "score": t.get("score", 0),
             "color": t.get("color") or "#ffffff", "fouls": fouls,
-            "red_cards": counters.get("red_cards", 0) if s.get("sport") != "basketball" else None}
+            "red_cards": counters.get("red_cards", 0) if s.get("sport") == "football" else None}
 
 
 def payload(*, now_ms, name, brightness, identify, mode, code=None, s=None, firmware=None, msg=None, lang=None):
@@ -59,7 +61,7 @@ def payload(*, now_ms, name, brightness, identify, mode, code=None, s=None, firm
     if firmware:
         out["firmware"] = firmware   # an update to install when idle (see firmware.offer)
     if code:
-        # pairing: claim the panel; idle/game: connect a game in its Sharing tab
+        # pairing: claim the panel; idle/game: connect a game in its LED tab
         out["code"] = code
     if lang:
         out["lang"] = lang   # the board's language: "ENDE" or "FINAL" on the panel

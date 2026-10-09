@@ -1,3 +1,4 @@
+import 'tennis.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
@@ -234,6 +235,12 @@ class _DashboardState extends State<Dashboard> {
     final games = board['matches'] as List;
     final previous = games.isEmpty ? null : games.first;
     String sport = previous?['sport'] ?? 'football';
+    final tennisFormat = <String, dynamic>{
+      'category': previous?['tennis']?['category'] ?? 'women',
+      'best_of': previous?['tennis']?['best_of'] ?? 3,
+      'mode': previous?['tennis']?['mode'] ?? 'detailed',
+      'final_tiebreak': previous?['tennis']?['final_tiebreak'] ?? 7,
+    };
     int periods = previous?['period_count'] ?? widget.periods;
     int minutes = previous?['period_length_min'] ?? widget.minutes;
     bool scheduled = false;
@@ -256,47 +263,48 @@ class _DashboardState extends State<Dashboard> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  FixtureImport(
-                    api: widget.api,
-                    t: t,
-                    enabled: enabled,
-                    open: widget.openLink,
-                    onLoaded: (f) => update(() {
-                      fixture = f;
-                      sport = f['sport'];
-                      final format = f['format'];
-                      periods =
-                          format?['period_count'] ??
-                          (sport == 'basketball'
-                              ? widget.basketballPeriods
-                              : widget.periods);
-                      minutes =
-                          format?['period_length_min'] ??
-                          (sport == 'basketball'
-                              ? widget.basketballMinutes
-                              : widget.minutes);
-                      lineup = format?['lineup_size'];
-                      for (final team in ['home', 'away']) {
-                        final name = f[team]['name'] as String;
-                        (team == 'home' ? home : away).text = name.length > 60
-                            ? name.substring(0, 60)
-                            : name;
-                        shorts[team]!.text = f[team]['short'] ?? '';
-                      }
-                      final int? kickoff = f['kickoff'];
-                      scheduled =
-                          kickoff != null &&
-                          kickoff > DateTime.now().millisecondsSinceEpoch;
-                      if (scheduled) {
-                        when = DateTime.fromMillisecondsSinceEpoch(kickoff!);
-                      }
-                    }),
-                  ),
+                  if (sport != 'tennis')
+                    FixtureImport(
+                      api: widget.api,
+                      t: t,
+                      enabled: enabled,
+                      open: widget.openLink,
+                      onLoaded: (f) => update(() {
+                        fixture = f;
+                        sport = f['sport'];
+                        final format = f['format'];
+                        periods =
+                            format?['period_count'] ??
+                            (sport == 'basketball'
+                                ? widget.basketballPeriods
+                                : widget.periods);
+                        minutes =
+                            format?['period_length_min'] ??
+                            (sport == 'basketball'
+                                ? widget.basketballMinutes
+                                : widget.minutes);
+                        lineup = format?['lineup_size'];
+                        for (final team in ['home', 'away']) {
+                          final name = f[team]['name'] as String;
+                          (team == 'home' ? home : away).text = name.length > 60
+                              ? name.substring(0, 60)
+                              : name;
+                          shorts[team]!.text = f[team]['short'] ?? '';
+                        }
+                        final int? kickoff = f['kickoff'];
+                        scheduled =
+                            kickoff != null &&
+                            kickoff > DateTime.now().millisecondsSinceEpoch;
+                        if (scheduled) {
+                          when = DateTime.fromMillisecondsSinceEpoch(kickoff!);
+                        }
+                      }),
+                    ),
                   DropdownButtonFormField<String>(
                     key: ValueKey(sport),
                     initialValue: sport,
                     items: [
-                      for (final value in ['football', 'basketball'])
+                      for (final value in ['football', 'basketball', 'tennis'])
                         DropdownMenuItem(value: value, child: Text(t(value))),
                     ],
                     onChanged: (value) => update(() {
@@ -309,6 +317,12 @@ class _DashboardState extends State<Dashboard> {
                           : widget.minutes;
                     }),
                   ),
+                  if (sport == 'tennis')
+                    TennisFormat(
+                      value: tennisFormat,
+                      t: t,
+                      onChanged: (k, v) => update(() => tennisFormat[k] = v),
+                    ),
                   if (sport == 'basketball')
                     Wrap(
                       spacing: 8,
@@ -390,7 +404,7 @@ class _DashboardState extends State<Dashboard> {
                     ),
                   if (scheduled)
                     Text(t('time.local'), style: const TextStyle(fontSize: 14)),
-                  Text('$periods × $minutes min'),
+                  if (sport != 'tennis') Text('$periods × $minutes min'),
                   if (validation.isNotEmpty)
                     Text(
                       validation,
@@ -427,8 +441,13 @@ class _DashboardState extends State<Dashboard> {
                       ? when.millisecondsSinceEpoch
                       : null,
                   'sport': sport,
-                  'period_count': periods,
-                  'period_length_min': minutes,
+                  if (sport == 'tennis')
+                    for (final entry in tennisFormat.entries)
+                      'tennis_${entry.key}': entry.value
+                  else ...{
+                    'period_count': periods,
+                    'period_length_min': minutes,
+                  },
                   // The next game keeps the team's format (players on the field),
                   // unless the imported game suggests one.
                   if (lineup != null)
@@ -508,6 +527,10 @@ class _DashboardState extends State<Dashboard> {
               fontSize: 14,
             ),
           ),
+          if (game['sport'] == 'tennis')
+            Text(
+              '${t('tennis.${game['tennis']?['category'] ?? 'women'}')} · ${t('tennis.best_of_${game['period_count']}')}',
+            ),
           const SizedBox(height: 10),
           Text(
             '${game['home']['name']}  ${game['home']['score']} : ${game['away']['score']}  ${game['away']['name']}',

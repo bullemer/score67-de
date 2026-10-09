@@ -39,7 +39,7 @@ function upcomingCard(game) {
   const day = europeanDate(when, lang, {weekday: true, year: false});
   const time = europeanTime(when);
   const meta = document.createElement('div'); meta.className = 'live-meta';
-  meta.append(textNode('span', `${words[game.sport || 'football']} · ${game.period_count} × ${game.period_length_min} min`), textNode('span', `${day} · ${time}`, 'live-when'));
+  meta.append(textNode('span', `${words[game.sport || 'football']} · ${game.sport === 'tennis' ? words[`tennis.best_of_${game.tennis?.best_of || game.period_count}`] : `${game.period_count} × ${game.period_length_min} min`}`), textNode('span', `${day} · ${time}`, 'live-when'));
   card.append(meta);
   for (const side of ['home', 'away']) {
     const row = document.createElement('div'); row.className = 'live-team'; row.style.borderColor = game[side].color;

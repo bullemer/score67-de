@@ -46,6 +46,7 @@ function playerLabel(player) {
 function renderDetails() {
   const active = (state.events || []).filter(e => !e.cancelled && !e.corrected);
   const basketball = state.sport === 'basketball';
+  if (state.sport === 'tennis') { el('scorers').hidden = true; el('stats').hidden = true; return; }
   el('scorers').hidden = basketball;
   el('stats').hidden = !basketball;
   if (!basketball) {
@@ -165,7 +166,7 @@ function render() {
   const small = view === 'scoreboard';
   const right = params.has('pos') ? params.get('pos') === 'tr' : o.position === 'top_right';
   el('scoreboard').hidden = view === 'hidden';
-  el('scoreboard').className = `scoreboard ${small ? 'small' : 'big'} ${right ? 'right' : ''}`;
+  el('scoreboard').className = `scoreboard ${small ? 'small' : 'big'} ${right ? 'right' : ''} ${state.sport === 'tennis' ? 'tennis' : ''}`;
   for (const team of ['home', 'away']) {
     el(`${team}-name`).textContent = state[team][small ? 'short' : 'name'];
     el(`${team}-score`).textContent = state[team].score;
@@ -198,9 +199,34 @@ function render() {
     }
     document.querySelector(`.team.${team}`).style.borderColor = state[team].color;
   }
+  const tennis = state.sport === 'tennis' ? state.tennis : null;
+  el('tennis-score').hidden = !tennis;
+  if (tennis) {
+    const table = node('table');
+    const header = node('tr');
+    header.append(node('th', words['tennis.player']));
+    tennis.set_scores.forEach((_, i) => header.append(node('th', `${words['tennis.set']} ${i + 1}`)));
+    if (state.phase !== 'finished') {
+      header.append(node('th', words['tennis.games']));
+      if (tennis.mode === 'detailed' || tennis.tiebreak) header.append(node('th', tennis.tiebreak ? words['tennis.tiebreak'] : words['tennis.points']));
+    }
+    table.append(header);
+    ['home', 'away'].forEach((side, i) => {
+      const row = node('tr');
+      row.style.borderLeft = `4px solid ${state[side].color}`;
+      row.append(node('th', `${state.phase !== 'finished' && tennis.server === i ? '● ' : ''}${state[side][small ? 'short' : 'name']}`));
+      tennis.set_scores.forEach(set => row.append(node('td', `${set.games[i]}${set.tiebreak ? ` (${set.tiebreak[i]})` : ''}`)));
+      if (state.phase !== 'finished') {
+        row.append(node('td', tennis.games[i]));
+        if (tennis.mode === 'detailed' || tennis.tiebreak) row.append(node('td', tennis.point_labels[i]));
+      }
+      table.append(row);
+    });
+    el('tennis-score').replaceChildren(node('div', `${words['tennis.sets']}: ${tennis.sets.join(' – ')} · ${words[`tennis.best_of_${tennis.best_of}`]}`), table);
+  }
   if (!overlay && logSignature !== `${state.match_id}:${state.revision}:${lang}`) {
     logSignature = `${state.match_id}:${state.revision}:${lang}`;
-    const entries = (state.events || []).filter(e => ['score','score_adjust','red_card','yellow_card','score_correction','red_card_correction','yellow_card_correction','team_foul','team_foul_correction','timeout','timeout_correction'].includes(e.type)).slice(-30).reverse();
+    const entries = (state.events || []).filter(e => ['score','score_adjust','red_card','yellow_card','score_correction','red_card_correction','yellow_card_correction','team_foul','team_foul_correction','timeout','timeout_correction','tennis_point','tennis_game','tennis_set'].includes(e.type)).slice(-30).reverse();
     el('match-events').hidden = entries.length === 0;
     el('event-list').replaceChildren(...entries.map(event => {
       const row = document.createElement('li');
@@ -209,7 +235,7 @@ function render() {
       const minute = eventTime(event, state, words);
       const signed = `${event.points > 0 ? '+' : ''}${event.points}`;
       const label = event.type === 'score_adjust' ? `${words.score_adjust} ${signed}`
-        : state.sport === 'basketball' && event.type.startsWith('score') ? signed : words[event.type];
+        : state.sport === 'basketball' && event.type.startsWith('score') ? signed : (words[event.type] || words[`tennis.${event.type.replace('tennis_', 'add_')}`] || event.type);
       row.textContent = [minute, label, state[event.team].name, who, event.cancelled ? words.cancelled : event.corrected ? words['event.corrected'] : ''].filter(Boolean).join(' · ');
       if (event.cancelled || event.corrected) row.className = 'cancelled';
       return row;

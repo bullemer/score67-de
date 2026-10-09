@@ -18,6 +18,7 @@ export function saveLanguage(lang) {
   try { localStorage.setItem('score67-language', lang); } catch { /* Optional preference. */ }
 }
 export function periodLabel(s, t) {
+  if (s.sport === 'tennis') return s.period ? `${t['tennis.set'] || 'Set'} ${s.period}` : '';
   if (s.sport === 'basketball' && s.period > s.period_count) return `OT${s.period - s.period_count}`;
   if (!s.period || s.period_count === 1) return '';
   if (s.period_count === 2) return t.half.replace('{n}', s.period);

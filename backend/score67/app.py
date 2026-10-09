@@ -24,7 +24,7 @@ from sqlalchemy import func, select
 
 from . import display_feed, firmware, fixtures, forum, guides, led_messages, mail, preview, seo
 from .db import Account, AccountSession, Admin, Asset, LoginToken, Board, Display, DisplayAdmin, Match, MatchEvent, RateLimit, Receipt, database
-from .domain import FOOTBALL, BASKETBALL, RuleError, apply, period_ms, initial_state, normalize_clock, foul_mode, BASKETBALL_STATS, player_statistics, SHORT_MAX, FOOTBALL_EVENTS
+from .domain import FOOTBALL, BASKETBALL, TENNIS, RuleError, apply, period_ms, initial_state, normalize_clock, foul_mode, BASKETBALL_STATS, player_statistics, SHORT_MAX, FOOTBALL_EVENTS
 
 ROOT = Path(__file__).resolve().parents[2]
 RELEASE = json.loads((ROOT / "shared/release.json").read_text())
@@ -165,7 +165,11 @@ class StreamUpdate(StrictModel):
 
 
 class CreateBoard(StrictModel):
-    sport: Literal["football", "basketball"] = "football"
+    sport: Literal["football", "basketball", "tennis"] = "football"
+    tennis_category: Literal["women", "men"] = "women"
+    tennis_best_of: Literal[3, 5] = 3
+    tennis_mode: Literal["simple", "detailed"] = "detailed"
+    tennis_final_tiebreak: Literal[7, 10] = 7
     language: Literal["de", "en"] = "de"
     description: str | None = Field(default=None, max_length=300)
     stream_url: str | None = Field(default=None, max_length=300)
@@ -215,7 +219,11 @@ def name_teams(s, body):
 
 
 class CreateMatch(StrictModel):
-    sport: Literal["football", "basketball"] = "football"
+    sport: Literal["football", "basketball", "tennis"] = "football"
+    tennis_category: Literal["women", "men"] = "women"
+    tennis_best_of: Literal[3, 5] = 3
+    tennis_mode: Literal["simple", "detailed"] = "detailed"
+    tennis_final_tiebreak: Literal[7, 10] = 7
     command_id: UUID
     home: str = Field(default="Home", min_length=1, max_length=60)
     away: str = Field(default="Guest", min_length=1, max_length=60)
@@ -362,7 +370,7 @@ def finish_overdue_matches(db, now=None):
     candidates = db.scalars(select(Match).where(Match.deleted_at.is_(None), Match.trashed_at.is_(None),
                                                 Match.archived_at.is_(None))).all()
     for m in candidates:
-        if m.state.get("phase") in ("pre_game", "finished"):
+        if m.state.get("sport") == "tennis" or m.state.get("phase") in ("pre_game", "finished"):
             continue
         events = [e for e in db.scalars(select(MatchEvent).where(MatchEvent.match_id == m.id).order_by(MatchEvent.id)).all()
                   if not e.cancelled]
@@ -610,6 +618,12 @@ def create_app(db_url=None, secure_cookies=None):
                     index = min(max(e.payload.get("period", 0), 1), len(periods)) - 1
                     periods[index] += e.payload.get("points", 0)
             s[team]["period_scores"] = periods
+        if s["sport"] == "tennis":
+            from .tennis import point_labels
+            s["tennis"]["point_labels"] = point_labels(s["tennis"])
+            for i, side in enumerate(("home", "away")):
+                s[side]["score"] = s["tennis"]["sets"][i]
+                s[side]["period_scores"] = [r["games"][i] for r in s["tennis"]["set_scores"]]
         available_ids = {e.id for e in available}
         s["events"] = [{**e.payload, "id": e.id, "cancelled": e.cancelled,
             "corrected": e.payload["type"] in COUNTED_EVENTS and not e.cancelled and e.id not in available_ids} for e in events]
@@ -653,7 +667,7 @@ def create_app(db_url=None, secure_cookies=None):
 
     @app.get("/api/sports")
     def sports():
-        return [FOOTBALL, BASKETBALL]
+        return [FOOTBALL, BASKETBALL, TENNIS]
 
     @app.get("/api/templates")
     def available_templates():
@@ -691,7 +705,7 @@ def create_app(db_url=None, secure_cookies=None):
             b.owner_id = account.id if account else None
             db.add(b)
             db.flush()
-            s = initial_state(body.period_count, body.period_length_min, body.sport, body.lineup_size)
+            s = initial_state(body.period_count, body.period_length_min, body.sport, body.lineup_size, body.tennis_category, body.tennis_best_of, body.tennis_mode, body.tennis_final_tiebreak)
             name_teams(s, body)
             add_logos(db, slug, s, logos)
             db.add(Match(id=match_id, slug=slug, state=s, fixture=fixtures.stored(body.fixture),
@@ -1106,7 +1120,8 @@ def create_app(db_url=None, secure_cookies=None):
                     s = state(db, b, m.id)
                     games.append({**{k: s[k] for k in ("sport", "team_fouls_enabled", "match_id", "revision", "phase", "home", "away", "period_count",
                         "period_length_min", "created_at", "scheduled_at", "archived", "active", "trashed", "trash_reason", "trashed_at")},
-                        "lineup_size": s.get("lineup_size"), "fixture": m.fixture})
+                        "lineup_size": s.get("lineup_size"), "fixture": m.fixture,
+                        **({"tennis": s["tennis"]} if s["sport"] == "tennis" else {})})
                 boards.append({"slug": b.slug, "name": b.name, "active_match": b.active_match, "description": b.description, "stream_url": b.stream_url,
                                "created_at": round(b.created_at * 1000), "matches": games,
                                "owned": bool(account and b.owner_id == account.id)})
@@ -1145,6 +1160,7 @@ def create_app(db_url=None, secure_cookies=None):
                     "scoreboard": b.slug, "match_id": m.id, "active": b.active_match == m.id,
                     "scheduled_at": round(m.scheduled_at * 1000), "sport": m.state["sport"],
                     "period_count": m.state["period_count"], "period_length_min": m.state["period_length_min"],
+                    **({"tennis": m.state["tennis"]} if m.state["sport"] == "tennis" else {}),
                     "home": {**{k: m.state["home"][k] for k in ("name", "color")}, "logo": m.state["home"].get("logo")},
                     "away": {**{k: m.state["away"][k] for k in ("name", "color")}, "logo": m.state["away"].get("logo")},
                     "location": {k: location[k] for k in ("lat", "lng", "label")} if location else None,
@@ -1160,7 +1176,7 @@ def create_app(db_url=None, secure_cookies=None):
             for m in ended:
                 end = next((e for e in db.scalars(select(MatchEvent).where(MatchEvent.match_id == m.id)
                                                   .order_by(MatchEvent.id.desc()).limit(20))
-                            if not e.cancelled and e.payload.get("type") == "game_end"), None)
+                            if not e.cancelled and (e.payload.get("type") == "game_end" or e.payload.get("match_won"))), None)
                 if not end or end.payload["occurred_at"] / 1000 < since:
                     continue
                 b = db.get(Board, m.slug)
@@ -1194,7 +1210,7 @@ def create_app(db_url=None, secure_cookies=None):
                 raise HTTPException(422, "schedule_future")
             if not body.home.strip() or not body.away.strip():
                 raise HTTPException(422, "invalid_value")
-            s = initial_state(body.period_count, body.period_length_min, body.sport, body.lineup_size)
+            s = initial_state(body.period_count, body.period_length_min, body.sport, body.lineup_size, body.tennis_category, body.tennis_best_of, body.tennis_mode, body.tennis_final_tiebreak)
             name_teams(s, body)
             add_logos(db, slug, s, logos)
             m = Match(id=str(uuid4()), slug=slug, state=s, fixture=fixtures.stored(body.fixture),
@@ -1276,6 +1292,11 @@ def create_app(db_url=None, secure_cookies=None):
                     raise HTTPException(409, "game_running")
                 new = Match(id=str(uuid4()), slug=slug,
                             state=initial_state(m.state["period_count"], m.state["period_length_min"], m.state["sport"], m.state.get("lineup_size")))
+                if m.state["sport"] == "tennis":
+                    from .tennis import initial
+                    t = m.state["tennis"]
+                    new.state["tennis"] = initial(t["category"], t["best_of"], t["mode"], t["final_tiebreak"])
+                    new.state["period_count"] = t["best_of"]
                 new.state["team_fouls_enabled"] = m.state.get("team_fouls_enabled", False)
                 new.state["foul_mode"] = foul_mode(m.state)
                 # Same teams: names, colours, logos and squads; no score, fouls or lineup.

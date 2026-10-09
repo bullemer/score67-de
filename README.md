@@ -1,6 +1,6 @@
 # Score67
 
-A small, self-hosted scoreboard for sports streams. This checkout contains the **football MVP and basketball pilot**, deployed directly from `main`; it is not the complete specification.
+A small, self-hosted scoreboard for sports streams. This checkout contains the **football, basketball and tennis scoreboards**, deployed directly from `main`; it is not the complete specification.
 
 Original requirements remain unchanged in `Spezifikation Scoreboard für Sport-Livestreams.md` and `Score67-Designs-und-Vorlagen.docx`.
 
@@ -200,3 +200,15 @@ Pushes to `main` run the checked production workflow. There is no staging applic
 ## Release identity
 
 The app and public page footers show the version and UTC build date/time. The OBS overlay remains free of app UI. `scripts/stamp_release.py` reads the version from `backend/pyproject.toml` and creates matching metadata for server templates and the compiled Flutter app. CI runs it for every production build. When releasing a new version, also align `control/pubspec.yaml` and refresh the backend lockfile with `uv lock --project backend`.
+
+### Tennis
+
+Tennis is available in homepage Quickstart, scoreboard creation, and new matches on saved scoreboards. Choose Women or Men and best of 3 (two sets to win) or best of 5 (three sets to win). Both categories default to best of 3; the match format is independent of the category.
+
+- **Simple:** count games directly, or enter a completed set result (6–0 through 6–4, 7–5 or 7–6), optionally including the tie-break points. At 6–6 the game counter switches to tie-break points.
+- **Detailed:** score every point (0/15/30/40, deuce, advantage), with automatic games, sets and match completion.
+- Tie-break sets at 6–6 use seven points with a two-point lead; the deciding set can use seven or ten points. This does not replace the deciding set with a match tie-break.
+- Choose the first server before the start; service then rotates automatically. Undo restores the full point/game/set transition, even after match point. Format and mode are selected before the match starts. Rematches retain them.
+- The tennis Control Center works in portrait or landscape. The viewer and OBS display completed sets, current games, and point scores. Existing LED firmware shows the set total and set label. Tennis has no match clock or timed automatic finish.
+
+Scoring follows the [ITF scoring definitions](https://www.itftennis.com/en/about-us/organisation/tennis-glossary/).
