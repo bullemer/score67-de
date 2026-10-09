@@ -1536,7 +1536,7 @@ def create_app(db_url=None, secure_cookies=None):
 
     firmware.register(app, lock=lock, device_display=device_display)
 
-    # --- LED panels per game (Sharing tab) ---------------------------------
+    # --- LED panels per game (LED tab) -------------------------------------
     # Whoever controls a game and can read the code on a panel connects that
     # panel to the game; the browser then also manages the panel. The code is
     # renewed after each use, so a code seen once does not work later.

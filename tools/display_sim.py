@@ -9,7 +9,7 @@ testing the server side without hardware:
 2. Follows wss://…/ws/display?format=compact and prints what the panel would
    draw; the clock runs locally from server_now (no NTP), once per second.
 3. Reports a status message (fw, rssi, uptime) like the firmware.
-Enter the code in the app: in a game's Teilen tab (LED-Tafel → Verbinden), or
+Enter the code in the app: in a game's LED tab (LED-Tafel → Verbinden), or
 Einstellungen → Anzeigetafeln → Code von der LED-Tafel. A claimed panel keeps
 showing a code when idle; the firmware shows it in a game on a button press."""
 import asyncio

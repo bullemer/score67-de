@@ -43,7 +43,7 @@ The development database is `backend/data/score67.db` when started from `backend
 - Taps never wait for each other: points, fouls, rebounds, timeouts and cards are queued, shown immediately and sent in order. Without a connection they stay on the device (also across reloads) and are sent automatically with their original command IDs, so nothing is counted twice. Clock, period and settings changes still require a live connection. The controller keeps the phone screen awake where the browser supports it.
 - Small, large, hidden, left/right and automatic break/final views; configurable broadcast delay.
 - Shared German and English JSON translations.
-- Email sign-in (optional, no password): "Meine Scoreboards" sends a single-use link (30 min). Signing in links the boards this browser controls to the address; on any other signed-in device those boards appear and can be controlled without the PIN. Boards created while signed in are linked at once. The PIN screen offers the same sign-in ("PIN vergessen"), the Teilen tab shows/links/unlinks the email (unlinking notifies the owner). Hidden until SMTP is configured: `SMTP_HOST`, `SMTP_PORT` (587, STARTTLS), `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM` in the server's runtime `.env`; `MAIL_LOG=true` prints mails locally.
+- Email sign-in (optional, no password): "Meine Scoreboards" sends a single-use link (30 min). Signing in links the boards this browser controls to the address; on any other signed-in device those boards appear and can be controlled without the PIN. Boards created while signed in are linked at once. The PIN screen offers the same sign-in ("PIN vergessen"), and game settings show/link/unlink the email (unlinking notifies the owner). Hidden until SMTP is configured: `SMTP_HOST`, `SMTP_PORT` (587, STARTTLS), `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM` in the server's runtime `.env`; `MAIL_LOG=true` prints mails locally.
 - Auto end: games that were started but never ended are ended automatically once twice their planned playing time has passed since kickoff (at least 3 h, so a 2×45 football game ends 180 min after kickoff) and nothing was entered for 15 min. The clock freezes at the end of the regular period. Thresholds: `AUTO_END_FACTOR`, `AUTO_END_MIN_MINUTES`, `AUTO_END_QUIET_MINUTES`.
 - Trash (Papierkorb): a cleaner (every 10 min) moves games that were started but not ended and had no activity for 24 h, planned games still not started 24 h after their start time, and unscheduled games untouched for 7 days to the trash. Finished games are never touched. Trashed games leave live views; restore them from the dashboard within 30 days, after which they are deleted. "Move to trash" on the dashboard does the same by hand. Thresholds: `TRASH_STALE_HOURS`, `TRASH_PLANNED_GRACE_HOURS`, `TRASH_UNSCHEDULED_DAYS`, `TRASH_RETENTION_DAYS`, `TRASH_INTERVAL_SECONDS` (0 disables).
 - Device dashboard at `/dashboard`: planned (with or without a date), running, completed and archived games; archive, restore and delete controls. Each game has one clear main action instead of a generic "Controls": planned → **Spiel starten**, running → **Fortsetzen**, completed → **Neu starten (gleiche Teams)** (a new game with the same names, colours, logos, squads and format; refused with `game_running` while another game runs on the board) plus *Ergebnis korrigieren* / *Ergebnis ansehen*.
@@ -73,7 +73,7 @@ Football uses the same landscape console. Header: menu, short name, yellow/red c
 
 ### Team tab
 
-The console's middle panel has the tabs Spielverlauf (game flow), Team, Periods, Einstellungen and Teilen. Team edits both rosters inline: shirt number, optional name (basketball requires numbers) and an on-court checkbox (max. 5 in basketball, 11 in football). A new empty row appears automatically; a pasted list ("7 Alex" per line) can be imported. Save sends the squad, then the lineup; ticked players appear bright at the top of the left columns. Unsaved edits are kept per team while switching teams or tabs (marked with •).
+The console's middle panel has the tabs Spielverlauf (game flow), Team, Periods, Teilen, LED and Box Score. Team edits both rosters inline: shirt number, optional name (basketball requires numbers) and an on-court checkbox (max. 5 in basketball, 11 in football). A new empty row appears automatically; a pasted list ("7 Alex" per line) can be imported. Save sends the squad, then the lineup; ticked players appear bright at the top of the left columns. Unsaved edits are kept per team while switching teams or tabs (marked with •).
 
 Double-tap a team tile to edit the team name, short name and colour; double-tap a player tile to change number or name (only while no action is selected, so scoring taps stay instant). In basketball, Play also opens the next period or overtime and starts the clock in one tap.
 
@@ -87,7 +87,7 @@ In My scoreboards every game card has an Edit button: team names, optional team 
 
 ### Private games
 
-Games are public by default. The "Private game" switch at the top of the Sharing tab hides the spectator page (it shows a private notice), the public state API, live socket and the /live directory from everyone except this board's control devices. The OBS overlay link carries an overlay key (`?k=…`) and keeps working while private; switching back to public re-enables all sharing links.
+Games are public by default. The "Private game" switch under Game settings → Privacy and access hides the spectator page (it shows a private notice), the public state API, live socket and the /live directory from everyone except this board's control devices. The OBS overlay link carries an overlay key (`?k=…`) and keeps working while private; switching back to public re-enables all sharing links.
 
 ### Game flow
 
@@ -123,7 +123,7 @@ In Settings → Anzeigetafeln, up to two LED displays can be driven directly by 
 - Period buttons name their period: "2. Viertel vorbereiten", "Periode 5/8 beenden", "2. Halbzeit anpfeifen" (EN "Prepare Quarter 2", …); the game flow says "Periode 1/8 gestartet / beendet".
 - An entry before its period has started never starts it silently: an inline warning asks "Periode X ist noch nicht gestartet. Jetzt starten?" (▶ starts the period and its clock, then books the entry). In a break: book to the ended period (free throws after the buzzer) or start the next one. In a prepared basketball period whose clock never ran: start the clock or book without it. Each answer holds for that period.
 - **Players on the field at once** (`lineup_size`, 1–5 basketball, 1–11 football; default the maximum): set when creating a scoreboard (presets 4/5 or 5/7/9/11), kept for games prepared from My scoreboards, editable in Einstellungen. The console, the Team tab and substitutions never mark more players active; shrinking below the players on court is refused (`lineup_too_large`).
-- **Einstellungen** holds every setting inline, without dialogs: game format (presets, periods, length, players on the field, clock, stream delay), foul mode, teams (name, short name, colour), overlay, description & livestream, venue map, scoreboard displays (incl. Bluetooth LED) and language. Sections with unsaved edits are marked • and keep their drafts while the game changes (Save / Reset). The ☰ menu entries for displays, venue and description open this tab; links and sharing open Teilen.
+- **Einstellungen** holds game format (presets, periods, length, players on the field, clock, stream delay), foul mode, teams (name, short name, colour), overlay, description & livestream, venue map, privacy, PIN/account access and LED match connection. The LED tab holds pairing, match connection, messages and panel management; global Settings also lets the operator assign or disconnect a scoreboard. Sections with unsaved edits are marked • and keep their drafts while the game changes (Save / Reset). Teilen holds sharing actions and links.
 
 ### Link previews (v0.28)
 
@@ -155,7 +155,7 @@ Self-registering LED panels: `POST /api/display/register` (device key → token 
 
 ### Console menu
 
-The ☰ menu only leaves the console: **Start** (start page), **Meine Scoreboards**, **Viewer** and **Verlassen** (stops a running basketball clock first; the game stays open and can be resumed from My scoreboards). Everything else is in the console itself: teams in the Team tab, all settings in Einstellungen, PIN/links/sharing in Teilen, ending the game via 🏁 / the Period tab.
+The ☰ menu opens settings or leaves the console: **Start** (start page), **Meine Scoreboards**, **Viewer** and **Verlassen** (stops a running basketball clock first; the game stays open and can be resumed from My scoreboards). Teams are in Team, privacy/PIN/account access in Game settings, sharing links in Teilen, LED controls in LED, and game end via 🏁 / the Period tab.
 
 ### Typing on a phone
 
@@ -163,7 +163,7 @@ While a text field in the console's middle panel has focus, the header, team col
 
 ### Sharing tab and creation
 
-Creating a scoreboard opens the console directly. The console's Sharing tab shows the admin PIN (kept only in the creating or renewing browser, because the server stores it hashed), PIN renewal, device management, social sharing and the spectator, OBS and control links.
+Creating a scoreboard opens the console directly. The console's Sharing tab contains social sharing and the spectator, OBS and control links. Game settings show the admin PIN (kept only in the creating or renewing browser, because the server stores it hashed), PIN renewal, device management and privacy.
 
 ### Basketball console (landscape)
 

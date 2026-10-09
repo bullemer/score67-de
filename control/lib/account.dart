@@ -276,7 +276,7 @@ class _LoginConfirmState extends State<LoginConfirm> {
   }
 }
 
-/// Teilen tab: which email the board is linked to, link or unlink it.
+/// Game settings: which email the board is linked to, link or unlink it.
 class OwnerPanel extends StatefulWidget {
   final AccountApi api;
   final String Function(String) t;

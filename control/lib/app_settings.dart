@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'account.dart';
+import 'display_api.dart';
 import 'displays.dart';
 
 /// The app's own settings as one page (route /settings): LED panels, language,

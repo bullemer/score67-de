@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import 'displays.dart' show Api;
+import 'display_api.dart';
 
 /// LED tab: greetings, cheers and small charts that interrupt the score on
 /// the LED panels showing this game for a few seconds (led_messages.py).
@@ -139,8 +139,8 @@ class _LedMessagePanelState extends State<LedMessagePanel> {
       (t('ledmsg.preset.thanks'), 'heart'),
       (t('ledmsg.preset.timeout'), null),
     ];
-    return ListView(
-      padding: const EdgeInsets.all(12),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(t('ledmsg.hint'), style: const TextStyle(fontSize: 14)),
         const SizedBox(height: 8),

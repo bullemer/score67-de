@@ -1,6 +1,6 @@
 # Display (Anzeigetafel) API
 
-A display is a Score67 LED panel (ESP32 firmware in `firmware/`) that shows one scoreboard's current game, including private games. It is managed in the app under **Einstellungen → Anzeigetafeln** and, per game, under **Teilen → LED-Tafel**.
+A display is a Score67 LED panel (ESP32 firmware in `firmware/`) that shows one scoreboard's current game, including private games. It is managed in the app under **Einstellungen → Anzeigetafeln** and, per game, in the **LED** tab or game settings.
 
 ## Registration and claim (self-registering panels)
 

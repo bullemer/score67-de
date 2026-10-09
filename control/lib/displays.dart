@@ -2,17 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'display_api.dart';
 import 'led_display.dart';
 
-typedef Api =
-    Future<dynamic> Function(
-      String path,
-      String method,
-      Map<String, dynamic>? body,
-    );
-
-/// Global settings: connect physical displays (Anzeigetafeln, e.g. a
-/// Raspberry Pi driving an LED board) and choose which scoreboard each shows.
+/// Manage physical LED displays and choose which scoreboard each shows.
 class DisplaysDialog extends StatefulWidget {
   final Api api;
   final String Function(String) t;
@@ -208,15 +201,40 @@ class _DisplaysDialogState extends State<DisplaysDialog> {
             ],
           ),
           const SizedBox(height: 8),
-          // What the panel shows right now; chosen per game in Sharing → LED panel.
           Builder(
             builder: (context) {
               final current = boards
                   .where((b) => b['slug'] == d['board'])
                   .firstOrNull;
-              return Text(
-                '${t('display.shows')}: ${current == null ? t('display.nothing') : boardLabel(current)}',
-                style: const TextStyle(fontSize: 14),
+              final board = d['board'] as String?;
+              return DropdownButtonFormField<String>(
+                key: ValueKey('${d['id']}:$board'),
+                initialValue: board,
+                isExpanded: true,
+                decoration: InputDecoration(labelText: t('display.shows')),
+                items: [
+                  DropdownMenuItem<String>(
+                    value: null,
+                    child: Text(t('display.nothing')),
+                  ),
+                  if (board != null && current == null)
+                    DropdownMenuItem<String>(
+                      value: board,
+                      child: Text(d['board_description'] ?? board),
+                    ),
+                  for (final b in boards)
+                    DropdownMenuItem<String>(
+                      value: b['slug'] as String,
+                      child: Text(boardLabel(b)),
+                    ),
+                ],
+                onChanged: busy
+                    ? null
+                    : (selected) => run(
+                        () => widget.api('/api/displays/${d['id']}', 'PUT', {
+                          'board': selected,
+                        }),
+                      ),
               );
             },
           ),
