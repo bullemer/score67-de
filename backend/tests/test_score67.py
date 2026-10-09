@@ -41,6 +41,25 @@ def create(client):
     return r.json()
 
 
+def test_homepage_quickstart_uses_standard_sports_and_opens_control(system):
+    _, client = system
+    for lang, label in [('de', 'Schnellstart'), ('en', 'Quickstart')]:
+        homepage = client.get('/' + ('?lang=en' if lang == 'en' else ''))
+        assert homepage.status_code == 200
+        assert f'id="quickstart-toggle"' in homepage.text
+        assert label in homepage.text
+
+    for sport, periods, minutes, lineup in [('football', 2, 45, 11), ('basketball', 4, 10, 5)]:
+        response = client.post('/api/scoreboards', json={'sport': sport, 'language': 'de'})
+        assert response.status_code == 201
+        result = response.json()
+        game = state(client, result['slug'])
+        assert (game['sport'], game['period_count'], game['period_length_min'], game['lineup_size']) == (
+            sport, periods, minutes, lineup)
+        assert game['phase'] == 'pre_game'
+        assert client.get(result['links']['control']).status_code == 200
+
+
 def state(client, slug):
     return client.get(f'/api/s/{slug}/state').json()
 
