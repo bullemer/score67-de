@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'display_api.dart';
+import 'display_disconnect.dart';
 
 /// Connect an LED panel to this game by its displayed code, or switch an
 /// already managed panel between this game and its idle code screen.
@@ -88,15 +89,17 @@ class _BoardDisplaysPanelState extends State<BoardDisplaysPanel> {
       await load();
     } catch (_) {
       if (mounted) setState(() => error = t(errorKey ?? 'error.generic'));
+      await load();
     }
     if (mounted) setState(() => busy = false);
   }
 
-  /// On: this game runs on the panel. Off: the panel shows its code again.
+  /// Disconnect requires confirmation and an atomic server connection check.
   Future<void> show(Map<String, dynamic> d, bool on) => run(
     () => on
         ? widget.api('$base/${d['id']}', 'PUT', {})
-        : widget.api('$base/${d['id']}', 'DELETE', null),
+        : disconnectDisplay(context, widget.api, t, d),
+    errorKey: on ? 'error.generic' : 'error.display_connection_changed',
   );
 
   Future<void> connect() async {
@@ -164,9 +167,9 @@ class _BoardDisplaysPanelState extends State<BoardDisplaysPanel> {
           ),
         ],
         for (final d in mine)
-          SwitchListTile(
+          ListTile(
             contentPadding: EdgeInsets.zero,
-            secondary: dot(d),
+            leading: dot(d),
             title: Text(
               t('ledlink.show_on').replaceAll('{name}', d['name'] ?? ''),
             ),
@@ -178,8 +181,19 @@ class _BoardDisplaysPanelState extends State<BoardDisplaysPanel> {
                   : t('ledlink.shows_other'),
               style: const TextStyle(fontSize: 12),
             ),
-            value: d['board'] == widget.slug,
-            onChanged: can ? (on) => show(d, on) : null,
+            trailing: TextButton.icon(
+              onPressed: can ? () => show(d, d['board'] != widget.slug) : null,
+              icon: Icon(
+                d['board'] == widget.slug ? Icons.link_off : Icons.link,
+              ),
+              label: Text(
+                t(
+                  d['board'] == widget.slug
+                      ? 'ledlink.disconnect'
+                      : 'ledlink.connect',
+                ),
+              ),
+            ),
           ),
         // Someone else's panel showing this game (connected with the code).
         for (final d in others)

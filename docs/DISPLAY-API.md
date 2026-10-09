@@ -116,3 +116,7 @@ Only panels that report a plain `x.y.z` version (`fw` at registration or in stat
 
 Operator API (bearer `FIRMWARE_ADMIN_TOKEN`; `tools/fw_release.py`): `POST /api/firmware` `{"version", "channel": "test", "notes", "sha256", "data": "<base64>"}` (max. 4 MB image), `PUT /api/firmware/{version}` `{"channel": "stable" | "test" | "off"}`, `GET /api/firmware`.
 
+
+## Confirmed disconnection
+
+Settings and the Control Center expose an explicit Disconnect button. The confirmation names the panel and its current match. Cancelling does not change the connection. `POST /api/displays/{id}/disconnect` requires `expected_board` and `expected_match` (nullable for a board without an active match). Under the same database lock as connection changes, the server verifies that these still match before clearing the connection; a changed connection returns HTTP 409 `display_connection_changed`. Panel managers or controllers of the displayed board may disconnect. Disconnection turns off automatic following so reopening the console does not silently reconnect it. The panel remains registered and can be connected again explicitly.

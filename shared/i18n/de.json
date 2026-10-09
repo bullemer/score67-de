@@ -726,5 +726,8 @@
   "tennis_point": "Punkt",
   "tennis_game": "Spiel",
   "tennis_set": "Satzergebnis",
-  "tennis_server": "Aufschlag"
+  "tennis_server": "Aufschlag",
+  "ledlink.disconnect_title": "LED-Tafel trennen?",
+  "ledlink.disconnect_confirm": "„{name}“ zeigt aktuell „{match}“. Verbindung wirklich trennen? Die Tafel zeigt danach ihren Code. Das Spiel läuft weiter. Automatisches Folgen wird ausgeschaltet, damit die Tafel getrennt bleibt.",
+  "error.display_connection_changed": "Trennen nicht möglich: Die Verbindung hat sich geändert oder konnte nicht geprüft werden. Prüfe die aktuelle Anzeige und versuche es erneut."
 }
