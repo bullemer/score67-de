@@ -74,6 +74,11 @@ class DisplayRegister(StrictModel):
     fw: str | None = Field(default=None, max_length=20)
 
 
+class DisplayDisconnect(StrictModel):
+    expected_board: str = Field(min_length=1, max_length=10)
+    expected_match: str | None = Field(max_length=36)
+
+
 class DisplayClaim(StrictModel):
     code: str = Field(min_length=6, max_length=12)
     name: str | None = Field(default=None, min_length=1, max_length=60)
@@ -1437,6 +1442,7 @@ def create_app(db_url=None, secure_cookies=None):
     def display_info(db, d):
         now = time.time()
         b = db.get(Board, d.board_slug) if d.board_slug else None
+        m = db.get(Match, b.active_match) if b and b.active_match else None
         pending = bool(d.pairing_code and (d.pairing_expires_at or 0) > now and d.device_key_hash is None)
         return {"id": d.id, "name": d.name, "paired": d.token_hash is not None,
                 "online": bool(d.last_seen_at and d.last_seen_at > now - 30),
@@ -1444,6 +1450,8 @@ def create_app(db_url=None, secure_cookies=None):
                 "code": d.pairing_code if pending else None,
                 "code_expires_at": round(d.pairing_expires_at * 1000) if pending else None,
                 "board": b.slug if b else None, "board_description": b.description if b else None,
+                "match_id": m.id if m else None,
+                "match_label": f'{m.state["home"]["name"]} – {m.state["away"]["name"]}' if m else None,
                 "device": d.device_key_hash is not None, "brightness": d.brightness or 60,
                 "fw_version": d.fw_version, "rssi": d.rssi, "beta": d.fw_channel == "test", "follow": bool(d.follow),
                 "ota_status": d.ota_status, "update": (firmware.offer(db, d) or {}).get("version")}
@@ -1578,7 +1586,7 @@ def create_app(db_url=None, secure_cookies=None):
         for d in db.scalars(select(Display).where(
                 (Display.board_slug == slug) | Display.id.in_(mine or {""}))).all():
             info = display_info(db, d)
-            result.append({key: info[key] for key in ("id", "name", "online", "board", "fw_version", "follow")}
+            result.append({key: info[key] for key in ("id", "name", "online", "board", "fw_version", "follow", "match_id", "match_label")}
                           | {"managed": d.id in mine})
         return {"displays": sorted(result, key=lambda d: d["name"].lower())}
 
@@ -1648,6 +1656,22 @@ def create_app(db_url=None, secure_cookies=None):
             if not d or d.board_slug != slug:
                 raise HTTPException(404, "not_found")
             d.board_slug = None
+            d.follow = False
+            db.commit()
+            return {"ok": True}
+
+    @app.post("/api/displays/{display_id}/disconnect")
+    def confirmed_display_disconnect(display_id: str, body: DisplayDisconnect, request: Request):
+        with lock, app.state.sessions() as db:
+            # Panel managers and controllers of the displayed game may disconnect.
+            if display_id not in managed_ids(db, request.cookies):
+                authorize(db, body.expected_board, request)
+            d = db.get(Display, display_id)
+            b = db.get(Board, d.board_slug) if d and d.board_slug else None
+            if not d or d.board_slug != body.expected_board or not b or b.active_match != body.expected_match:
+                raise HTTPException(409, "display_connection_changed")
+            d.board_slug = None
+            d.follow = False  # A reload must not silently reconnect the panel.
             db.commit()
             return {"ok": True}
 

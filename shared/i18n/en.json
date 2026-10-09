@@ -726,5 +726,8 @@
   "tennis_point": "Point",
   "tennis_game": "Game",
   "tennis_set": "Set result",
-  "tennis_server": "Serving"
+  "tennis_server": "Serving",
+  "ledlink.disconnect_title": "Disconnect LED board?",
+  "ledlink.disconnect_confirm": "“{name}” is showing “{match}”. Disconnect it? The board will show its pairing code. The match continues. Automatic following will be turned off so the board stays disconnected.",
+  "error.display_connection_changed": "Cannot disconnect: the connection changed or could not be checked. Review the current display and try again."
 }

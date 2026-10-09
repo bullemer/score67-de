@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'display_api.dart';
+import 'display_disconnect.dart';
 import 'led_display.dart';
 
 /// Manage physical LED displays and choose which scoreboard each shows.
@@ -88,13 +89,20 @@ class _DisplaysDialogState extends State<DisplaysDialog> {
     if (mounted) setState(() => busy = false);
   }
 
-  Future<void> run(Future<dynamic> Function() action) async {
-    setState(() => busy = true);
+  Future<void> run(
+    Future<dynamic> Function() action, {
+    String errorKey = 'error.generic',
+  }) async {
+    setState(() {
+      busy = true;
+      error = '';
+    });
     try {
       await action();
       await load();
     } catch (_) {
-      if (mounted) setState(() => error = t('error.generic'));
+      await load();
+      if (mounted) setState(() => error = t(errorKey));
     }
     if (mounted) setState(() => busy = false);
   }
@@ -207,11 +215,11 @@ class _DisplaysDialogState extends State<DisplaysDialog> {
                   .where((b) => b['slug'] == d['board'])
                   .firstOrNull;
               final board = d['board'] as String?;
-              return DropdownButtonFormField<String>(
+              return DropdownButton<String>(
                 key: ValueKey('${d['id']}:$board'),
-                initialValue: board,
+                value: board,
                 isExpanded: true,
-                decoration: InputDecoration(labelText: t('display.shows')),
+                hint: Text(t('display.shows')),
                 items: [
                   DropdownMenuItem<String>(
                     value: null,
@@ -231,13 +239,32 @@ class _DisplaysDialogState extends State<DisplaysDialog> {
                 onChanged: busy
                     ? null
                     : (selected) => run(
-                        () => widget.api('/api/displays/${d['id']}', 'PUT', {
-                          'board': selected,
-                        }),
+                        () => selected == null
+                            ? disconnectDisplay(context, widget.api, t, d)
+                            : widget.api('/api/displays/${d['id']}', 'PUT', {
+                                'board': selected,
+                              }),
+                        errorKey: selected == null
+                            ? 'error.display_connection_changed'
+                            : 'error.generic',
                       ),
               );
             },
           ),
+          if (d['board'] != null)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                onPressed: busy
+                    ? null
+                    : () => run(
+                        () => disconnectDisplay(context, widget.api, t, d),
+                        errorKey: 'error.display_connection_changed',
+                      ),
+                icon: const Icon(Icons.link_off),
+                label: Text(t('ledlink.disconnect')),
+              ),
+            ),
           if (d['device'] == true) ...[
             const SizedBox(height: 8),
             Row(

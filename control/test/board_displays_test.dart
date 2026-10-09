@@ -16,7 +16,10 @@ void main() {
       Map<String, dynamic>? body,
     ) async {
       calls.add('$method $path');
-      if (method == 'POST') {
+      if (method == 'POST' && path.endsWith('/disconnect')) {
+        expect(body, {'expected_board': 'game1', 'expected_match': 'match1'});
+        board = null;
+      } else if (method == 'POST') {
         expect(body, {'code': '123456'});
         managed = true;
         board = 'game1';
@@ -31,6 +34,8 @@ void main() {
                   'name': 'Hall board',
                   'managed': true,
                   'board': board,
+                  'match_id': 'match1',
+                  'match_label': 'Home – Guest',
                   'online': true,
                 },
               ]
@@ -60,18 +65,30 @@ void main() {
 
     expect(calls, contains('POST /api/s/game1/displays'));
     expect(find.text('Show on Hall board'), findsOneWidget);
-    expect(find.byType(SwitchListTile), findsOneWidget);
-    expect(
-      tester.widget<SwitchListTile>(find.byType(SwitchListTile)).value,
-      isTrue,
-    );
-
-    await tester.tap(find.byType(SwitchListTile));
+    expect(find.text('ledlink.disconnect'), findsOneWidget);
+    await tester.tap(find.text('ledlink.disconnect'));
     await tester.pumpAndSettle();
-    expect(calls, contains('DELETE /api/s/game1/displays/panel1'));
-    expect(
-      tester.widget<SwitchListTile>(find.byType(SwitchListTile)).value,
-      isFalse,
+    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(calls, isNot(contains('POST /api/displays/panel1/disconnect')));
+    await tester.tap(find.text('cancel'));
+    await tester.pumpAndSettle();
+    expect(board, 'game1');
+    expect(calls, isNot(contains('POST /api/displays/panel1/disconnect')));
+
+    await tester.tap(find.text('ledlink.disconnect'));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.text('ledlink.disconnect'),
+      ),
     );
+    await tester.pumpAndSettle();
+    expect(
+      calls.where((v) => v == 'POST /api/displays/panel1/disconnect'),
+      hasLength(1),
+    );
+    expect(board, isNull);
+    expect(find.text('ledlink.disconnect'), findsNothing);
   });
 }
