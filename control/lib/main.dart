@@ -3717,36 +3717,47 @@ class _Score67State extends State<Score67> {
     );
   }
 
-  Future<void> openMenu() async {
-    final choice = await showModalBottomSheet<String>(
-      context: navigator.currentContext!,
-      isScrollControlled: true,
-      builder: (context) => SafeArea(
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Everything else lives in the console tabs (Team, Teilen) and
-              // the 🏁 button; settings get a full page, easier in portrait.
-              for (final entry in [
-                ('settings', Icons.tune, t('console.settings')),
-                ('app', Icons.settings_outlined, t('app.settings')),
-                ('start', Icons.home_outlined, t('menu.start')),
-                ('dashboard', Icons.dashboard_outlined, t('dashboard')),
-                ('viewer', Icons.visibility_outlined, t('viewer')),
-                ('exit', Icons.logout, t('menu.exit')),
-              ])
-                ListTile(
-                  leading: Icon(entry.$2),
-                  title: Text(entry.$3),
-                  onTap: () => Navigator.pop(context, entry.$1),
-                ),
-            ],
-          ),
-        ),
+  Future<void> openMenu(BuildContext buttonContext) async {
+    final overlay =
+        Overlay.of(buttonContext).context.findRenderObject()! as RenderBox;
+    final button = buttonContext.findRenderObject()! as RenderBox;
+    final topLeft = button.localToGlobal(Offset.zero, ancestor: overlay);
+    final position = RelativeRect.fromRect(
+      Rect.fromLTWH(
+        topLeft.dx,
+        topLeft.dy + button.size.height,
+        button.size.width,
+        0,
       ),
+      Offset.zero & overlay.size,
     );
-    if (choice == null) return;
+    final choice = await showMenu<String>(
+      context: buttonContext,
+      position: position,
+      items: [
+        // Everything else lives in the console tabs (Team, Teilen) and
+        // the 🏁 button; settings get a full page, easier in portrait.
+        for (final entry in [
+          ('settings', Icons.tune, t('console.settings')),
+          ('app', Icons.settings_outlined, t('app.settings')),
+          ('start', Icons.home_outlined, t('menu.start')),
+          ('dashboard', Icons.dashboard_outlined, t('dashboard')),
+          ('viewer', Icons.visibility_outlined, t('viewer')),
+          ('exit', Icons.logout, t('menu.exit')),
+        ])
+          PopupMenuItem<String>(
+            value: entry.$1,
+            child: Row(
+              children: [
+                Icon(entry.$2),
+                const SizedBox(width: 12),
+                Text(entry.$3),
+              ],
+            ),
+          ),
+      ],
+    );
+    if (!mounted || choice == null) return;
     final [kind, ...] = choice.split(':');
     switch (kind) {
       case 'settings':

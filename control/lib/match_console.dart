@@ -44,7 +44,8 @@ class MatchConsole extends StatefulWidget {
   final void Function(String team, String playerId) onToggleActive;
   final int lineupMax;
   final Widget sync;
-  final VoidCallback onMenu, onToggleClock, onClockTap;
+  final void Function(BuildContext) onMenu;
+  final VoidCallback onToggleClock, onClockTap;
   final VoidCallback? onUndo;
   final void Function(String team) onSubstitutions;
 
@@ -577,10 +578,12 @@ class MatchConsoleState extends State<MatchConsole> {
         fit: BoxFit.scaleDown,
         child: Row(
           children: [
-            IconButton(
-              tooltip: t('console.menu'),
-              icon: const Icon(Icons.menu, size: 30),
-              onPressed: widget.onMenu,
+            Builder(
+              builder: (buttonContext) => IconButton(
+                tooltip: t('console.menu'),
+                icon: const Icon(Icons.menu, size: 30),
+                onPressed: () => widget.onMenu(buttonContext),
+              ),
             ),
             if (football) ...[
               Padding(
