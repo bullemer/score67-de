@@ -46,8 +46,9 @@ a.forum-post:hover,a.forum-post:focus-visible{border-color:#b6f36e}
 .forum-form button:disabled{opacity:.5;cursor:not-allowed}
 .forum-hp{position:absolute;left:-10000px;width:1px;height:1px;overflow:hidden}
 @media(max-width:600px){
-  .site-header{padding:16px 16px;gap:8px}
+  .site-header{position:relative;padding:16px 16px;gap:8px}
   .site-nav a{padding:8px}
+  .site-nav button{position:absolute;top:16px;right:16px;margin:0}
   .landing-actions{flex-direction:column}
   .landing-actions .primary{text-align:center}
   .site-page main,.landing main{padding:0 16px}

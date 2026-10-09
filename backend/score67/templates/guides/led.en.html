@@ -1,8 +1,8 @@
 {% extends "guides/_base.html" %}{% block content %}
-<p class="eyebrow">Build guide · draft</p>
+<p class="eyebrow">LED board · hardware tested</p>
 <h1>Build your own LED scoreboard: 64 × 32 LED panel with an ESP32 for Score67</h1>
-<p>With a ready-made LED panel, a plug-on ESP32 controller and a power supply you can build a scoreboard that shows the Score67 score in half an hour – no soldering. The board connects to score67.de over Wi-Fi and follows whichever scoreboard you assign to it in the app.</p>
-<p class="guide-note"><strong>Status:</strong> the parts list and assembly are ready. The Score67 firmware for the controller is <strong>in the works</strong>; once it is available you install it with one click in the browser. The server side on score67.de (pairing by code, live data, updates over Wi-Fi) is already running.</p>
+<p>With a ready-made LED panel, a plug-on ESP32 controller and a power supply you can build a scoreboard for Score67 without soldering. The 64 × 32 panel and score display have been tested with the hardware listed below.</p>
+<p class="guide-note"><strong>Status:</strong> the LED board works in hardware tests; registration and live data have been tested with a development server. Wi-Fi setup through a hotspot is implemented but has not been field tested. There is no public installable beta yet: the production connection, phone hotspot and browser installation still need field tests. Automatic updates are not implemented in the device firmware.</p>
 <figure class="guide-shot"><div class="led-frame"><canvas class="led-panel" data-led-demo role="img" aria-label="Live preview: how the board shows a game (demo, 64 × 32 pixels)."></canvas></div><figcaption>Live preview: how the board shows a game (demo, 64 × 32 pixels). Interactive preview of a running game – any Score67 game can be viewed the same way via “LED preview” in the Viewer menu.</figcaption></figure>
 
 <h2>Parts list</h2>
@@ -18,24 +18,16 @@
 
 <h2>Assembly</h2>
 <ol>
-<li><strong>Plug on the controller:</strong> the Matrix Portal S3 goes straight onto the <strong>input header (HUB75 “In”)</strong> on the back of the panel – the arrows on the board show the data direction, the controller sits at the start. No ribbon cable, no soldering. The solder jumper for address line “E” is only needed for 64 × 64 panels, not for 64 × 32.</li>
+<li><strong>Plug on the controller:</strong> on the tested Waveshare panel, the Matrix Portal S3 goes on the <strong>right-hand socket when viewed from the back</strong>. The printed arrows were misleading on this panel; the other socket left it dark or showed noise. No ribbon cable or soldering is needed.</li>
 <li><strong>Power the panel:</strong> connect the panel's power cable to the 5 V supply (red = +5 V, black = ground). The panel draws up to 20 W – do <strong>not</strong> power it through the controller's USB-C port, which is too weak for that.</li>
 <li><strong>Connect the controller:</strong> USB-C to your computer (to install the firmware) and later to a USB power supply.</li>
-<li><strong>Install the firmware</strong> <em>(once available)</em>: open the Score67 flash page in Chrome or Edge, pick the controller, done. This is needed only <strong>once</strong> – every later version comes over Wi-Fi (see below).</li>
-<li><strong>Pair with Score67</strong> <em>(once available)</em>: on first start the board opens its own Wi-Fi. Connect with your phone, enter the venue Wi-Fi and the <strong>pairing code</strong>. You create the code in the Controller under <strong>Game settings → Displays → Connect display</strong> (valid for 10 minutes).</li>
+<li><strong>Install the firmware:</strong> this currently requires a development build and a USB cable. A public beta download and browser flash page will follow field testing.</li>
+<li><strong>Pair with Score67:</strong> on first start the board opens its own Wi-Fi. Enter the venue Wi-Fi there. The board then shows its own six-digit code; enter it in Score67 under <strong>Settings → Displays</strong>.</li>
 <li><strong>Assign a scoreboard:</strong> in the same list choose which scoreboard the board shows – you can switch during the game. The board follows that scoreboard's current game automatically.</li>
 </ol>
 
-<h2>Updates over Wi-Fi (OTA)</h2>
-<p>After the first install over USB nobody needs to plug in a cable again: new firmware versions come over Wi-Fi straight from score67.de.</p>
-<ul>
-<li><strong>Automatic, but never during a game:</strong> the board installs an update only when no game is running – e.g. when no scoreboard is assigned or between two games. While the clock runs, it waits.</li>
-<li><strong>Verified:</strong> the firmware is downloaded encrypted (HTTPS) and only with the board's own credentials. Before installing, the board checks a checksum; if it does not match, the old version stays.</li>
-<li><strong>With a fallback:</strong> the controller has room for two versions. If the new one does not start cleanly or cannot reach score67.de, the board switches back to the previous version by itself after a few attempts.</li>
-<li><strong>Visible in the app:</strong> under <strong>Game settings → Displays</strong> each board shows its firmware version, a note when an update is waiting and the update status (“installed 0.2.0”).</li>
-<li><strong>Beta for testers:</strong> with the <strong>“Receive beta firmware”</strong> switch a board gets new versions while they are still being tested. Without it, only released versions arrive.</li>
-</ul>
-<p>Updates use the same Wi-Fi as the display – a phone hotspot works too. An update is about 1–2 MB.</p>
+<h2>Firmware updates</h2>
+<p>The server can host beta and stable firmware, and the app already has a “Receive beta firmware” switch. The device firmware does not install those updates yet. Until this is tested, each new version requires USB again.</p>
 
 <h2>Safety</h2>
 <ul>
@@ -45,9 +37,9 @@
 </ul>
 
 <h2>Going bigger</h2>
-<p>Several panels can be chained through the output header (HUB75 “Out”), e.g. two or four panels for a larger gym board (128 × 64 pixels). The Matrix Portal S3 has the power for it, and the firmware is meant to support it from the start. The power supply must deliver more accordingly (up to 4 A per panel).</p>
+<p>Only a single 64 × 32 panel has been tested so far. Larger displays made from multiple panels have not been tested.</p>
 
 <h2>For makers: the interface</h2>
-<p>The firmware uses the ESP32-HUB75-MatrixPanel-DMA library for the panel. It talks to Score67 in two ways: once <code>POST /api/display/pair</code> with the pairing code (returns a device token), then a WebSocket <code>wss://score67.de/ws/display?token=…</code> that sends the current game on every change – teams and short names, colours, points, period and clock (the board keeps the time running locally). Want to write your own firmware? Get in touch in the <a href="/forum?lang=en">forum</a> and we'll send the full description.</p>
+<p>The firmware uses Adafruit Protomatter for the panel. It registers with a device key stored on the board through <code>POST /api/display/register</code> and receives scores over an encrypted WebSocket connection. The board shows its own pairing code. Want to write your own firmware? Get in touch in the <a href="/forum?lang=en">forum</a>.</p>
 <p>Questions, experiences, photos of your board? Head to the <a href="/forum?lang=en">forum</a>.</p>
 {% endblock %}

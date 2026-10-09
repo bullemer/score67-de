@@ -46,5 +46,7 @@ terminal at 115200 on /dev/ttyACM0.
    talks to `SCORE67_DEV_HOST:8067` without TLS and uses the network from
    `~/.score67-wifi` (`tools/gen_secrets.py`); the production build talks to
    score67.de over TLS (Let's Encrypt roots in `include/certs.h`).
-5. Open: Wi-Fi setup portal (hotspot, up to 3 networks), web flasher, OTA
-   with boot counter, field test over a phone hotspot.
+5. Wi-Fi setup portal — implemented (hotspot, up to 3 networks); still needs a
+   field test over a phone hotspot. Open: production TLS field test, public web
+   flasher, and device-side OTA with rollback. The firmware is not yet a
+   self-installable public beta.

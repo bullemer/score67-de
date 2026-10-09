@@ -49,6 +49,8 @@ def test_homepage_quickstart_uses_standard_sports_and_opens_control(system):
         assert f'id="quickstart-toggle"' in homepage.text
         assert label in homepage.text
         assert homepage.text.index('id="quickstart-toggle"') < homepage.text.index('class="landing-actions"')
+        assert 'href="/settings"' in homepage.text
+        assert 'href="/anzeigetafel/led-bauanleitung"' in homepage.text
         assert '/static/site.mjs?v=' in homepage.text
         assert '/static/site.css?v=' in homepage.text
         assert homepage.headers['cache-control'] == 'no-store'
