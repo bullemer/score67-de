@@ -45,3 +45,39 @@ export function startSite(onRender) {
 }
 
 if (!document.body.classList.contains('forum-page')) startSite();
+
+const quickstartToggle = document.querySelector('#quickstart-toggle');
+if (quickstartToggle) {
+  const choices = document.querySelector('#quickstart-sports');
+  const status = document.querySelector('#quickstart-status');
+  const buttons = [...choices.querySelectorAll('[data-quickstart-sport]')];
+  quickstartToggle.addEventListener('click', () => {
+    choices.hidden = !choices.hidden;
+    quickstartToggle.setAttribute('aria-expanded', String(!choices.hidden));
+  });
+  for (const button of buttons) button.addEventListener('click', async () => {
+    quickstartToggle.disabled = true;
+    for (const choice of buttons) choice.disabled = true;
+    const lang = preferredLanguage();
+    const t = await translations(lang).catch(() => ({}));
+    status.hidden = false;
+    status.classList.remove('error');
+    status.textContent = t['quickstart.creating'] || 'Creating scoreboard…';
+    try {
+      const response = await fetch('/api/scoreboards', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({sport: button.dataset.quickstartSport, language: lang}),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'network');
+      try { localStorage.setItem(`score67-pin:${result.slug}`, result.pin); } catch { /* Browser storage is optional. */ }
+      location.assign(`/s/${encodeURIComponent(result.slug)}/control?lang=${lang}`);
+    } catch (error) {
+      status.textContent = t[`error.${error.message}`] || t['error.network'] || 'No response from the server.';
+      status.classList.add('error');
+      quickstartToggle.disabled = false;
+      for (const choice of buttons) choice.disabled = false;
+    }
+  });
+}

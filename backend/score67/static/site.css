@@ -6,6 +6,14 @@
 .site-nav button{min-height:44px;padding:10px 16px;margin-left:6px}
 .landing-actions{display:flex;flex-wrap:wrap;gap:12px;margin:28px 0 8px}
 .landing-actions .primary{margin:0}
+.quickstart{margin:30px 0;padding:24px;border:1px solid #364252;border-radius:14px;background:#151e2a}
+.quickstart h2{margin:0 0 8px;font-size:26px}
+.quickstart p{margin:0 0 16px;font-size:16px!important}
+.quickstart-sports{display:flex;flex-wrap:wrap;gap:12px;margin-top:14px}
+.quickstart-sports button{min-width:150px}
+.quickstart button:disabled{opacity:.55;cursor:wait}
+.quickstart .quickstart-status{margin:14px 0 0;color:#b6f36e}
+.quickstart .quickstart-status.error{color:#ff8a8a}
 .primary.secondary{background:#182232;color:#fff;border:1px solid #364252}
 .landing-more{font-size:17px!important}
 .landing-more a{color:#b6f36e}
