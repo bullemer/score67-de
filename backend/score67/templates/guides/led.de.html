@@ -1,8 +1,8 @@
 {% extends "guides/_base.html" %}{% block content %}
-<p class="eyebrow">Bauanleitung · Entwurf</p>
+<p class="eyebrow">LED-Tafel · Hardware erprobt</p>
 <h1>LED-Anzeigetafel selbst bauen: 64 × 32 LED-Panel mit ESP32 für Score67</h1>
-<p>Mit einem fertigen LED-Panel, einem steckbaren ESP32-Controller und einem Netzteil baust du in einer halben Stunde eine Anzeigetafel, die den Spielstand aus Score67 zeigt – ohne Löten. Die Tafel verbindet sich per WLAN mit score67.de und folgt dem Scoreboard, das du ihr in der App zuweist.</p>
-<p class="guide-note"><strong>Stand:</strong> Bestellliste und Aufbau sind fertig. Die Score67-Firmware für den Controller ist <strong>in Arbeit</strong>; sobald sie bereitsteht, spielst du sie mit einem Klick im Browser auf. Die Gegenstelle auf score67.de (Kopplung per Code, Live-Daten, Updates über WLAN) läuft bereits.</p>
+<p>Mit einem fertigen LED-Panel, einem steckbaren ESP32-Controller und einem Netzteil baust du eine Anzeigetafel für Score67 – ohne Löten. Die 64 × 32-Tafel und die Anzeige der Spielstände wurden mit der unten genannten Hardware getestet.</p>
+<p class="guide-note"><strong>Stand:</strong> Die LED-Tafel funktioniert im Hardwaretest; Registrierung und Live-Daten wurden mit einem Entwicklungsserver geprüft. Die WLAN-Einrichtung per Hotspot ist implementiert, aber noch nicht im Feld getestet. Eine öffentlich installierbare Beta gibt es noch nicht: Produktionsverbindung, Handy-Hotspot und Installation per Browser brauchen noch Feldtests. Automatische Firmware-Updates sind in der Geräte-Firmware noch nicht implementiert.</p>
 <figure class="guide-shot"><div class="led-frame"><canvas class="led-panel" data-led-demo role="img" aria-label="Live-Vorschau: So zeigt die Tafel ein Spiel (Demo, 64 × 32 Pixel)."></canvas></div><figcaption>Live-Vorschau: So zeigt die Tafel ein Spiel (Demo, 64 × 32 Pixel). Interaktive Vorschau eines laufenden Spiels – jede Score67-Partie lässt sich im Viewer-Menü unter „LED-Vorschau“ genauso ansehen.</figcaption></figure>
 
 <h2>Bestellliste</h2>
@@ -18,24 +18,16 @@
 
 <h2>Aufbau</h2>
 <ol>
-<li><strong>Controller aufstecken:</strong> Der Matrix Portal S3 wird direkt auf die <strong>Eingangsbuchse (HUB75 „In“)</strong> auf der Rückseite des Panels gesteckt – die Pfeile auf der Platine zeigen die Datenrichtung, der Controller sitzt am Anfang. Kein Flachbandkabel, kein Löten. Die Lötbrücke für die Adressleitung „E“ brauchst du nur bei 64 × 64-Panels, beim 64 × 32-Panel nicht.</li>
+<li><strong>Controller aufstecken:</strong> Beim getesteten Waveshare-Panel sitzt der Matrix Portal S3 auf der <strong>rechten Buchse von hinten gesehen</strong>. Die aufgedruckten Pfeile waren bei diesem Panel irreführend; auf der anderen Buchse blieb die Anzeige schwarz oder zeigte Bildrauschen. Kein Flachbandkabel, kein Löten.</li>
 <li><strong>Strom fürs Panel:</strong> Schließe das Stromkabel des Panels an das 5-V-Netzteil an (rot = +5 V, schwarz = Masse). Das Panel zieht bis zu 20 W – versorge es <strong>nicht</strong> über den USB-C-Anschluss des Controllers, der ist dafür zu knapp bemessen.</li>
 <li><strong>Controller anschließen:</strong> Den Matrix Portal S3 per USB-C mit dem Rechner (zum Aufspielen) bzw. später mit einem USB-Netzteil verbinden.</li>
-<li><strong>Firmware aufspielen</strong> <em>(sobald verfügbar)</em>: In Chrome oder Edge die Score67-Flashseite öffnen, den Controller auswählen, fertig. Das ist nur <strong>einmal</strong> nötig – alle späteren Versionen kommen über WLAN (siehe unten).</li>
-<li><strong>Mit Score67 koppeln</strong> <em>(sobald verfügbar)</em>: Die Tafel öffnet beim ersten Start ein eigenes WLAN. Mit dem Handy verbinden, das Hallen-WLAN und den <strong>Kopplungscode</strong> eingeben. Den Code erzeugst du im Controller unter <strong>Einstellungen → Anzeigetafeln → Anzeigetafel verbinden</strong> (10 Minuten gültig).</li>
+<li><strong>Firmware aufspielen:</strong> Derzeit ist das nur als Entwicklungsbuild per USB möglich. Ein öffentlicher Beta-Download und eine Flashseite folgen nach dem Feldtest.</li>
+<li><strong>Mit Score67 koppeln:</strong> Nach dem ersten Start öffnet die Tafel ein eigenes WLAN. Dort trägst du das Hallen-WLAN ein. Den sechsstelligen Code zeigt anschließend die Tafel selbst an; gib ihn in Score67 unter <strong>Einstellungen → Anzeigetafeln</strong> ein.</li>
 <li><strong>Scoreboard zuweisen:</strong> In derselben Liste wählst du, welches Scoreboard die Tafel zeigt – auch während des Spiels umschaltbar. Die Tafel folgt automatisch dem aktuellen Spiel dieses Scoreboards.</li>
 </ol>
 
-<h2>Updates über WLAN (OTA)</h2>
-<p>Nach dem ersten Aufspielen per USB muss niemand mehr ein Kabel anschließen: Neue Firmware-Versionen kommen über WLAN direkt von score67.de.</p>
-<ul>
-<li><strong>Automatisch, aber nie im Spiel:</strong> Die Tafel installiert ein Update nur, wenn gerade kein Spiel läuft – etwa wenn ihr kein Scoreboard zugewiesen ist oder zwischen zwei Spielen. Läuft die Uhr, wartet sie.</li>
-<li><strong>Geprüft:</strong> Die Firmware wird verschlüsselt (HTTPS) und nur mit dem eigenen Zugang der Tafel geladen. Vor der Installation prüft die Tafel eine Prüfsumme; stimmt sie nicht, bleibt die alte Version.</li>
-<li><strong>Mit Rückfallebene:</strong> Der Controller hat Platz für zwei Versionen. Startet die neue nicht sauber oder findet sie keine Verbindung zu score67.de, wechselt die Tafel nach einigen Versuchen von selbst zur vorherigen Version zurück.</li>
-<li><strong>Sichtbar in der App:</strong> Unter <strong>Einstellungen → Anzeigetafeln</strong> stehen pro Tafel die Firmware-Version, ein Hinweis, wenn ein Update bereitsteht, und der Update-Status („installed 0.2.0“).</li>
-<li><strong>Beta für Tester:</strong> Mit dem Schalter <strong>„Beta-Firmware erhalten“</strong> bekommt eine Tafel neue Versionen schon in der Testphase. Ohne den Schalter kommen nur freigegebene Versionen.</li>
-</ul>
-<p>Die Updates funktionieren über dasselbe WLAN wie die Anzeige – also auch über einen Handy-Hotspot. Ein Update ist etwa 1–2 MB groß.</p>
+<h2>Firmware-Updates</h2>
+<p>Der Server kann Beta- und reguläre Firmware bereitstellen; in der App gibt es bereits den Schalter „Beta-Firmware erhalten“. Die Geräte-Firmware installiert solche Updates noch nicht. Bis diese Funktion getestet ist, erfordert jede neue Version erneut USB.</p>
 
 <h2>Sicherheit</h2>
 <ul>
@@ -45,9 +37,9 @@
 </ul>
 
 <h2>Größer bauen</h2>
-<p>Mehrere Panels lassen sich über die Ausgangsbuchse (HUB75 „Out“) hintereinanderschalten, etwa zwei oder vier Panels für eine größere Hallentafel (128 × 64 Pixel). Der Matrix Portal S3 hat dafür genug Leistung; die Firmware soll das von Anfang an unterstützen. Das Netzteil muss dann entsprechend mehr liefern (je Panel bis zu 4 A).</p>
+<p>Getestet ist bisher ein einzelnes 64 × 32-Panel. Größere Anzeigen mit mehreren Panels sind noch nicht geprüft.</p>
 
 <h2>Für Bastler: die Schnittstelle</h2>
-<p>Die Firmware nutzt die Bibliothek ESP32-HUB75-MatrixPanel-DMA für das Panel. Mit Score67 spricht sie über zwei Wege: einmalig <code>POST /api/display/pair</code> mit dem Kopplungscode (liefert ein Geräte-Token), danach ein WebSocket <code>wss://score67.de/ws/display?token=…</code>, der bei jeder Änderung den aktuellen Spielstand schickt – Teams und Kürzel, Farben, Punkte, Periode und Uhr (die Zeit rechnet die Tafel lokal weiter). Wer eine eigene Firmware schreiben möchte: Melde dich im <a href="/forum">Forum</a>, wir schicken die vollständige Beschreibung.</p>
+<p>Die Firmware nutzt Adafruit Protomatter für das Panel. Sie registriert sich mit einem auf der Tafel gespeicherten Geräteschlüssel über <code>POST /api/display/register</code> und empfängt Spielstände über eine verschlüsselte WebSocket-Verbindung. Den Code zur Kopplung zeigt die Tafel selbst. Wer eine eigene Firmware schreiben möchte: Melde dich im <a href="/forum">Forum</a>.</p>
 <p>Fragen, Erfahrungen, Fotos deiner Tafel? Ab ins <a href="/forum">Forum</a>.</p>
 {% endblock %}
