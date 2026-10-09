@@ -51,6 +51,7 @@ a.forum-post:hover,a.forum-post:focus-visible{border-color:#b6f36e}
   .landing-actions{flex-direction:column}
   .landing-actions .primary{text-align:center}
   .site-page main,.landing main{padding:0 16px}
+  .landing main{margin:24px auto 48px}
 }
 .site-footer{display:flex;flex-wrap:wrap;justify-content:center;gap:4px 8px}.site-footer a,.menu-meta a{color:#b5c2d4}.site-footer .version-footer{display:inline;padding:0}
 .legal-page main{max-width:760px}.legal-page h2{font-size:21px;margin:32px 0 8px}.legal-page main p,.legal-page li{color:#c3cedb;font-size:16px!important;line-height:1.65}.legal-page main a{color:#b6f36e}.legal-page code{background:#151e2a;padding:1px 6px;border-radius:4px}.legal-meta{margin-top:40px;font-size:14px!important}

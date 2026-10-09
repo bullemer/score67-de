@@ -48,6 +48,10 @@ def test_homepage_quickstart_uses_standard_sports_and_opens_control(system):
         assert homepage.status_code == 200
         assert f'id="quickstart-toggle"' in homepage.text
         assert label in homepage.text
+        assert homepage.text.index('id="quickstart-toggle"') < homepage.text.index('class="landing-actions"')
+        assert '/static/site.mjs?v=' in homepage.text
+        assert '/static/site.css?v=' in homepage.text
+        assert homepage.headers['cache-control'] == 'no-store'
 
     for sport, periods, minutes, lineup in [('football', 2, 45, 11), ('basketball', 4, 10, 5)]:
         response = client.post('/api/scoreboards', json={'sport': sport, 'language': 'de'})
