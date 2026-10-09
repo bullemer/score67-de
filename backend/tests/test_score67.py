@@ -57,7 +57,8 @@ def test_homepage_quickstart_uses_standard_sports_and_opens_control(system):
         assert (game['sport'], game['period_count'], game['period_length_min'], game['lineup_size']) == (
             sport, periods, minutes, lineup)
         assert game['phase'] == 'pre_game'
-        assert client.get(result['links']['control']).status_code == 200
+        assert result['links']['control'] == f"/s/{result['slug']}/control"
+        assert client.get(f"/api/s/{result['slug']}/control-state").status_code == 200
 
 
 def state(client, slug):
