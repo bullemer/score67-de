@@ -94,3 +94,14 @@ body.spectator .big .team-logo{width:min(8vw,7vh);height:min(8vw,7vh)}
 .menu-meta a{color:#b5c2d4}
 .viewer-controller{margin-left:auto;margin-right:10px;padding:8px 16px;border-radius:18px;background:#b6f36e;color:#111b0c!important;font-weight:700;font-size:14px;text-decoration:none}
 .menu-led{display:block;margin-top:14px;color:#b6f36e;font-weight:600}
+
+.tennis-score{overflow-x:auto;padding:12px;text-align:center}
+.tennis-score table{border-collapse:collapse;width:100%;margin-top:8px;font-size:clamp(14px,2.2vw,28px)}
+.tennis-score th,.tennis-score td{padding:8px 12px;border-bottom:1px solid #596471;white-space:nowrap}
+.tennis-score th:first-child{text-align:left;white-space:normal}
+.small .tennis-score table{font-size:16px}
+
+body .scoreboard.tennis.big .teams,body .scoreboard.tennis.small .teams{display:none}
+.tennis-score{background:#101a28;border-radius:14px}
+.tennis-score>div{font-size:clamp(16px,2.5vw,26px);font-weight:700;padding:8px}
+.tennis-score td{font-weight:800}

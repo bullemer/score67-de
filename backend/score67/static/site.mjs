@@ -55,6 +55,12 @@ if (quickstartToggle) {
     choices.hidden = !choices.hidden;
     quickstartToggle.setAttribute('aria-expanded', String(!choices.hidden));
   });
+  const tennisToggle = document.querySelector('#quickstart-tennis-toggle');
+  tennisToggle.addEventListener('click', () => {
+    const panel = document.querySelector('#quickstart-tennis');
+    panel.hidden = !panel.hidden;
+    tennisToggle.setAttribute('aria-expanded', String(!panel.hidden));
+  });
   for (const button of buttons) button.addEventListener('click', async () => {
     quickstartToggle.disabled = true;
     for (const choice of buttons) choice.disabled = true;
@@ -67,7 +73,13 @@ if (quickstartToggle) {
       const response = await fetch('/api/scoreboards', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({sport: button.dataset.quickstartSport, language: lang}),
+        body: JSON.stringify({sport: button.dataset.quickstartSport, language: lang,
+          ...(button.dataset.quickstartSport === 'tennis' ? {
+            tennis_category: document.querySelector('#quickstart-tennis-category').value,
+            tennis_best_of: Number(document.querySelector('#quickstart-tennis-best-of').value),
+            tennis_mode: document.querySelector('#quickstart-tennis-mode').value,
+          } : {}),
+        }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'network');

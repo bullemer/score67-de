@@ -5,6 +5,7 @@ import re
 from math import isfinite
 from pathlib import Path
 from uuid import UUID, uuid4
+from . import tennis
 
 FOOTBALL = json.loads((Path(__file__).parent / "profiles/football.json").read_text())
 
@@ -12,9 +13,12 @@ FOOTBALL = json.loads((Path(__file__).parent / "profiles/football.json").read_te
 BASKETBALL = json.loads((Path(__file__).parent / "profiles/basketball.json").read_text())
 
 
+TENNIS = json.loads((Path(__file__).parent / "profiles/tennis.json").read_text())
+
+
 BASKETBALL_STATS = ("rebound", "assist", "steal", "block", "turnover", "free_throw_missed")
 FOOTBALL_EVENTS = ("foul", "free_kick", "penalty")
-LINEUP_MAX = {"basketball": 5, "football": 11}
+LINEUP_MAX = {"basketball": 5, "football": 11, "tennis": 2}
 
 
 def lineup_size(state):
@@ -64,11 +68,11 @@ class RuleError(Exception):
     pass
 
 
-def initial_state(period_count=None, period_length_min=None, sport="football", lineup_size=None):
+def initial_state(period_count=None, period_length_min=None, sport="football", lineup_size=None, tennis_category="women", tennis_best_of=3, tennis_mode="detailed", tennis_final_tiebreak=7):
     basketball = sport == "basketball"
     period_count = period_count if period_count is not None else (4 if basketball else 2)
     period_length_min = period_length_min if period_length_min is not None else (10 if basketball else 45)
-    return {
+    result = {
         "sport": sport, "lineup_size": min(lineup_size or LINEUP_MAX[sport], LINEUP_MAX[sport]), "foul_mode": ("personal" if period_count == 8 else "team") if basketball else "off", "team_fouls_enabled": basketball and period_count != 8, "overtime_length_min": 5, "phase": "pre_game", "period": 0,
         "period_count": period_count, "period_length_min": period_length_min,
         "clock": {"enabled": True, "direction": "down" if basketball else "up", "running": False,
@@ -77,6 +81,16 @@ def initial_state(period_count=None, period_length_min=None, sport="football", l
         "away": {"name": "Guest", "short": "GUE", "color": "#1d4ed8"},
         "overlay": {"view": "scoreboard", "position": "top_left", "auto_big": True, "delay_ms": 0},
     }
+
+    if sport == "tennis":
+        if tennis_category not in ("women", "men") or tennis_best_of not in (3, 5) or tennis_mode not in ("simple", "detailed") or tennis_final_tiebreak not in (7, 10):
+            raise RuleError("invalid_value")
+        result.update(period_count=tennis_best_of, period_length_min=1, lineup_size=1,
+                      tennis=tennis.initial(tennis_category, tennis_best_of, tennis_mode, tennis_final_tiebreak))
+        result["clock"]["enabled"] = False
+        result["home"].update(name="Player 1", short="P1")
+        result["away"].update(name="Player 2", short="P2")
+    return result
 
 
 def period_ms(state):
@@ -171,6 +185,13 @@ def apply(state, action, data, now_ms):
              "clock_ms": round(elapsed(s, now_ms)) if c["enabled"] else None,
              "period_length_min": s["period_length_min"], "period_count": s["period_count"],
              "occurred_at": now_ms, "sport": s["sport"], "period_duration_ms": period_ms(s)}
+    if s["sport"] == "tennis" and action not in ("settings", "overlay", "squad", "lineup"):
+        event.update(tennis.apply(s, action, data, RuleError))
+        if s["phase"] == "finished" and s["tennis"]["winner"] is not None:
+            event["match_won"] = True
+        event["period"] = state["period"] or 1
+        before = {key: deepcopy(state.get(key)) for key in s if state.get(key) != s[key]}
+        return s, event, before
     if action in ("score", "score_correction"):
         points = data.get("points")
         values = (1, 2, 3) if basketball else (1,)
@@ -336,6 +357,19 @@ def apply(state, action, data, now_ms):
         c.update(elapsed_ms=max(0, round(elapsed(s, now_ms) + seconds * 1000 * (-1 if basketball else 1))),
                  started_at=now_ms if c["running"] else None)
     elif action == "settings":
+        if s["sport"] == "tennis":
+            if set(data) - {"tennis_category", "tennis_best_of", "tennis_mode", "tennis_final_tiebreak", "home", "away"}:
+                raise RuleError("invalid_value")
+            for key, choices in (("category", ("women", "men")), ("best_of", (3, 5)), ("mode", ("simple", "detailed")), ("final_tiebreak", (7, 10))):
+                field = "tennis_" + key
+                if field in data:
+                    if isinstance(data[field], bool) or data[field] not in choices:
+                        raise RuleError("invalid_value")
+                    if key != "category" and s["phase"] != "pre_game" and data[field] != s["tennis"][key]:
+                        raise RuleError("invalid_transition")
+                    s["tennis"][key] = data[field]
+            s["period_count"] = s["tennis"]["best_of"]
+            data = {k: v for k, v in data.items() if not k.startswith("tennis_")}
         allowed = {"period_count", "period_length_min", "clock_enabled", "clock_elapsed_ms", "home", "away", "team_fouls_enabled", "foul_mode", "lineup_size"}
         if set(data) - allowed:
             raise RuleError("invalid_value")

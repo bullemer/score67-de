@@ -1,0 +1,9 @@
+{
+  "id": "tennis",
+  "clock_enabled": false,
+  "clock_stoppable": false,
+  "categories": ["women", "men"],
+  "scoring_modes": ["simple", "detailed"],
+  "default_format": {"tennis_best_of": 3, "tennis_mode": "detailed", "tennis_final_tiebreak": 7},
+  "formats": [{"tennis_best_of": 3}, {"tennis_best_of": 5}]
+}

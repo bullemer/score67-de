@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Score67</title>
-{% include "_og.html" %}<link rel="stylesheet" href="/static/display.css"><link rel="stylesheet" href="/static/site.css?v={{ release_built_at | urlencode }}"><script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebApplication","name":"Score67","url":"https://score67.de/","applicationCategory":"SportsApplication","operatingSystem":"Web browser (Android, iOS, desktop)","inLanguage":["de","en"],"description":"Live-Scoreboard und Liveticker für Basketball und Fußball: Spielstand vom Handy erfassen, per Link teilen, als OBS-Overlay streamen.","offers":{"@type":"Offer","price":"0","priceCurrency":"EUR"},"publisher":{"@id":"https://navisense.de/#org"}},{"@type":"Organization","@id":"https://navisense.de/#org","name":"Navisense GmbH","url":"https://navisense.de/","address":{"@type":"PostalAddress","streetAddress":"Dorothea-Bernstein-Weg 28","postalCode":"22081","addressLocality":"Hamburg","addressCountry":"DE"}}]}</script>
+{% include "_og.html" %}<link rel="stylesheet" href="/static/display.css"><link rel="stylesheet" href="/static/site.css?v={{ release_built_at | urlencode }}"><script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebApplication","name":"Score67","url":"https://score67.de/","applicationCategory":"SportsApplication","operatingSystem":"Web browser (Android, iOS, desktop)","inLanguage":["de","en"],"description":"Live-Scoreboard und Liveticker für Basketball, Fußball und Tennis: Spielstand vom Handy erfassen, per Link teilen, als OBS-Overlay streamen.","offers":{"@type":"Offer","price":"0","priceCurrency":"EUR"},"publisher":{"@id":"https://navisense.de/#org"}},{"@type":"Organization","@id":"https://navisense.de/#org","name":"Navisense GmbH","url":"https://navisense.de/","address":{"@type":"PostalAddress","streetAddress":"Dorothea-Bernstein-Weg 28","postalCode":"22081","addressLocality":"Hamburg","addressCountry":"DE"}}]}</script>
 </head>
 <body class="landing">{% include "_site_header.html" %}
 <main><p class="eyebrow" data-i18n="create.scope"></p><h1 data-i18n="landing.title"></h1><p data-i18n="landing.body"></p>
@@ -12,6 +12,13 @@
 <div id="quickstart-sports" class="quickstart-sports" hidden>
 <button type="button" data-quickstart-sport="football" data-i18n="football"></button>
 <button type="button" data-quickstart-sport="basketball" data-i18n="basketball"></button>
+<button id="quickstart-tennis-toggle" type="button" aria-expanded="false" aria-controls="quickstart-tennis" data-i18n="tennis"></button>
+<div id="quickstart-tennis" class="quickstart-tennis" hidden>
+<label><span data-i18n="tennis.category"></span><select id="quickstart-tennis-category"><option value="women" data-i18n="tennis.women"></option><option value="men" data-i18n="tennis.men"></option></select></label>
+<label><span data-i18n="tennis.best_of"></span><select id="quickstart-tennis-best-of"><option value="3" data-i18n="tennis.best_of_3"></option><option value="5" data-i18n="tennis.best_of_5"></option></select></label>
+<label><span data-i18n="tennis.mode"></span><select id="quickstart-tennis-mode"><option value="simple" data-i18n="tennis.simple"></option><option value="detailed" selected data-i18n="tennis.detailed"></option></select></label>
+<button type="button" class="primary" data-quickstart-sport="tennis" data-i18n="tennis.quickstart"></button>
+</div>
 </div>
 <p id="quickstart-status" class="quickstart-status" role="status" aria-live="polite" hidden></p>
 </section>

@@ -18,6 +18,7 @@ import 'team_editor.dart';
 import 'displays.dart';
 import 'board_displays.dart';
 import 'led_messages.dart';
+import 'tennis.dart';
 import 'logo_picker.dart';
 import 'fixture_import.dart';
 import 'location_frame.dart';
@@ -68,7 +69,7 @@ class _Score67State extends State<Score67> {
   bool dashboardPage = false, loginPage = false, appSettingsPage = false;
   String loginToken = '';
 
-  /// The live match console (both sports, landscape only).
+  /// The live match console; tennis also supports portrait.
   bool get liveConsole =>
       ready &&
       admin &&
@@ -91,6 +92,12 @@ class _Score67State extends State<Score67> {
 
   // Create form: football defaults to 2 × 45, basketball to 4 × 10.
   String draftSport = 'football';
+  final draftTennis = <String, dynamic>{
+    'category': 'women',
+    'best_of': 3,
+    'mode': 'detailed',
+    'final_tiebreak': 7,
+  };
   final periodsInput = TextEditingController(text: '2');
   final minutesInput = TextEditingController(text: '45');
   // Players on the pitch/court at once (youth formats: 4 or 5; 5, 7, 9 or 11).
@@ -103,6 +110,7 @@ class _Score67State extends State<Score67> {
   int get draftMinutes => (int.tryParse(minutesInput.text) ?? 45).clamp(1, 120);
   set draftPeriods(int value) => periodsInput.text = '$value';
   set draftMinutes(int value) => minutesInput.text = '$value';
+  bool get tennis => state['sport'] == 'tennis';
   bool get basketball => state['sport'] == 'basketball';
 
   /// Players on court/pitch at once: the game's setting, else the maximum.
@@ -743,9 +751,14 @@ class _Score67State extends State<Score67> {
         body: {
           'sport': draftSport,
           'language': lang,
-          'period_count': draftPeriods,
-          'period_length_min': draftMinutes,
-          'lineup_size': draftLineup,
+          if (draftSport == 'tennis')
+            for (final entry in draftTennis.entries)
+              'tennis_${entry.key}': entry.value
+          else ...{
+            'period_count': draftPeriods,
+            'period_length_min': draftMinutes,
+            'lineup_size': draftLineup,
+          },
           'location': draftLocation,
           'description': draftDescription.text.trim().isEmpty
               ? null
@@ -754,6 +767,10 @@ class _Score67State extends State<Score67> {
           'stream_url': draftStream.text.trim().isEmpty
               ? null
               : draftStream.text.trim(),
+          if (draftSport == 'tennis')
+            for (final entry in draftTeams.entries)
+              if (entry.value.text.trim().isNotEmpty)
+                entry.key: entry.value.text.trim(),
           if (draftFixture != null) ...{
             for (final entry in draftTeams.entries)
               if (entry.value.text.trim().isNotEmpty)
@@ -804,6 +821,7 @@ class _Score67State extends State<Score67> {
       return 'OT${period - count}';
     }
     if (period == 0 || count == 1) return '';
+    if (s['sport'] == 'tennis') return '${t('tennis.set')} $period';
     if (count == 2) return t('half').replaceAll('{n}', '$period');
     if (count == 4) return t('quarter').replaceAll('{n}', '$period');
     return '$period/$count';
@@ -812,6 +830,7 @@ class _Score67State extends State<Score67> {
   /// Spelled-out period for buttons and the game flow: "2. Viertel",
   /// "1. Halbzeit", "Periode 5/8", "Verlängerung 1".
   String periodName(int period) {
+    if (tennis) return '${t('tennis.set')} $period';
     final count = state['period_count'] as int;
     if (period > count && basketball) {
       return t('period.name.ot').replaceAll('{n}', '${period - count}');
@@ -1650,17 +1669,18 @@ class _Score67State extends State<Score67> {
   }
 
   Widget createView() => section(t('create'), [
-    FixtureImport(
-      api: (path, method, body) => api(path, method: method, body: body),
-      t: t,
-      enabled: !busy,
-      onLoaded: applyFixture,
-      open: (url) => web.window.open(url, '_blank'),
-    ),
+    if (draftSport != 'tennis')
+      FixtureImport(
+        api: (path, method, body) => api(path, method: method, body: body),
+        t: t,
+        enabled: !busy,
+        onLoaded: applyFixture,
+        open: (url) => web.window.open(url, '_blank'),
+      ),
     Wrap(
       spacing: 12,
       children: [
-        for (final sport in ['football', 'basketball'])
+        for (final sport in ['football', 'basketball', 'tennis'])
           ChoiceChip(
             label: Text(t(sport)),
             selected: draftSport == sport,
@@ -1675,66 +1695,77 @@ class _Score67State extends State<Score67> {
       ],
     ),
     const SizedBox(height: 12),
-    numberStepper(t('period_count'), periodsInput, 1, 12),
-    numberStepper(t('period_length'), minutesInput, 1, 120),
-    Wrap(
-      spacing: 8,
-      runSpacing: 4,
-      children: [
-        for (final format
-            in draftSport == 'basketball'
-                ? const [
-                    [4, 10],
-                    [4, 12],
-                    [8, 5],
-                    [2, 20],
-                  ]
-                : const [
-                    [2, 45],
-                    [2, 40],
-                    [2, 35],
-                    [2, 30],
-                    [2, 20],
-                    [1, 10],
-                  ])
-          ChoiceChip(
-            label: Text('${format[0]} × ${format[1]}'),
-            selected: draftPeriods == format[0] && draftMinutes == format[1],
-            onSelected: (_) => setState(() {
-              draftPeriods = format[0];
-              draftMinutes = format[1];
-            }),
-          ),
-      ],
-    ),
-    Text(
-      '$draftPeriods × $draftMinutes min = ${draftPeriods * draftMinutes} min',
-      style: const TextStyle(color: Color(0xffb6f36e)),
-    ),
-    if (draftSport == 'basketball') Text(t('basketball.pilot')),
+    if (draftSport == 'tennis')
+      TennisFormat(
+        value: draftTennis,
+        t: t,
+        enabled: !busy,
+        onChanged: (k, v) => setState(() => draftTennis[k] = v),
+      )
+    else ...[
+      numberStepper(t('period_count'), periodsInput, 1, 12),
+      numberStepper(t('period_length'), minutesInput, 1, 120),
+      Wrap(
+        spacing: 8,
+        runSpacing: 4,
+        children: [
+          for (final format
+              in draftSport == 'basketball'
+                  ? const [
+                      [4, 10],
+                      [4, 12],
+                      [8, 5],
+                      [2, 20],
+                    ]
+                  : const [
+                      [2, 45],
+                      [2, 40],
+                      [2, 35],
+                      [2, 30],
+                      [2, 20],
+                      [1, 10],
+                    ])
+            ChoiceChip(
+              label: Text('${format[0]} × ${format[1]}'),
+              selected: draftPeriods == format[0] && draftMinutes == format[1],
+              onSelected: (_) => setState(() {
+                draftPeriods = format[0];
+                draftMinutes = format[1];
+              }),
+            ),
+        ],
+      ),
+      Text(
+        '$draftPeriods × $draftMinutes min = ${draftPeriods * draftMinutes} min',
+        style: const TextStyle(color: Color(0xffb6f36e)),
+      ),
+      if (draftSport == 'basketball') Text(t('basketball.pilot')),
+      const SizedBox(height: 12),
+      numberStepper(
+        t('lineup_size'),
+        lineupInput,
+        1,
+        draftSport == 'basketball' ? 5 : 11,
+      ),
+      Wrap(
+        spacing: 8,
+        children: [
+          for (final size
+              in draftSport == 'basketball'
+                  ? const [4, 5]
+                  : const [5, 7, 9, 11])
+            ChoiceChip(
+              label: Text('$size'),
+              selected: draftLineup == size,
+              onSelected: (_) => setState(() => lineupInput.text = '$size'),
+            ),
+        ],
+      ),
+      Text(t('lineup_size.note')),
+    ],
     const SizedBox(height: 12),
-    numberStepper(
-      t('lineup_size'),
-      lineupInput,
-      1,
-      draftSport == 'basketball' ? 5 : 11,
-    ),
-    Wrap(
-      spacing: 8,
-      children: [
-        for (final size
-            in draftSport == 'basketball' ? const [4, 5] : const [5, 7, 9, 11])
-          ChoiceChip(
-            label: Text('$size'),
-            selected: draftLineup == size,
-            onSelected: (_) => setState(() => lineupInput.text = '$size'),
-          ),
-      ],
-    ),
-    Text(t('lineup_size.note')),
-    const SizedBox(height: 12),
-    if (draftFixture == null) Text(t('create.note')),
-    if (draftFixture != null)
+    if (draftFixture == null && draftSport != 'tennis') Text(t('create.note')),
+    if (draftFixture != null || draftSport == 'tennis')
       for (final team in ['home', 'away'])
         Padding(
           padding: const EdgeInsets.only(bottom: 8),
@@ -1745,7 +1776,9 @@ class _Score67State extends State<Score67> {
                   controller: draftTeams[team],
                   maxLength: 60,
                   decoration: InputDecoration(
-                    labelText: t(team),
+                    labelText: t(
+                      draftSport == 'tennis' ? 'tennis.$team' : team,
+                    ),
                     border: const OutlineInputBorder(),
                   ),
                 ),
@@ -2307,9 +2340,114 @@ class _Score67State extends State<Score67> {
 
   /// Live basketball in landscape replaces the whole page with the console.
   bool console(BuildContext context) =>
-      liveConsole && MediaQuery.orientationOf(context) == Orientation.landscape;
+      liveConsole &&
+      (tennis || MediaQuery.orientationOf(context) == Orientation.landscape);
+
+  Widget tennisSettings() => ListView(
+    padding: const EdgeInsets.all(16),
+    children: [
+      settingsCard(t('settings.format'), [
+        TennisFormat(
+          value: Map<String, dynamic>.from(state['tennis']),
+          t: t,
+          enabled: canWrite && state['phase'] == 'pre_game',
+          onChanged: (k, v) => command('settings', {'tennis_$k': v}),
+        ),
+        if (state['phase'] != 'pre_game') Text(t('tennis.format_locked')),
+      ]),
+      for (final side in ['home', 'away'])
+        action(
+          '${t('tennis.$side')}: ${state[side]['name']}',
+          canWrite ? () => editTeam(side) : null,
+        ),
+      settingsCard(t('settings.led_connection'), [boardDisplaysPanel()]),
+      settingsCard(t('settings.access'), [accessSettings()]),
+      if (state['phase'] != 'finished')
+        action(
+          t('game_end'),
+          canWrite
+              ? () async {
+                  if (await confirm(t('tennis.end_confirm'))) {
+                    await command('game_end');
+                  }
+                }
+              : null,
+        ),
+      if (state['phase'] == 'finished')
+        action(
+          t('new_match'),
+          canWrite
+              ? () async {
+                  if (await confirm(t('new.confirm'))) {
+                    await command('new_match');
+                  }
+                }
+              : null,
+        ),
+    ],
+  );
+
+  Widget tennisConsole() => DefaultTabController(
+    length: 5,
+    child: Column(
+      children: [
+        Row(
+          children: [
+            Builder(
+              builder: (context) => IconButton(
+                icon: const Icon(Icons.menu),
+                tooltip: t('menu.title'),
+                onPressed: () => openMenu(context),
+              ),
+            ),
+            const Expanded(
+              child: Text(
+                'SCORE67 · Tennis',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+            syncBadge(),
+          ],
+        ),
+        TabBar(
+          isScrollable: true,
+          tabs: [
+            Tab(text: t('tennis.match')),
+            const Tab(text: 'LED'),
+            Tab(text: t('console.sharing')),
+            Tab(text: t('console.settings')),
+            Tab(text: t('console.flow')),
+          ],
+        ),
+        if (error.isNotEmpty)
+          Text(t('error.$error'), style: const TextStyle(color: Colors.orange)),
+        Expanded(
+          child: TabBarView(
+            children: [
+              TennisScorePanel(
+                state: state,
+                t: t,
+                command: (a, d) => command(a, d),
+                enabled: canWrite,
+                onUndo: canWrite && events.any((e) => e['cancelled'] == false)
+                    ? undoVisible
+                    : null,
+                onEditHome: canWrite ? () => editTeam('home') : null,
+                onEditAway: canWrite ? () => editTeam('away') : null,
+              ),
+              ledPanel(),
+              sharingPanel(),
+              tennisSettings(),
+              gameFlow(),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
 
   Widget basketballConsole() {
+    if (tennis) return tennisConsole();
     final phase = state['phase'];
     final last = events.where((e) => e['cancelled'] == false).lastOrNull;
     final running = basketball && basketballClockRunning;
@@ -2592,6 +2730,14 @@ class _Score67State extends State<Score67> {
     String players(List? list) =>
         (list ?? []).map((p) => playerLabel(p)).join(', ');
     switch (e['type']) {
+      case 'tennis_point':
+        return t('tennis.add_point');
+      case 'tennis_game':
+        return t('tennis.add_game');
+      case 'tennis_set':
+        return t('tennis.enter_set');
+      case 'tennis_server':
+        return t('tennis.serving');
       case 'score' when !basketball:
         return '${t('console.goal_short')}${e['detail'] == 'penalty' ? ' (${t('console.penalty_short')})' : ''}';
       case 'score_correction' when !basketball:
@@ -3423,6 +3569,7 @@ class _Score67State extends State<Score67> {
   }
 
   Widget settingsPanel() {
+    if (tennis) return tennisSettings();
     syncSettings();
     final formatDirty = !same(formatDraft(), formatSynced);
     final teamsDirty = !same(teamsDraft(), teamsSynced);
@@ -3816,7 +3963,7 @@ class _Score67State extends State<Score67> {
   void closeSettings() {
     setState(() => settingsOpen = false);
     // The back tap is a user gesture: lock landscape for the console again.
-    if (liveConsole) unawaited(lockLandscape());
+    if (liveConsole && !tennis) unawaited(lockLandscape());
   }
 
   Widget settingsPage(BuildContext context) => Column(
@@ -3997,7 +4144,7 @@ class _Score67State extends State<Score67> {
       builder: (context) => Listener(
         // Fullscreen and orientation lock need a user gesture: use the first tap.
         onPointerUp: (_) {
-          if (liveConsole && !landscapeRequested && !settingsOpen) {
+          if (liveConsole && !tennis && !landscapeRequested && !settingsOpen) {
             unawaited(lockLandscape());
           }
         },

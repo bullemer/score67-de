@@ -64,3 +64,8 @@ a.forum-post:hover,a.forum-post:focus-visible{border-color:#b6f36e}
 @media(max-width:600px){.guide-table table{min-width:0}.guide-table th,.guide-table td{font-size:14px;padding:8px 4px}.guide-table td:last-child{white-space:normal}}
 .led-frame{background:#0d1117;border:10px solid #1f2937;border-radius:14px;padding:10px;margin:20px 0;box-shadow:0 10px 30px #0008}.led-panel{display:block;width:100%;aspect-ratio:2/1}
 .feature-more{display:inline-block;margin-top:10px;color:#b6f36e;font-weight:600;font-size:15px}.landing-guides{margin-top:40px}.landing-guides h2{font-size:22px;margin:0 0 8px}.guide-list{line-height:2;font-size:17px}.guide-list a{color:#b6f36e}
+
+.quickstart-tennis{flex-basis:100%;display:flex;flex-wrap:wrap;align-items:end;gap:12px;padding-top:12px}
+.quickstart-tennis[hidden]{display:none}
+.quickstart-tennis label{display:flex;flex-direction:column;gap:6px}
+.quickstart-tennis select{max-width:100%;padding:12px;border-radius:8px;border:1px solid #526176;background:#151e2a;color:#fff;font:inherit}

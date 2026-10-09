@@ -14,16 +14,16 @@ WIDTH, HEIGHT = 1200, 630
 BACKGROUND, MUTED, ACCENT = "#0b1018", "#9fb0c4", "#b6f36e"
 TEXTS = {
     "de": {"live": "LIVE", "break": "PAUSE", "finished": "ENDSTAND", "pre_game": "VORSCHAU",
-           "football": "Fußball", "basketball": "Basketball", "half": "{n}. Halbzeit", "quarter": "{n}. Viertel",
+           "football": "Fußball", "basketball": "Basketball", "tennis": "Tennis", "set": "Satz {n}", "half": "{n}. Halbzeit", "quarter": "{n}. Viertel",
            "period": "Periode {n}/{count}", "ot": "Verlängerung {n}", "kickoff": "Anpfiff",
            "tagline": "Live-Spielstand – ohne App, ohne Anmeldung.", "private": "Privates Spiel",
-           "private_text": "Dieses Spiel ist privat.", "site": "Live-Scoreboard für Fußball und Basketball",
+           "private_text": "Dieses Spiel ist privat.", "site": "Live-Scoreboard für Fußball, Basketball und Tennis",
            "site_text": "Vom Handy steuern, per Link teilen, im Stream zeigen."},
     "en": {"live": "LIVE", "break": "BREAK", "finished": "FULL TIME", "pre_game": "UPCOMING",
-           "football": "Football", "basketball": "Basketball", "half": "Half {n}", "quarter": "Quarter {n}",
+           "football": "Football", "basketball": "Basketball", "tennis": "Tennis", "set": "Set {n}", "half": "Half {n}", "quarter": "Quarter {n}",
            "period": "Period {n}/{count}", "ot": "Overtime {n}", "kickoff": "Kick-off",
            "tagline": "Live score – no app, no sign-up.", "private": "Private game",
-           "private_text": "This game is private.", "site": "Live scoreboard for football and basketball",
+           "private_text": "This game is private.", "site": "Live scoreboard for football, basketball and tennis",
            "site_text": "Control from your phone, share a link, show it in your stream."},
 }
 
@@ -46,6 +46,8 @@ def period_name(s, w):
     period, count = s.get("period") or 0, s.get("period_count") or 1
     if not period or count == 1:
         return ""
+    if s.get("sport") == "tennis":
+        return w["set"].format(n=period)
     if s.get("sport") == "basketball" and period > count:
         return w["ot"].format(n=period - count)
     key = "half" if count == 2 else "quarter" if count == 4 else "period"
