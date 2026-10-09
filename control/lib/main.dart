@@ -763,7 +763,7 @@ class _Score67State extends State<Score67> {
           },
         },
       );
-      // Straight to the console; PIN and links live in its Sharing tab.
+      // Straight to the console; the PIN is in game settings and links in Sharing.
       savePin(result['slug'], result['pin']);
       web.window.location.assign('/s/${result['slug']}/control?lang=$lang');
       return;
@@ -2439,17 +2439,7 @@ class _Score67State extends State<Score67> {
         (t('console.team'), teamTab()),
         (t('console.period'), periodPanel()),
         (t('console.sharing'), sharingPanel()),
-        (
-          'LED',
-          LedMessagePanel(
-            api: (path, method, body) => api(path, method: method, body: body),
-            t: t,
-            slug: slug,
-            homeShort: '${state['home']['short'] ?? ''}',
-            awayShort: '${state['away']['short'] ?? ''}',
-            enabled: canWrite,
-          ),
-        ),
+        ('LED', ledPanel()),
         (
           t('console.box_score'),
           BoxScorePanel(
@@ -3135,10 +3125,13 @@ class _Score67State extends State<Score67> {
     } catch (_) {}
   }
 
-  Widget sharingPanel() {
+  Widget sharingPanel() =>
+      ListView(padding: const EdgeInsets.all(12), children: linkWidgets());
+
+  Widget accessSettings() {
     final known = storedPin;
-    return ListView(
-      padding: const EdgeInsets.all(12),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
@@ -3174,22 +3167,49 @@ class _Score67State extends State<Score67> {
           language: lang,
           enabled: admin && connected,
         ),
-        if (admin) ...[
-          const Divider(height: 28),
-          BoardDisplaysPanel(
-            api: (path, method, body) => api(path, method: method, body: body),
-            t: t,
-            slug: slug,
-            enabled: connected,
-            onSettings: () => navigate('/settings'),
-          ),
-        ],
-        const Divider(height: 28),
-        const SizedBox(height: 8),
-        ...linkWidgets(),
       ],
     );
   }
+
+  Widget boardDisplaysPanel() => BoardDisplaysPanel(
+    api: (path, method, body) => api(path, method: method, body: body),
+    t: t,
+    slug: slug,
+    enabled: admin && connected,
+    onSettings: () => navigate('/settings'),
+  );
+
+  Widget ledPanel() => ListView(
+    padding: const EdgeInsets.all(12),
+    children: [
+      boardDisplaysPanel(),
+      const Divider(height: 28),
+      Text(
+        t('ledmsg.title'),
+        style: const TextStyle(fontWeight: FontWeight.w700),
+      ),
+      const SizedBox(height: 8),
+      LedMessagePanel(
+        api: (path, method, body) => api(path, method: method, body: body),
+        t: t,
+        slug: slug,
+        homeShort: '${state['home']['short'] ?? ''}',
+        awayShort: '${state['away']['short'] ?? ''}',
+        enabled: canWrite,
+      ),
+      const Divider(height: 28),
+      ExpansionTile(
+        title: Text(t('display.manage')),
+        children: [
+          DisplaysDialog(
+            api: (path, method, body) => api(path, method: method, body: body),
+            t: t,
+            inline: true,
+          ),
+        ],
+      ),
+    ],
+  );
 
   Future<void> rotatePin() async {
     if (!await confirm(t('pin.rotate.confirm'))) return;
@@ -3427,6 +3447,8 @@ class _Score67State extends State<Score67> {
       children: [
         matchInfo(),
         const SizedBox(height: 8),
+        settingsCard(t('settings.access'), [accessSettings()]),
+        settingsCard(t('settings.led_connection'), [boardDisplaysPanel()]),
         settingsCard(
           t('settings.format'),
           [
@@ -3735,7 +3757,7 @@ class _Score67State extends State<Score67> {
       context: buttonContext,
       position: position,
       items: [
-        // Everything else lives in the console tabs (Team, Teilen) and
+        // Other controls live in the console tabs (Team, Sharing, LED) and
         // the 🏁 button; settings get a full page, easier in portrait.
         for (final entry in [
           ('settings', Icons.tune, t('console.settings')),

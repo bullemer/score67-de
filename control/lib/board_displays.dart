@@ -2,10 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import 'displays.dart' show Api;
+import 'display_api.dart';
 
-/// Sharing tab: a switch per connected LED panel, "show on this panel".
-/// Setting a panel up (its code, name, follow option) happens in Settings.
+/// Connect an LED panel to this game by its displayed code, or switch an
+/// already managed panel between this game and its idle code screen.
 class BoardDisplaysPanel extends StatefulWidget {
   final Api api;
   final String Function(String) t;
@@ -30,6 +30,7 @@ class _BoardDisplaysPanelState extends State<BoardDisplaysPanel> {
   bool busy = false, loaded = false;
   String error = '';
   Timer? timer;
+  final code = TextEditingController();
 
   String t(String key) => widget.t(key);
   String get base => '/api/s/${widget.slug}/displays';
@@ -45,7 +46,18 @@ class _BoardDisplaysPanelState extends State<BoardDisplaysPanel> {
   @override
   void dispose() {
     timer?.cancel();
+    code.dispose();
     super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(BoardDisplaysPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.slug != widget.slug) {
+      displays = [];
+      loaded = false;
+      load();
+    }
   }
 
   Future<void> load() async {
@@ -63,7 +75,10 @@ class _BoardDisplaysPanelState extends State<BoardDisplaysPanel> {
     }
   }
 
-  Future<void> run(Future<dynamic> Function() action) async {
+  Future<void> run(
+    Future<dynamic> Function() action, {
+    String? errorKey,
+  }) async {
     setState(() {
       busy = true;
       error = '';
@@ -72,7 +87,7 @@ class _BoardDisplaysPanelState extends State<BoardDisplaysPanel> {
       await action();
       await load();
     } catch (_) {
-      if (mounted) setState(() => error = t('error.generic'));
+      if (mounted) setState(() => error = t(errorKey ?? 'error.generic'));
     }
     if (mounted) setState(() => busy = false);
   }
@@ -83,6 +98,17 @@ class _BoardDisplaysPanelState extends State<BoardDisplaysPanel> {
         ? widget.api('$base/${d['id']}', 'PUT', {})
         : widget.api('$base/${d['id']}', 'DELETE', null),
   );
+
+  Future<void> connect() async {
+    if (code.text.trim().length < 6) {
+      setState(() => error = t('display.claim_invalid'));
+      return;
+    }
+    await run(() async {
+      await widget.api(base, 'POST', {'code': code.text.trim()});
+      code.clear();
+    }, errorKey: 'display.claim_invalid');
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -99,6 +125,32 @@ class _BoardDisplaysPanelState extends State<BoardDisplaysPanel> {
           style: const TextStyle(fontWeight: FontWeight.w700),
         ),
         const SizedBox(height: 4),
+        Text(t('ledlink.connect_hint'), style: const TextStyle(fontSize: 14)),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: code,
+                maxLength: 6,
+                keyboardType: TextInputType.number,
+                onSubmitted: can ? (_) => connect() : null,
+                decoration: InputDecoration(
+                  labelText: t('display.claim_label'),
+                  counterText: '',
+                  isDense: true,
+                  border: const OutlineInputBorder(),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            FilledButton(
+              onPressed: can ? connect : null,
+              child: Text(t('ledlink.connect')),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
         if (loaded && mine.isEmpty) ...[
           Text(t('ledlink.none'), style: const TextStyle(fontSize: 14)),
           const SizedBox(height: 6),
