@@ -881,7 +881,13 @@ class _DashboardState extends State<Dashboard> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Text(
-                  entry['board']['slug'],
+                  [
+                    entry['board']['slug'],
+                    if ((entry['board']['creator'] ?? '').isNotEmpty)
+                      t(
+                        'creator.by',
+                      ).replaceAll('{name}', entry['board']['creator']),
+                  ].join(' · '),
                   style: const TextStyle(
                     fontSize: 14,
                     color: Color(0xffb5c2d4),

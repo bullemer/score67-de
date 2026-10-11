@@ -743,5 +743,8 @@
   "device.link_invalid": "Dieser Link ist ungültig oder wurde durch einen neueren ersetzt.",
   "device.error": "Der Link konnte nicht erstellt werden. Bitte nochmal versuchen.",
   "claim.device": "Du hast dieses Scoreboard in einem anderen Browser angelegt (z. B. weil ein Link aus WhatsApp in einem anderen Browser aufgeht)? Öffne dort „Meine Scoreboards“ → „Link zum Verbinden erstellen“ und öffne den Link hier. Dann brauchst du keine PIN mehr.",
-  "error.link_invalid": "Dieser Link ist ungültig oder wurde durch einen neueren ersetzt."
+  "error.link_invalid": "Dieser Link ist ungültig oder wurde durch einen neueren ersetzt.",
+  "creator.label": "Dein Spitzname (optional)",
+  "creator.hint": "Wird Zuschauern als „Erstellt von …“ angezeigt.",
+  "creator.by": "Erstellt von {name}"
 }

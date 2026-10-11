@@ -147,10 +147,16 @@ class PrivacyUpdate(StrictModel):
 
 class DescriptionUpdate(StrictModel):
     description: str | None = Field(default=None, max_length=300)
+    # Changed only when sent, so older clients keep the nickname.
+    creator: str | None = Field(default=None, max_length=40)
 
 
 def clean_description(value):
     return (value or "").strip() or None
+
+
+def clean_creator(value):
+    return " ".join((value or "").split())[:40] or None
 
 
 def clean_stream_url(value):
@@ -177,6 +183,7 @@ class CreateBoard(StrictModel):
     tennis_final_tiebreak: Literal[7, 10] = 7
     language: Literal["de", "en"] = "de"
     description: str | None = Field(default=None, max_length=300)
+    creator: str | None = Field(default=None, max_length=40)
     stream_url: str | None = Field(default=None, max_length=300)
     scheduled_at: int | None = Field(default=None, ge=0)
     period_count: int | None = Field(default=None, ge=1, le=12)
@@ -663,7 +670,7 @@ def create_app(db_url=None, secure_cookies=None):
             s = initial_state()
             s.update(scoreboard=b.slug, name=b.name, language=b.language, match_id=None,
                      revision=0, server_now=round(time.time() * 1000), phase="no_match", events=[], location=public_location,
-                     description=b.description, stream_url=b.stream_url)
+                     description=b.description, stream_url=b.stream_url, creator=b.creator)
             s["overlay"]["view"] = "hidden"
             for team in ("home", "away"):
                 s[team].update(score=0, squad=[], counters={"red_cards": 0, "yellow_cards": 0})
@@ -679,7 +686,7 @@ def create_app(db_url=None, secure_cookies=None):
         s.setdefault("overtime_length_min", 5)
         normalize_clock(s, round(time.time() * 1000))
         events = db.scalars(select(MatchEvent).where(MatchEvent.match_id == m.id).order_by(MatchEvent.id)).all()
-        s.update(description=b.description, stream_url=b.stream_url)
+        s.update(description=b.description, stream_url=b.stream_url, creator=b.creator)
         s.update(scoreboard=b.slug, name=b.name, language=b.language, match_id=m.id,
                  revision=m.revision, server_now=round(time.time() * 1000),
                  created_at=round(m.created_at * 1000),
@@ -794,7 +801,8 @@ def create_app(db_url=None, secure_cookies=None):
             label = datetime.fromtimestamp(now, timezone.utc).isoformat(sep=" ", timespec="milliseconds").replace("+00:00", " UTC")
             b = Board(slug=slug, name=label, language=body.language, pin_hash=hash_pin(pin),
                       active_match=match_id, created_at=now, location=body.location.model_dump() if body.location else None,
-                      description=clean_description(body.description), overlay_key=secrets.token_urlsafe(12),
+                      description=clean_description(body.description), creator=clean_creator(body.creator),
+                      overlay_key=secrets.token_urlsafe(12),
                       stream_url=clean_stream_url(body.stream_url))
             account = current_account(db, request.cookies)
             b.owner_id = account.id if account else None
@@ -950,10 +958,12 @@ def create_app(db_url=None, secure_cookies=None):
             authorize(db, slug, request)
             b = board(db, slug)
             b.description = clean_description(body.description)
+            if "creator" in body.model_fields_set:
+                b.creator = clean_creator(body.creator)
             if b.active_match:
                 db.get(Match, b.active_match).revision += 1
             db.commit()
-            return {"description": b.description}
+            return {"description": b.description, "creator": b.creator}
 
     @app.post("/api/s/{slug}/admin/claim")
     def claim(slug: str, body: Claim, request: Request, response: Response):
@@ -1216,7 +1226,7 @@ def create_app(db_url=None, secure_cookies=None):
                         "lineup_size": s.get("lineup_size"), "fixture": m.fixture,
                         **({"tennis": s["tennis"]} if s["sport"] == "tennis" else {})})
                 boards.append({"slug": b.slug, "name": b.name, "active_match": b.active_match, "description": b.description, "stream_url": b.stream_url,
-                               "created_at": round(b.created_at * 1000), "matches": games,
+                               "creator": b.creator, "created_at": round(b.created_at * 1000), "matches": games,
                                "owned": bool(account and b.owner_id == account.id)})
             device_id = device_of(db, request)
             if device_id and request.cookies.get(DEVICE_COOKIE):
@@ -1276,7 +1286,7 @@ def create_app(db_url=None, secure_cookies=None):
             for b in active:
                 s = state(db, b)
                 games.append({k: s[k] for k in ("sport", "overtime_length_min", "team_fouls_enabled", "scoreboard", "match_id", "home", "away", "clock",
-                    "phase", "period", "period_count", "period_length_min", "server_now", "location", "description", "stream_url")})
+                    "phase", "period", "period_count", "period_length_min", "server_now", "location", "description", "stream_url", "creator")})
             # Planned games with a start time in the next days (public boards only).
             now = time.time()
             horizon = now + hours_env("LIVE_UPCOMING_HOURS", 72)
@@ -1297,7 +1307,7 @@ def create_app(db_url=None, secure_cookies=None):
                     "home": {**{k: m.state["home"][k] for k in ("name", "color")}, "logo": m.state["home"].get("logo")},
                     "away": {**{k: m.state["away"][k] for k in ("name", "color")}, "logo": m.state["away"].get("logo")},
                     "location": {k: location[k] for k in ("lat", "lng", "label")} if location else None,
-                    "description": b.description, "stream_url": b.stream_url})
+                    "description": b.description, "stream_url": b.stream_url, "creator": b.creator})
             # Just finished: public games that ended within LIVE_FINISHED_HOURS, so a
             # game does not vanish silently at the final whistle (or its automatic end).
             since = now - hours_env("LIVE_FINISHED_HOURS", 6)
@@ -1322,7 +1332,7 @@ def create_app(db_url=None, secure_cookies=None):
                     "home": {k: s["home"].get(k) for k in ("name", "color", "logo", "score", "counters")},
                     "away": {k: s["away"].get(k) for k in ("name", "color", "logo", "score", "counters")},
                     "location": {k: location[k] for k in ("lat", "lng", "label")} if location else None,
-                    "description": b.description, "stream_url": b.stream_url})
+                    "description": b.description, "stream_url": b.stream_url, "creator": b.creator})
             finished.sort(key=lambda g: g["ended_at"], reverse=True)
             return {"games": games, "upcoming": upcoming, "finished": finished[:30], "server_now": round(now * 1000)}
 

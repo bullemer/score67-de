@@ -249,6 +249,8 @@ function render() {
   if (!overlay) {
     el('menu-description').hidden = !state.description;
     el('menu-description').textContent = state.description || '';
+    el('menu-creator').hidden = !state.creator;
+    el('menu-creator').textContent = state.creator ? (words['creator.by'] || '{name}').replace('{name}', state.creator) : '';
     el('stream-link').hidden = !state.stream_url;
     if (state.stream_url) el('stream-link').href = state.stream_url;
     document.body.classList.toggle('offline', !online);

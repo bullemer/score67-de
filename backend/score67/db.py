@@ -28,6 +28,8 @@ class Board(Base):
     overlay_key: Mapped[str | None] = mapped_column(String(32), nullable=True)
     # Optional email login: the owner gets control on any device after signing in.
     owner_id: Mapped[str | None] = mapped_column(ForeignKey("account.id"), nullable=True, index=True)
+    # Optional nickname given at creation, shown to viewers ("created by …").
+    creator: Mapped[str | None] = mapped_column(String(40), nullable=True)
 
 
 class Account(Base):
@@ -228,6 +230,6 @@ def database(url: str | None = None):
     else:
         with engine.connect() as connection:
             version = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            if version != "0017_devices":
+            if version != "0018_board_creator":
                 raise RuntimeError("Database schema does not match this release; run migrations first")
     return engine, sessionmaker(engine, expire_on_commit=False)

@@ -446,7 +446,7 @@ def test_public_live_directory_only_running_active_games(system):
     assert games[running]['home']['score'] == 1
     assert games[running]['away']['counters']['red_cards'] == 1
     assert games[paused]['phase'] == 'break'
-    assert set(games[running]) == {'sport', 'team_fouls_enabled', 'overtime_length_min', 'scoreboard', 'match_id', 'home', 'away', 'clock', 'phase', 'period', 'period_count', 'period_length_min', 'server_now', 'location', 'description', 'stream_url'}
+    assert set(games[running]) == {'sport', 'team_fouls_enabled', 'overtime_length_min', 'scoreboard', 'match_id', 'home', 'away', 'clock', 'phase', 'period', 'period_count', 'period_length_min', 'server_now', 'location', 'description', 'stream_url', 'creator'}
     command(client, running, 'game_end')
     assert [g['scoreboard'] for g in public.get('/api/live').json()['games']] == [paused]
     command(client, paused, 'game_end')
@@ -953,7 +953,7 @@ def test_create_with_description_and_schedule(system):
     assert public['description'] == 'U14 Liga · Spieltag 3' and 'board_created_at' not in public
     board = client.get('/api/dashboard').json()['boards'][0]
     assert board['description'] == 'U14 Liga · Spieltag 3' and board['matches'][0]['scheduled_at'] == future
-    assert client.put(f'/api/s/{slug}/description', json={'description': '   '}).json() == {'description': None}
+    assert client.put(f'/api/s/{slug}/description', json={'description': '   '}).json() == {'description': None, 'creator': None}
     assert client.put(f'/api/s/{slug}/description', json={'description': 'x' * 301}).status_code == 422
     assert client.post('/api/scoreboards', json={'scheduled_at': 1000}).status_code == 422
     other = TestClient(client.app)
@@ -2005,3 +2005,20 @@ def test_connect_link_shares_the_board_list_between_browsers(system):
     # A new link replaces the old one.
     phone.post('/api/device/link', json={})
     assert TestClient(app).post('/api/device/join', json={'code': code}).status_code == 404
+
+
+def test_optional_creator_nickname_is_public(system):
+    _, client = system
+    slug = client.post('/api/scoreboards', json={'creator': '  Coach   Carsten '}).json()['slug']
+    assert client.get(f'/api/s/{slug}/state').json()['creator'] == 'Coach Carsten'
+    assert client.get('/api/dashboard').json()['boards'][0]['creator'] == 'Coach Carsten'
+    assert client.post('/api/scoreboards', json={'creator': 'x' * 41}).status_code == 422
+    plain = create(client)['slug']
+    assert client.get(f'/api/s/{plain}/state').json()['creator'] is None
+    # Editing the description alone keeps the nickname; sending it changes it.
+    assert client.put(f'/api/s/{slug}/description', json={'description': 'Halle 2'}).json()['creator'] == 'Coach Carsten'
+    assert client.put(f'/api/s/{slug}/description', json={'description': 'Halle 2', 'creator': ''}).json()['creator'] is None
+    command(client, plain, 'period_start')
+    client.put(f'/api/s/{plain}/description', json={'description': None, 'creator': 'Mia'})
+    live = client.get('/api/live').json()
+    assert next(g for g in live['games'] if g['scoreboard'] == plain)['creator'] == 'Mia'

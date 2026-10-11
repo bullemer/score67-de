@@ -69,11 +69,14 @@ if (quickstartToggle) {
     status.hidden = false;
     status.classList.remove('error');
     status.textContent = t['quickstart.creating'] || 'Creating scoreboard…';
+    let creator = '';
+    try { creator = (localStorage.getItem('score67-nickname') || '').trim(); } catch { /* Browser storage is optional. */ }
     try {
       const response = await fetch('/api/scoreboards', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({sport: button.dataset.quickstartSport, language: lang,
+          ...(creator ? {creator: creator.slice(0, 40)} : {}),
           ...(button.dataset.quickstartSport === 'tennis' ? {
             tennis_category: document.querySelector('#quickstart-tennis-category').value,
             tennis_best_of: Number(document.querySelector('#quickstart-tennis-best-of').value),
