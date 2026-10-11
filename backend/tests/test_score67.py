@@ -446,7 +446,7 @@ def test_public_live_directory_only_running_active_games(system):
     assert games[running]['home']['score'] == 1
     assert games[running]['away']['counters']['red_cards'] == 1
     assert games[paused]['phase'] == 'break'
-    assert set(games[running]) == {'sport', 'team_fouls_enabled', 'overtime_length_min', 'scoreboard', 'match_id', 'home', 'away', 'clock', 'phase', 'period', 'period_count', 'period_length_min', 'server_now', 'location', 'description', 'stream_url', 'creator'}
+    assert set(games[running]) == {'sport', 'team_fouls_enabled', 'overtime_length_min', 'scoreboard', 'match_id', 'home', 'away', 'clock', 'phase', 'period', 'period_count', 'period_length_min', 'server_now', 'location', 'description', 'stream_url', 'creator', 'shootout'}
     command(client, running, 'game_end')
     assert [g['scoreboard'] for g in public.get('/api/live').json()['games']] == [paused]
     command(client, paused, 'game_end')
@@ -1175,7 +1175,7 @@ def test_ending_last_basketball_period_ends_the_match_unless_tied(system):
     command(client, slug, 'overtime_start')
     command(client, slug, 'score', {'team': 'away', 'points': 2})
     s = command(client, slug, 'period_end').json()
-    assert s['phase'] == 'finished' and s['events'][-1]['type'] == 'game_end' and s['events'][-1]['automatic']
+    assert s['phase'] == 'finished' and s['events'][-1]['type'] == 'game_end' and s['events'][-1]['decided']
     s = command(client, slug, 'undo', {'event_id': s['events'][-1]['id']}).json()
     assert s['phase'] == 'break'
 
@@ -2022,3 +2022,100 @@ def test_optional_creator_nickname_is_public(system):
     client.put(f'/api/s/{plain}/description', json={'description': None, 'creator': 'Mia'})
     live = client.get('/api/live').json()
     assert next(g for g in live['games'] if g['scoreboard'] == plain)['creator'] == 'Mia'
+
+
+def test_football_extra_time_and_penalty_shootout(system):
+    _, client = system
+    slug = create(client)['slug']
+    command(client, slug, 'period_start')
+    command(client, slug, 'score', {'team': 'home', 'points': 1})
+    command(client, slug, 'period_end')
+    command(client, slug, 'period_start')
+    # Not level: regular time cannot just end, extra time and shootout are refused.
+    assert command(client, slug, 'period_end').status_code == 422
+    command(client, slug, 'score', {'team': 'away', 'points': 1})
+    s = command(client, slug, 'period_end').json()
+    assert s['phase'] == 'break' and s['period'] == 2
+    assert command(client, slug, 'period_start').status_code == 422
+    # Extra time: 2 × 15 after 2 × 45 by default, or a chosen length.
+    assert command(client, slug, 'overtime_start', {'length_min': 31}).status_code == 422
+    s = command(client, slug, 'overtime_start', {'length_min': 10}).json()
+    assert (s['phase'], s['period'], s['overtime_length_min']) == ('period_running', 3, 10)
+    assert s['events'][-1]['period_duration_ms'] == 600000
+    command(client, slug, 'score', {'team': 'home', 'points': 1})
+    assert command(client, slug, 'period_end').json()['phase'] == 'break'
+    assert command(client, slug, 'shootout_start').status_code == 422   # between the halves
+    s = command(client, slug, 'overtime_start').json()  # second half, whatever the score
+    assert s['period'] == 4 and s['overtime_length_min'] == 10
+    assert command(client, slug, 'period_end').status_code == 422      # 2:1, the game ends instead
+    command(client, slug, 'score', {'team': 'away', 'points': 1})
+    assert command(client, slug, 'period_end').json()['phase'] == 'break'
+    assert command(client, slug, 'overtime_start').status_code == 422  # only two halves
+    # Shootout: guest first, alternating; the score of the game stays 2:2.
+    s = command(client, slug, 'shootout_start', {'first': 'away'}).json()
+    assert s['phase'] == 'shootout' and s['shootout']['next'] == 'away'
+    for scored in (True, True, False, True, True, True, True, False):   # away, home, away, ...
+        s = command(client, slug, 'shootout_kick', {'scored': scored}).json()
+    assert s['shootout']['score'] == [3, 3] and s['phase'] == 'shootout'
+    assert s['home']['score'] == s['away']['score'] == 2
+    s = command(client, slug, 'shootout_kick', {'scored': False}).json()   # away 5th misses
+    assert s['shootout']['next'] == 'home' and s['phase'] == 'shootout'
+    s = command(client, slug, 'shootout_kick', {'scored': True}).json()    # home 5th: 4:3, decided
+    assert s['shootout']['winner'] == 'home' and s['shootout']['score'] == [4, 3]
+    assert s['phase'] == 'finished' and s['events'][-1]['decided']
+    # Undo first reopens the shootout, then takes back the kick.
+    s = command(client, slug, 'undo', {'event_id': s['events'][-1]['id']}).json()
+    assert s['phase'] == 'shootout' and s['shootout']['winner'] == 'home'
+    assert command(client, slug, 'shootout_kick', {'scored': True}).status_code == 422
+    kick = [e for e in s['events'] if not e['cancelled']][-1]
+    assert kick['type'] == 'shootout_kick' and kick['team'] == 'home' and kick['scored']
+    s = command(client, slug, 'undo', {'event_id': kick['id']}).json()
+    assert s['shootout']['next'] == 'home' and s['shootout']['score'] == [3, 3]
+    assert command(client, slug, 'shootout_kick', {'scored': 'yes'}).status_code == 422
+    live = client.get('/api/live').json()
+    assert live['games'][0]['shootout']['score'] == [3, 3]
+
+
+def test_shootout_straight_after_regular_time_and_sudden_death(system):
+    _, client = system
+    slug = create(client)['slug']
+    command(client, slug, 'settings', {'period_count': 1, 'period_length_min': 10})
+    command(client, slug, 'period_start')
+    assert command(client, slug, 'shootout_start').status_code == 422   # still running
+    command(client, slug, 'period_end')
+    s = command(client, slug, 'shootout_start').json()
+    assert s['shootout']['first'] == 'home'
+    for _ in range(10):   # 5 each, all scored: 5:5, sudden death follows
+        s = command(client, slug, 'shootout_kick', {'scored': True}).json()
+    assert s['shootout']['score'] == [5, 5] and s['shootout']['winner'] is None
+    s = command(client, slug, 'shootout_kick', {'scored': True}).json()   # home 6th
+    assert s['phase'] == 'shootout' and s['shootout']['next'] == 'away'
+    s = command(client, slug, 'shootout_kick', {'scored': False}).json()  # away 6th misses
+    assert s['shootout']['winner'] == 'home' and s['phase'] == 'finished'
+    finished = client.get('/api/live').json()['finished'][0]
+    assert finished['shootout']['score'] == [6, 5] and not finished['automatic']
+
+
+def test_shootout_summary_decides_early():
+    from score67.domain import shootout_summary
+    def summary(first, *kicks):
+        order = [first, 'away' if first == 'home' else 'home']
+        return shootout_summary({'first': first, 'kicks': [
+            {'team': order[i % 2], 'scored': k} for i, k in enumerate(kicks)]})
+    assert summary('home', True, False, True, False, True, False)['winner'] == 'home'   # 3:0 after 3 rounds
+    assert summary('home', True, False, True, False, True)['winner'] is None             # away can still reach 3
+    assert summary('away', False, True, False, True, False, True)['winner'] == 'home'
+    assert summary('home')['next'] == 'home' and summary('home', True)['next'] == 'away'
+
+
+def test_led_feed_and_preview_for_extra_time_and_shootout():
+    from score67.display_feed import clock, period_label
+    from score67.preview import summary
+    s = {'sport': 'football', 'phase': 'period_running', 'period': 4, 'period_count': 2, 'period_length_min': 45,
+         'overtime_length_min': 15, 'clock': {'enabled': True, 'running': False, 'elapsed_ms': 60000, 'started_at': None}}
+    assert period_label(s) == 'ET2'
+    assert clock(s, 0)['ms'] == 106 * 60000
+    s.update(phase='shootout', shootout={'score': [4, 3]})
+    assert period_label(s) == 'P 4:3' and clock(s, 0) == {'visible': False}
+    s.update(phase='finished', home={'name': 'A', 'score': 2}, away={'name': 'B', 'score': 2})
+    assert summary(s, 'de')[0] == 'A 2 : 2 B (4:3 i. E.) · ENDSTAND'

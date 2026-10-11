@@ -189,7 +189,9 @@ class _DashboardState extends State<Dashboard> {
     if (game['trashed'] == true) return 'trash';
     if (game['archived']) return 'archived';
     if (game['phase'] == 'finished') return 'completed';
-    if (['period_running', 'break'].contains(game['phase'])) return 'running';
+    if (['period_running', 'break', 'shootout'].contains(game['phase'])) {
+      return 'running';
+    }
     return 'planned';
   }
 
@@ -574,7 +576,7 @@ class _DashboardState extends State<Dashboard> {
             ),
           const SizedBox(height: 10),
           Text(
-            '${game['home']['name']}  ${game['home']['score']} : ${game['away']['score']}  ${game['away']['name']}',
+            '${game['home']['name']}  ${game['home']['score']} : ${game['away']['score']}  ${game['away']['name']}${game['shootout'] == null ? '' : ' (${t('shootout.result').replaceAll('{h}', '${game['shootout']['score'][0]}').replaceAll('{a}', '${game['shootout']['score'][1]}')})'}',
             style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
           ),
           if ((board['description'] ?? '').isNotEmpty) ...[

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {clockText, periodLabel, DelayedStates} from '../backend/score67/static/common.mjs';
+import {clockText, periodLabel, eventTime, DelayedStates} from '../backend/score67/static/common.mjs';
 const state = () => ({period: 1, period_count: 2, period_length_min: 45,
   clock: {enabled:true, direction:'up', running:true, elapsed_ms:0, started_at:1000}});
 test('clock uses elapsed timestamps, compensates delay, and shows added time', () => {
@@ -49,4 +49,21 @@ test('basketball countdown keeps full seconds and uses five-minute repeat overti
   assert.equal(periodLabel(s,{}), 'OT1');
   s.period = 6;
   assert.equal(periodLabel(s,{}), 'OT2');
+});
+test('football extra time continues the minutes, the shootout shows its score', () => {
+  const s = {...state(), sport: 'football', overtime_length_min: 15, period: 3};
+  const words = {half: '{n}. HZ', extra_time: 'Verl. {n}', 'shootout.short': 'i. E.'};
+  assert.equal(clockText(s, 1000), '90:00');
+  assert.equal(clockText(s, 1000 + 16 * 60000), '105+1');
+  assert.equal(periodLabel(s, words), 'Verl. 1');
+  s.period = 4;
+  assert.equal(clockText(s, 1000 + 60000), '106:00');
+  // Goal in the 2nd minute of the 2nd extra-time half: 107th minute.
+  const goal = {type: 'score', period: 4, period_count: 2, period_length_min: 45, period_duration_ms: 900000, clock_ms: 90000};
+  assert.equal(eventTime(goal, s, words), '107′');
+  assert.equal(eventTime({...goal, period: 2, clock_ms: 0}, s, words), '46′');
+  const shootout = {...s, phase: 'shootout', shootout: {score: [4, 3], kicks: []}};
+  assert.equal(clockText(shootout, 1000), '4:3');
+  assert.equal(periodLabel(shootout, words), 'i. E.');
+  assert.equal(eventTime({type: 'shootout_kick', period: 4}, shootout, words), 'i. E.');
 });

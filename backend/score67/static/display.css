@@ -105,3 +105,9 @@ body .scoreboard.tennis.big .teams,body .scoreboard.tennis.small .teams{display:
 .tennis-score{background:#101a28;border-radius:14px}
 .tennis-score>div{font-size:clamp(16px,2.5vw,26px);font-weight:700;padding:8px}
 .tennis-score td{font-weight:800}
+.shootout{display:flex;align-items:center;justify-content:center;gap:clamp(10px,2vw,28px);padding:10px 12px;font-variant-numeric:tabular-nums;flex-wrap:wrap}
+.shootout b{font-size:clamp(18px,2.6vw,34px);color:#b6f36e;white-space:nowrap}
+.shootout .kicks{display:flex;gap:4px;font-size:clamp(18px,2.4vw,32px);font-style:normal;min-width:2ch}
+.shootout .kicks i{font-style:normal}.shootout .scored{color:#22c55e}.shootout .missed{color:#ef4444}
+#home-kicks{justify-content:flex-end}
+.overlay .big .shootout{background:#111a29f2;margin:0}.small .shootout{padding:4px 16px;background:#070c15b3}.small .shootout b{font-size:20px}.small .shootout .kicks{font-size:18px}

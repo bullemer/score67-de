@@ -159,7 +159,7 @@ function render() {
   } else el('venue-link').removeAttribute('href');
   const o = state.overlay;
   let view = o.view;
-  if (view !== 'hidden' && o.auto_big && ['break', 'finished'].includes(state.phase)) view = 'score_big';
+  if (view !== 'hidden' && o.auto_big && ['break', 'shootout', 'finished'].includes(state.phase)) view = 'score_big';
   if (params.get('view') === 'small') view = 'scoreboard';
   if (params.get('view') === 'big') view = 'score_big';
   if (!overlay) view = 'score_big';
@@ -199,6 +199,20 @@ function render() {
     }
     document.querySelector(`.team.${team}`).style.borderColor = state[team].color;
   }
+  // Penalty shootout: one mark per kick (● scored, ○ missed) and its result.
+  const shootout = state.shootout;
+  el('shootout').hidden = !shootout;
+  if (shootout) {
+    for (const team of ['home', 'away']) {
+      const kicks = el(`${team}-kicks`);
+      kicks.replaceChildren(...shootout.kicks.filter(k => k.team === team).map(k => node('i', k.scored ? '●' : '○', k.scored ? 'scored' : 'missed')));
+      kicks.setAttribute('aria-label', `${state[team].name}: ${shootout.score[team === 'home' ? 0 : 1]}`);
+    }
+    const [h, a] = shootout.score;
+    // While it runs, the time row shows the score ("i. E. 3:3"); afterwards this line.
+    el('shootout-result').textContent = state.phase === 'finished'
+      ? (words['shootout.result'] || '{h}:{a}').replace('{h}', h).replace('{a}', a) : '';
+  }
   const tennis = state.sport === 'tennis' ? state.tennis : null;
   el('tennis-score').hidden = !tennis;
   if (tennis) {
@@ -226,7 +240,7 @@ function render() {
   }
   if (!overlay && logSignature !== `${state.match_id}:${state.revision}:${lang}`) {
     logSignature = `${state.match_id}:${state.revision}:${lang}`;
-    const entries = (state.events || []).filter(e => ['score','score_adjust','red_card','yellow_card','score_correction','red_card_correction','yellow_card_correction','team_foul','team_foul_correction','timeout','timeout_correction','tennis_point','tennis_game','tennis_set'].includes(e.type)).slice(-30).reverse();
+    const entries = (state.events || []).filter(e => ['score','score_adjust','red_card','yellow_card','score_correction','red_card_correction','yellow_card_correction','team_foul','team_foul_correction','timeout','timeout_correction','tennis_point','tennis_game','tennis_set','shootout_start','shootout_kick'].includes(e.type)).slice(-30).reverse();
     el('match-events').hidden = entries.length === 0;
     el('event-list').replaceChildren(...entries.map(event => {
       const row = document.createElement('li');
@@ -234,7 +248,8 @@ function render() {
       const who = player ? [player.number ? `#${player.number}` : '', player.name].filter(Boolean).join(' ') : '';
       const minute = eventTime(event, state, words);
       const signed = `${event.points > 0 ? '+' : ''}${event.points}`;
-      const label = event.type === 'score_adjust' ? `${words.score_adjust} ${signed}`
+      const label = event.type === 'shootout_kick' ? words[event.scored ? 'shootout.kick_scored' : 'shootout.kick_missed']
+        : event.type === 'score_adjust' ? `${words.score_adjust} ${signed}`
         : state.sport === 'basketball' && event.type.startsWith('score') ? signed : (words[event.type] || words[`tennis.${event.type.replace('tennis_', 'add_')}`] || event.type);
       row.textContent = [minute, label, state[event.team].name, who, event.cancelled ? words.cancelled : event.corrected ? words['event.corrected'] : ''].filter(Boolean).join(' · ');
       if (event.cancelled || event.corrected) row.className = 'cancelled';

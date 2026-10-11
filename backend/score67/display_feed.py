@@ -12,8 +12,14 @@ FORMAT_VERSION = 1
 
 
 def period_label(s):
-    """ASCII and short for a 3×5 pixel font: Q3, H2, 5/8, OT1 (empty before kickoff)."""
+    """ASCII and short for a 3×5 pixel font: Q3, H2, 5/8, OT1, ET2 (empty
+    before kickoff); in a penalty shootout its score, "P 4:3" (7 chars max)."""
     period, count = s.get("period") or 0, s.get("period_count") or 1
+    if s.get("shootout") and s.get("phase") in ("shootout", "finished"):
+        home, away = s["shootout"]["score"]
+        return f"P {home}:{away}"[:7]
+    if s.get("sport") == "football" and period > count:
+        return f"ET{period - count}"
     if not period or count == 1:
         return ""
     if s.get("sport") == "tennis":
@@ -31,13 +37,15 @@ def clock(s, now_ms):
     """The clock as shown at ``now_ms`` (ms, server time): basketball counts
     down the period, football up across halves (start of the 2nd half = 45:00)."""
     c = s.get("clock") or {}
-    if not c.get("enabled") or s.get("phase") in ("pre_game", "no_match", None):
+    if not c.get("enabled") or s.get("phase") in ("pre_game", "no_match", "shootout", None):
         return {"visible": False}
     spent = round(elapsed(s, now_ms))
     if s.get("sport") == "basketball":
         return {"visible": True, "running": bool(c.get("running")), "direction": "down",
                 "ms": max(0, period_ms(s) - spent), "at": now_ms}
-    start = max(0, (s.get("period") or 1) - 1) * s.get("period_length_min", 45) * 60000
+    period, count = s.get("period") or 1, s.get("period_count") or 1
+    regular = min(period - 1, count) * s.get("period_length_min", 45)
+    start = (regular + max(0, period - 1 - count) * s.get("overtime_length_min", 15)) * 60000
     return {"visible": True, "running": bool(c.get("running")), "direction": "up",
             "ms": start + spent, "at": now_ms}
 

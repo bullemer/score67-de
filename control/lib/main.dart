@@ -837,6 +837,10 @@ class _Score67State extends State<Score67> {
     if (period > count && (s['sport'] ?? state['sport']) == 'basketball') {
       return 'OT${period - count}';
     }
+    if (s['phase'] == 'shootout') return t('shootout.short');
+    if (period > count) {
+      return t('extra_time').replaceAll('{n}', '${period - count}');
+    }
     if (period == 0 || count == 1) return '';
     if (s['sport'] == 'tennis') return '${t('tennis.set')} $period';
     if (count == 2) return t('half').replaceAll('{n}', '$period');
@@ -851,6 +855,9 @@ class _Score67State extends State<Score67> {
     final count = state['period_count'] as int;
     if (period > count && basketball) {
       return t('period.name.ot').replaceAll('{n}', '${period - count}');
+    }
+    if (period > count) {
+      return t('period.name.et').replaceAll('{n}', '${period - count}');
     }
     if (count == 1) return t('period.name.game');
     final key = count == 2
@@ -869,11 +876,30 @@ class _Score67State extends State<Score67> {
             : 0);
   }
 
+  /// Football: where a period starts on the running clock. Extra time
+  /// follows regular time, so after 2 × 45 its halves start at 90:00 and
+  /// 105:00.
+  int periodStartMs(int period, {int? count, int? regularMin, int? extraMin}) {
+    count ??= state['period_count'] as int;
+    regularMin ??= state['period_length_min'] as int;
+    extraMin ??= (state['overtime_length_min'] ?? 15) as int;
+    final regular = (period - 1).clamp(0, count) * regularMin;
+    final extra = (period - 1 - count).clamp(0, 2) * extraMin;
+    return (regular + extra) * 60000;
+  }
+
+  /// The shootout score ("4:3"), or '' without a shootout.
+  String shootoutScore() {
+    final score = state['shootout']?['score'] as List?;
+    return score == null ? '' : '${score[0]}:${score[1]}';
+  }
+
   String clockText() {
+    if (state['phase'] == 'shootout') return shootoutScore();
     if (state['clock']['enabled'] != true) return '';
     final length = periodLengthMs;
     if (basketball) return mmss((length - elapsed()).clamp(0, length));
-    final start = ((state['period'] as int) - 1).clamp(0, 12) * length;
+    final start = periodStartMs(state['period'] as int);
     final e = elapsed();
     if (e > length) {
       return '${(start + length) ~/ 60000}+${((e - length) / 60000).ceil()}';
@@ -2525,9 +2551,21 @@ class _Score67State extends State<Score67> {
         phase == 'period_running' &&
         state['clock']['enabled'] == true &&
         elapsed() >= periodLengthMs;
+    final count = state['period_count'] as int, period = state['period'] as int;
+    // Football after a draw: the break after regular time or extra time
+    // (Play offers extra time, the shootout or the end), the break between
+    // the halves of extra time (Play starts the second one), the shootout.
+    final drawBreak =
+        !basketball &&
+        phase == 'break' &&
+        (period == count || period == count + 2);
+    final extraTimeBreak =
+        !basketball && phase == 'break' && period == count + 1;
+    final shootout = phase == 'shootout';
     // Between periods the console already shows the next one, ready for Play.
     final upcoming =
         (basketball ? nextPeriod != null : false) ||
+        extraTimeBreak ||
         (!basketball &&
             (phase == 'pre_game' || phase == 'break') &&
             state['period'] < state['period_count']);
@@ -2542,7 +2580,13 @@ class _Score67State extends State<Score67> {
         (phase == 'pre_game' || phase == 'break') &&
         state['period'] < state['period_count'];
     // The period an entry would open before kickoff or in a break.
-    final opening = basketball ? nextPeriod : (kickOff ? 'period_start' : null);
+    final opening = basketball
+        ? nextPeriod
+        : kickOff
+        ? 'period_start'
+        : extraTimeBreak
+        ? 'overtime_start'
+        : null;
     final tied = state['home']['score'] == state['away']['score'];
     final lastPeriod =
         (state['period'] as int) >= (state['period_count'] as int);
@@ -2552,7 +2596,17 @@ class _Score67State extends State<Score67> {
         canWrite &&
         ((phase == 'period_running' &&
                 (!basketball || (!running && !periodOver))) ||
-            (basketball && finalBreak && !tied));
+            (basketball && finalBreak && !tied) ||
+            drawBreak ||
+            shootout);
+    // Football: ending regular time or extra time only ends the match when
+    // someone leads; a draw asks how to go on.
+    final footballEnds =
+        drawBreak ||
+        shootout ||
+        (phase == 'period_running' &&
+            (period == count || period == count + 2) &&
+            !tied);
     return MatchConsole(
       key: consoleKey,
       state: state,
@@ -2560,7 +2614,7 @@ class _Score67State extends State<Score67> {
       clock: upcoming && phase != 'pre_game'
           ? basketball
                 ? mmss(nextMinutes * 60000)
-                : mmss((nextNumber - 1) * nextMinutes * 60000)
+                : mmss(periodStartMs(nextNumber))
           : clockText(),
       period: upcoming
           ? periodLabel({...state, 'period': nextNumber})
@@ -2590,7 +2644,7 @@ class _Score67State extends State<Score67> {
             : command('clock_start');
       },
       onSkipPeriod: canSkip ? endPeriod : null,
-      skipEndsGame: lastPeriod && !(basketball && tied),
+      skipEndsGame: basketball ? lastPeriod && !tied : footballEnds,
       onToggleActive: toggleActive,
       lineupMax: lineupSize,
       running: running,
@@ -2598,7 +2652,7 @@ class _Score67State extends State<Score67> {
           ? canWrite &&
                 state['clock']['enabled'] == true &&
                 (phase == 'period_running' || nextPeriod != null)
-          : canWrite && kickOff,
+          : canWrite && (kickOff || extraTimeBreak || drawBreak),
       canTap: canTap,
       canWrite: canWrite,
       connected: connected,
@@ -2617,7 +2671,10 @@ class _Score67State extends State<Score67> {
               }
               await command(running ? 'clock_stop' : 'clock_start');
             }
-          : () => command('period_start'),
+          : drawBreak
+          ? () => drawChoice(running: false)
+          : () => command(opening!),
+      onShootoutKick: (scored) => command('shootout_kick', {'scored': scored}),
       onClockTap: () {
         if (basketball && canWrite && phase == 'period_running') {
           setBasketballClock();
@@ -2656,11 +2713,13 @@ class _Score67State extends State<Score67> {
 
   /// Ends the running period. The last one (and a final break that is not
   /// tied) ends the match after the final result is confirmed; a tied last
-  /// basketball period leads to overtime instead.
+  /// basketball period leads to overtime instead, a tied football game asks
+  /// for extra time, a penalty shootout or the end.
   Future<void> endPeriod() async {
-    final last = (state['period'] as int) >= (state['period_count'] as int);
+    final period = state['period'] as int, count = state['period_count'] as int;
+    final last = period >= count;
     final tied = state['home']['score'] == state['away']['score'];
-    if (state['phase'] == 'break') {
+    if (state['phase'] == 'break' || state['phase'] == 'shootout') {
       if (await confirmFinal()) await command('game_end');
       return;
     }
@@ -2668,10 +2727,99 @@ class _Score67State extends State<Score67> {
       // The server ends the match after the last period unless tied.
       if (last && !tied && !await confirmFinal()) return;
       await command('period_end');
-    } else if (last) {
-      if (await confirmFinal()) await command('game_end');
+    } else if (!last || period == count + 1) {
+      await command('period_end'); // a half, or the first half of extra time
+    } else if (tied) {
+      await drawChoice(running: true);
+    } else if (await confirmFinal()) {
+      await command('game_end');
+    }
+  }
+
+  /// Extra time per half: 15 min after 2 × 45, about a third of a youth half.
+  int get extraTimeDefault =>
+      ((state['period_length_min'] as int) / 3).round().clamp(5, 15);
+
+  /// A football draw at the end of regular time or extra time: extra time
+  /// (after regular time only), a penalty shootout, or the end as a draw.
+  /// `running`: the period is still running and ends first.
+  Future<void> drawChoice({required bool running}) async {
+    final period = state['period'] as int, count = state['period_count'] as int;
+    final lengths = {extraTimeDefault, 15, 10, 5}.toList();
+    final choice = await showDialog<String>(
+      context: navigator.currentContext!,
+      builder: (context) => InputDialog(
+        scrollable: true,
+        title: Text(t('draw.title')),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              '${state['home']['name']}  ${state['home']['score']} : ${state['away']['score']}  ${state['away']['name']}',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+            ),
+            if (period == count) ...[
+              const SizedBox(height: 14),
+              Text(t('extra_time.choose')),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final minutes in lengths)
+                    (minutes == extraTimeDefault
+                        ? FilledButton.new
+                        : OutlinedButton.new)(
+                      onPressed: () => Navigator.pop(context, 'extra:$minutes'),
+                      child: Text('${t('extra_time.start')} 2 × $minutes'),
+                    ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 14),
+            Text(t('shootout.first')),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final team in ['home', 'away'])
+                  FilledButton.tonal(
+                    onPressed: () => Navigator.pop(context, 'shootout:$team'),
+                    child: Text(
+                      '${t('shootout.start')} · ${state[team]['name']}',
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            OutlinedButton(
+              onPressed: () => Navigator.pop(context, 'end'),
+              child: Text(t('draw.end')),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(t('cancel')),
+          ),
+        ],
+      ),
+    );
+    if (choice == null) return;
+    if (choice == 'end') {
+      await command('game_end');
+      return;
+    }
+    if (running && !await command('period_end')) return;
+    final [kind, value] = choice.split(':');
+    if (kind == 'extra') {
+      await command('overtime_start', {'length_min': int.parse(value)});
     } else {
-      await command('period_end');
+      await command('shootout_start', {'first': value});
     }
   }
 
@@ -2697,6 +2845,17 @@ class _Score67State extends State<Score67> {
                     ),
                   ),
                 ),
+                if (state['shootout'] != null)
+                  Text(
+                    t('shootout.result')
+                        .replaceAll('{h}', '${state['shootout']['score'][0]}')
+                        .replaceAll('{a}', '${state['shootout']['score'][1]}'),
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xffb6f36e),
+                    ),
+                  ),
                 const SizedBox(height: 8),
                 periodScores(),
                 const SizedBox(height: 8),
@@ -2772,15 +2931,26 @@ class _Score67State extends State<Score67> {
   }
 
   String eventStamp(dynamic e) {
+    if ('${e['type']}'.startsWith('shootout')) return t('shootout.short');
     final label = periodLabel(Map<String, dynamic>.from(e));
     if (e['clock_ms'] == null || (e['period'] ?? 0) == 0) return label;
     if (!basketball) {
-      // Football: the started match minute, e.g. 23′ or 45+2′.
-      final length = e['period_length_min'] * 60000;
+      // Football: the started match minute, e.g. 23′, 45+2′ or 107′.
+      final period = e['period'] as int, count = e['period_count'] as int;
+      final extra = period > count;
+      final length = extra
+          ? (e['period_duration_ms'] as num).round()
+          : (e['period_length_min'] as int) * 60000;
+      final start = periodStartMs(
+        period,
+        count: count,
+        regularMin: e['period_length_min'] as int,
+        extraMin: extra ? length ~/ 60000 : null,
+      );
       final ms = e['clock_ms'] as num;
       return ms > length
-          ? '${e['period'] * e['period_length_min']}+${((ms - length) / 60000).ceil()}′'
-          : '${((e['period'] - 1) * length + ms) ~/ 60000 + 1}′';
+          ? '${(start + length) ~/ 60000}+${((ms - length) / 60000).ceil()}′'
+          : '${(start + ms) ~/ 60000 + 1}′';
     }
     final length = e['period_duration_ms'] ?? e['period_length_min'] * 60000;
     return '$label ${mmss((length - e['clock_ms']).toInt().clamp(0, 3600000))}';
@@ -2836,6 +3006,10 @@ class _Score67State extends State<Score67> {
         return t(
           'flow.period_ended',
         ).replaceAll('{p}', periodName((e['period'] ?? 1) as int));
+      case 'shootout_kick':
+        return t(
+          e['scored'] == true ? 'shootout.kick_scored' : 'shootout.kick_missed',
+        );
       default:
         return t(e['type']);
     }
@@ -3177,6 +3351,10 @@ class _Score67State extends State<Score67> {
   Widget footballPeriodPanel() {
     final phase = state['phase'];
     final last = state['period'] >= state['period_count'];
+    final period = state['period'] as int, count = state['period_count'] as int;
+    final tied = state['home']['score'] == state['away']['score'];
+    // Regular time or extra time over without a winner.
+    final decisive = period == count || period == count + 2;
     return ListView(
       padding: const EdgeInsets.all(12),
       children: [
@@ -3201,12 +3379,31 @@ class _Score67State extends State<Score67> {
             canWrite ? () => command('period_start') : null,
             primary: true,
           ),
-        if (phase == 'period_running' && !last)
+        if (phase == 'break' && period == count + 1)
+          action(
+            t('period.start_named').replaceAll('{p}', periodName(count + 2)),
+            canWrite ? () => command('overtime_start') : null,
+            primary: true,
+          ),
+        if (phase == 'break' && decisive)
+          action(
+            t('draw.title'),
+            canWrite ? () => drawChoice(running: false) : null,
+            primary: true,
+          ),
+        if (phase == 'period_running' && (!last || period == count + 1))
           HoldAction(
             label:
                 '${t('period.end_named').replaceAll('{p}', periodName(state['period'] as int))} · ${t('hold')}',
             enabled: canWrite,
             onActivate: () => command('period_end'),
+          ),
+        if (phase == 'period_running' && decisive && tied)
+          HoldAction(
+            label:
+                '${t('period.end_named').replaceAll('{p}', periodName(period))} · ${t('hold')}',
+            enabled: canWrite,
+            onActivate: () => drawChoice(running: true),
           ),
         if (phase != 'finished')
           HoldAction(
