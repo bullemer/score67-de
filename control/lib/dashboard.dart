@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 
 import 'account.dart';
 import 'dates.dart';
+import 'device_link.dart';
 import 'fixture_import.dart';
 import 'game_editor.dart';
 
@@ -28,8 +29,20 @@ class Dashboard extends StatefulWidget {
 
   /// Opens an external link in a new tab (browser only; null hides the link).
   final void Function(String)? openLink;
+
+  /// Page origin for connect links; empty hides the connect card.
+  final String origin;
+
+  /// Code from a connect link that opened this page (#connect=…).
+  final String? connectCode;
+
+  /// System share sheet for the connect link (false = not available).
+  final Future<bool> Function(String url)? share;
   const Dashboard({
     super.key,
+    this.origin = '',
+    this.connectCode,
+    this.share,
     this.pickLogo = _noLogo,
     this.openLink,
     required this.api,
@@ -47,6 +60,7 @@ class Dashboard extends StatefulWidget {
 
 class _DashboardState extends State<Dashboard> {
   List<dynamic> boards = [];
+  int browsers = 0;
   String filter = 'planned', error = '';
   bool loading = true, busy = false, online = false, refreshing = false;
   Map<String, dynamic>? pending;
@@ -57,7 +71,12 @@ class _DashboardState extends State<Dashboard> {
   @override
   void initState() {
     super.initState();
-    refresh();
+    final code = widget.connectCode;
+    if (code != null) {
+      joinFromLink(code);
+    } else {
+      refresh();
+    }
     timer = Timer.periodic(const Duration(seconds: 10), (_) {
       if (!busy) refresh();
     });
@@ -67,6 +86,27 @@ class _DashboardState extends State<Dashboard> {
   void dispose() {
     timer?.cancel();
     super.dispose();
+  }
+
+  /// A connect link opened this page: join that list, then show it.
+  Future<void> joinFromLink(String code) async {
+    try {
+      final result = await widget.api('/api/device/join', 'POST', {
+        'code': code,
+      });
+      joined(result['boards'] as int);
+    } catch (_) {
+      if (mounted) setState(() => error = 'link_invalid');
+    }
+  }
+
+  void joined(int count) {
+    if (mounted) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(content: Text(t('device.joined').replaceAll('{n}', '$count'))),
+      );
+    }
+    refresh();
   }
 
   Future<void> refresh() async {
@@ -81,6 +121,7 @@ class _DashboardState extends State<Dashboard> {
       if (mounted) {
         setState(() {
           boards = result['boards'];
+          browsers = (result['device']?['browsers'] as int?) ?? 0;
           online = true;
           loading = false;
           if (error == 'network') error = '';
@@ -758,6 +799,15 @@ class _DashboardState extends State<Dashboard> {
         t('dashboard.device'),
         style: const TextStyle(color: Color(0xffb5c2d4)),
       ),
+      if (widget.origin.isNotEmpty)
+        DeviceLinkCard(
+          api: widget.api,
+          t: widget.t,
+          origin: widget.origin,
+          browsers: browsers,
+          onJoined: joined,
+          share: widget.share,
+        ),
       AccountPanel(
         api: widget.api,
         t: widget.t,

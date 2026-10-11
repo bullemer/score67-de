@@ -23,7 +23,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 
 from . import display_feed, firmware, fixtures, forum, guides, led_messages, mail, preview, seo
-from .db import Account, AccountSession, Admin, Asset, LoginToken, Board, Display, DisplayAdmin, Match, MatchEvent, RateLimit, Receipt, database
+from .db import Account, AccountSession, Admin, Asset, Device, DeviceToken, LoginToken, Board, Display, DisplayAdmin, Match, MatchEvent, RateLimit, Receipt, database
 from .domain import FOOTBALL, BASKETBALL, TENNIS, RuleError, apply, period_ms, initial_state, normalize_clock, foul_mode, BASKETBALL_STATS, player_statistics, SHORT_MAX, FOOTBALL_EVENTS
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -247,6 +247,10 @@ class Claim(StrictModel):
     label: str = Field(default="Browser", min_length=1, max_length=60)
 
 
+class DeviceJoin(StrictModel):
+    code: str = Field(min_length=16, max_length=64)
+
+
 class LoginRequest(StrictModel):
     email: str = Field(min_length=3, max_length=254)
     language: Literal["de", "en"] = "de"
@@ -262,6 +266,10 @@ class Ownership(StrictModel):
 
 EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 ACCOUNT_COOKIE = "score67_account"
+# One cookie per browser; the server keeps which boards it controls. Older
+# releases set one cookie per board (score67_<slug>); those are taken over.
+DEVICE_COOKIE = "score67_device"
+DEVICE_SECONDS = 400 * 86400  # the longest lifetime browsers accept
 LOGIN_TOKEN_SECONDS = 1800
 SESSION_SECONDS = 180 * 86400
 
@@ -300,7 +308,9 @@ def hours_env(name, default):
 def clean_matches(db, now=None):
     """Move abandoned and never-started games to the trash; purge old trash.
 
-    Finished games are never touched. Returns (trashed, purged)."""
+    Finished games are never touched, and an abandoned game in which something
+    was scored is ended (flagged automatic) instead of trashed: a played game
+    must stay under "finished". Returns (trashed, purged)."""
     now = now or time.time()
     stale = hours_env("TRASH_STALE_HOURS", 24)
     planned = hours_env("TRASH_PLANNED_GRACE_HOURS", 24)
@@ -322,6 +332,8 @@ def clean_matches(db, now=None):
             due, reason = activity + stale, "abandoned"
         if now < due:
             continue
+        if reason == "abandoned" and end_played(db, m, now):
+            continue
         m.trashed_at, m.trash_reason = now, reason
         b = db.get(Board, m.slug)
         if b and b.active_match == m.id:
@@ -334,6 +346,23 @@ def clean_matches(db, now=None):
         purged += 1
     db.commit()
     return trashed, purged
+
+
+def end_played(db, m, now):
+    """End a forgotten game that has scoring in it (tennis has no automatic end
+    by clock). Returns False when there is nothing worth keeping."""
+    events = db.scalars(select(MatchEvent).where(MatchEvent.match_id == m.id).order_by(MatchEvent.id)).all()
+    if not any(not e.cancelled and (e.payload.get("type") in COUNTED_EVENTS or e.payload.get("type", "").startswith("tennis_"))
+               for e in events):
+        return False
+    try:
+        m.state, payload, before = apply(m.state, "game_end", {}, round(now * 1000))
+    except RuleError:
+        return False
+    payload["automatic"] = True
+    db.add(MatchEvent(match_id=m.id, admin_id=events[-1].admin_id, payload=payload, before=before))
+    m.revision += 1
+    return True
 
 
 def release_idle_displays(db, now=None):
@@ -533,10 +562,74 @@ def create_app(db_url=None, secure_cookies=None):
         admin.revoked = False
         return admin
 
-    def authorize(db, slug, request):
-        token = request.cookies.get(f"score67_{slug}", "")
+    def current_device(db, cookies):
+        token = cookies.get(DEVICE_COOKIE, "")
+        row = db.get(DeviceToken, digest(token)) if token else None
+        if not row:
+            return None
+        row.last_seen_at = time.time()
+        return row.device_id
+
+    def device_of(db, request):
+        """This browser's device, including one created earlier in the same request."""
+        return getattr(request.state, "device_id", None) or current_device(db, request.cookies)
+
+    def ensure_device(db, request, response):
+        device_id = device_of(db, request)
+        if device_id:
+            token = request.cookies.get(DEVICE_COOKIE)
+        else:
+            device_id, token = str(uuid4()), secrets.token_urlsafe(32)
+            db.add(Device(id=device_id, created_at=time.time()))
+            db.add(DeviceToken(token_hash=digest(token), device_id=device_id, created_at=time.time(), last_seen_at=time.time()))
+            db.flush()
+        if token:
+            set_device_cookie(response, token)
+        request.state.device_id = device_id
+        return device_id
+
+    def set_device_cookie(response, token):
+        response.set_cookie(DEVICE_COOKIE, token, httponly=True, secure=secure,
+                            samesite="lax", max_age=DEVICE_SECONDS, path="/")
+
+    def legacy_slugs(cookies):
+        return [cookie[8:] for cookie in cookies if cookie.startswith("score67_") and len(cookie) == 18]
+
+    def adopt_legacy(db, request, response):
+        """Move per-board cookies of older releases onto this browser's device and
+        drop them, so the request header stays small however many boards there are."""
+        for slug in legacy_slugs(request.cookies):
+            token = request.cookies[f"score67_{slug}"]
+            admin = db.scalar(select(Admin).where(Admin.slug == slug, Admin.token_hash == digest(token)))
+            if admin and not admin.revoked:
+                device_id = ensure_device(db, request, response)
+                if admin.device_id not in (None, device_id):
+                    continue
+                admin.device_id = device_id
+            response.delete_cookie(f"score67_{slug}", path="/")
+
+    def device_slugs(db, request):
+        """Boards this browser controls: its device first, then leftover per-board cookies."""
+        device_id = device_of(db, request)
+        slugs = list(db.scalars(select(Admin.slug).where(Admin.device_id == device_id, Admin.revoked == False)
+                                .distinct())) if device_id else []
+        return slugs + [slug for slug in legacy_slugs(request.cookies) if slug not in slugs]
+
+    def cookie_admin(db, slug, cookies, device_id=None):
+        """The admin entry this browser holds for the board, if any."""
+        token = cookies.get(f"score67_{slug}", "")
         admin = db.scalar(select(Admin).where(Admin.slug == slug, Admin.token_hash == digest(token))) if token else None
-        if not admin or admin.revoked or admin.last_seen_at < time.time() - 180 * 86400:
+        if admin and not admin.revoked:
+            return admin
+        device_id = device_id or current_device(db, cookies)
+        if not device_id:
+            return None
+        return db.scalar(select(Admin).where(Admin.slug == slug, Admin.device_id == device_id, Admin.revoked == False)
+                         .order_by(Admin.last_seen_at.desc()).limit(1))
+
+    def authorize(db, slug, request):
+        admin = cookie_admin(db, slug, request.cookies, getattr(request.state, "device_id", None))
+        if not admin or admin.last_seen_at < time.time() - 180 * 86400:
             admin = owner_admin(db, board(db, slug), request.cookies)
             if not admin:
                 raise HTTPException(401, "admin_required")
@@ -547,9 +640,7 @@ def create_app(db_url=None, secure_cookies=None):
         """Public boards are open; private ones only to controllers and OBS (overlay key)."""
         if not b.private or (key and b.overlay_key and hmac.compare_digest(key, b.overlay_key)):
             return True
-        token = cookies.get(f"score67_{b.slug}", "")
-        admin = db.scalar(select(Admin).where(Admin.slug == b.slug, Admin.token_hash == digest(token))) if token else None
-        if admin and not admin.revoked:
+        if cookie_admin(db, b.slug, cookies):
             return True
         account = current_account(db, cookies) if b.owner_id else None
         return bool(account and account.id == b.owner_id)
@@ -560,11 +651,10 @@ def create_app(db_url=None, secure_cookies=None):
             raise HTTPException(403, "private")
         return b
 
-    def grant(db, slug, response, label):
-        token = secrets.token_urlsafe(32)
-        db.add(Admin(id=str(uuid4()), slug=slug, token_hash=digest(token), label=label, last_seen_at=time.time()))
-        response.set_cookie(f"score67_{slug}", token, httponly=True, secure=secure,
-                            samesite="lax", max_age=180 * 86400, path="/")
+    def grant(db, slug, request, response, label):
+        device_id = ensure_device(db, request, response)
+        db.add(Admin(id=str(uuid4()), slug=slug, token_hash=digest(secrets.token_urlsafe(32)), label=label,
+                     last_seen_at=time.time(), device_id=device_id))
 
     def state(db, b, match_id=None, private=False):
         public_location = {k: b.location[k] for k in ("lat", "lng", "label")} if b.location and b.location.get("visible") else None
@@ -715,7 +805,7 @@ def create_app(db_url=None, secure_cookies=None):
             add_logos(db, slug, s, logos)
             db.add(Match(id=match_id, slug=slug, state=s, fixture=fixtures.stored(body.fixture),
                          created_at=now, scheduled_at=body.scheduled_at / 1000 if body.scheduled_at else None))
-            grant(db, slug, response, "Browser")
+            grant(db, slug, request, response, "Browser")
             db.commit()
             return {"slug": slug, "pin": pin, "links": {"public": f"/s/{slug}",
                     "overlay": f"/s/{slug}/overlay", "control": f"/s/{slug}/control"}}
@@ -866,7 +956,7 @@ def create_app(db_url=None, secure_cookies=None):
             return {"description": b.description}
 
     @app.post("/api/s/{slug}/admin/claim")
-    def claim(slug: str, body: Claim, response: Response):
+    def claim(slug: str, body: Claim, request: Request, response: Response):
         with lock, app.state.sessions() as db:
             b = board(db, slug)
             if b.locked_until > time.time():
@@ -878,7 +968,7 @@ def create_app(db_url=None, secure_cookies=None):
                 db.commit()
                 raise HTTPException(401, "pin_invalid")
             b.failed_count, b.locked_until = 0, 0
-            grant(db, slug, response, body.label.strip() or "Browser")
+            grant(db, slug, request, response, body.label.strip() or "Browser")
             db.commit()
             return {"ok": True}
 
@@ -889,9 +979,8 @@ def create_app(db_url=None, secure_cookies=None):
             result = [{"id": x.id, "label": x.label, "last_seen_at": x.last_seen_at, "email": bool(x.account_id),
                        "current": x.id == a.id} for x in db.scalars(select(Admin).where(Admin.slug == slug, Admin.revoked == False))]
             db.commit()
-            if f"score67_{slug}" in request.cookies and not a.account_id:
-                response.set_cookie(f"score67_{slug}", request.cookies[f"score67_{slug}"], httponly=True,
-                                    secure=secure, samesite="lax", max_age=180 * 86400, path="/")
+            adopt_legacy(db, request, response)
+            db.commit()
             return result
 
     @app.delete("/api/s/{slug}/admins/{admin_id}")
@@ -990,16 +1079,15 @@ def create_app(db_url=None, secure_cookies=None):
             login.used_at = now
             account = db.get(Account, sign_in(db, login.email, response))
             linked = 0
-            for cookie in request.cookies:
-                if cookie.startswith("score67_") and len(cookie) == 18:
-                    try:
-                        authorize(db, cookie[8:], request)
-                    except HTTPException:
-                        continue
-                    b = board(db, cookie[8:])
-                    if not b.owner_id:
-                        b.owner_id = account.id
-                        linked += 1
+            for slug in device_slugs(db, request):
+                try:
+                    authorize(db, slug, request)
+                except HTTPException:
+                    continue
+                b = board(db, slug)
+                if not b.owner_id:
+                    b.owner_id = account.id
+                    linked += 1
             db.commit()
             return {"email": account.email, "linked": linked}
 
@@ -1108,12 +1196,12 @@ def create_app(db_url=None, secure_cookies=None):
     def dashboard(request: Request, response: Response):
         with lock, app.state.sessions() as db:
             boards = []
-            slugs = [cookie[8:] for cookie in request.cookies if cookie.startswith("score67_") and len(cookie) == 18]
+            adopt_legacy(db, request, response)
+            slugs = device_slugs(db, request)
             account = current_account(db, request.cookies)
             if account:
                 slugs += [slug for slug in db.scalars(select(Board.slug).where(Board.owner_id == account.id)) if slug not in slugs]
             for slug in slugs:
-                cookie = f"score67_{slug}"
                 try:
                     authorize(db, slug, request)
                 except HTTPException:
@@ -1130,12 +1218,52 @@ def create_app(db_url=None, secure_cookies=None):
                 boards.append({"slug": b.slug, "name": b.name, "active_match": b.active_match, "description": b.description, "stream_url": b.stream_url,
                                "created_at": round(b.created_at * 1000), "matches": games,
                                "owned": bool(account and b.owner_id == account.id)})
-                if cookie in request.cookies:
-                    response.set_cookie(cookie, request.cookies[cookie], httponly=True, secure=secure,
-                                        samesite="lax", max_age=180 * 86400, path="/")
+            device_id = device_of(db, request)
+            if device_id and request.cookies.get(DEVICE_COOKIE):
+                set_device_cookie(response, request.cookies[DEVICE_COOKIE])
+            browsers = db.scalar(select(func.count()).select_from(DeviceToken).where(DeviceToken.device_id == device_id)) if device_id else 0
             db.commit()
             return {"boards": sorted(boards, key=lambda b: b["created_at"], reverse=True),
-                    "account": {"email": account.email} if account else None}
+                    "account": {"email": account.email} if account else None,
+                    "device": {"browsers": browsers}}
+
+    @app.post("/api/device/link")
+    def device_link(request: Request, response: Response):
+        """A link that connects another browser to this one: both then show the
+        same boards. Kept as a backup it brings the list back after the browser
+        data was cleared. A new link replaces the previous one."""
+        with lock, app.state.sessions() as db:
+            adopt_legacy(db, request, response)
+            device = db.get(Device, ensure_device(db, request, response))
+            code = secrets.token_urlsafe(18)
+            device.link_hash = digest(code)
+            db.commit()
+            return {"code": code}
+
+    @app.post("/api/device/join")
+    def device_join(body: DeviceJoin, request: Request, response: Response):
+        with lock, app.state.sessions() as db:
+            target = db.scalar(select(Device).where(Device.link_hash == digest(body.code.strip())))
+            if not target:
+                raise HTTPException(404, "link_invalid")
+            adopt_legacy(db, request, response)
+            own = device_of(db, request)
+            if own and own != target.id:
+                # Merge: this browser's boards and every browser already joined to it move over.
+                for admin in db.scalars(select(Admin).where(Admin.device_id == own)):
+                    admin.device_id = target.id
+                for row in db.scalars(select(DeviceToken).where(DeviceToken.device_id == own)):
+                    row.device_id = target.id
+                db.flush()
+                db.delete(db.get(Device, own))
+            elif not own:
+                token = secrets.token_urlsafe(32)
+                db.add(DeviceToken(token_hash=digest(token), device_id=target.id, created_at=time.time(), last_seen_at=time.time()))
+                set_device_cookie(response, token)
+            request.state.device_id = target.id
+            boards = len(device_slugs(db, request))
+            db.commit()
+            return {"boards": boards}
 
     @app.get("/api/live")
     def live_games():

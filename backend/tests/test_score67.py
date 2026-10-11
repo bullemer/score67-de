@@ -276,7 +276,7 @@ def test_dashboard_only_lists_authorized_devices_and_existing_games(system):
     a, b = create(client), create(client)
     assert {x['slug'] for x in client.get('/api/dashboard').json()['boards']} == {a['slug'], b['slug']}
     outsider = TestClient(app)
-    assert outsider.get('/api/dashboard').json() == {'boards': [], 'account': None}
+    assert outsider.get('/api/dashboard').json() == {'boards': [], 'account': None, 'device': {'browsers': 0}}
     outsider.post(f'/api/s/{a["slug"]}/admin/claim', json={'pin': a['pin'], 'label': 'Dashboard device'})
     boards = outsider.get('/api/dashboard').json()['boards']
     assert len(boards) == 1 and boards[0]['slug'] == a['slug']
@@ -1941,3 +1941,67 @@ def test_fixture_logos_from_fussball_de(system, offline_sites):
     assert r.status_code == 201, r.text
     game = client.get(f"/api/s/{s['scoreboard']}/matches/{r.json()['match_id']}/control-state").json()
     assert game['home']['logo'].startswith('/media/')
+
+
+def test_abandoned_game_with_scoring_is_ended_not_trashed(system):
+    app, client = system
+    tennis = client.post('/api/scoreboards', json={'sport': 'tennis'}).json()['slug']
+    command(client, tennis, 'period_start')
+    for _ in range(3):
+        command(client, tennis, 'tennis_point', {'team': 'home'})
+    with app.state.sessions() as db:
+        assert clean_matches(db, __import__('time').time() + 25 * 3600) == (0, 0)
+    s = state(client, tennis)
+    assert s['phase'] == 'finished' and s['events'][-1].get('automatic')
+    game = next(g for b in client.get('/api/dashboard').json()['boards'] if b['slug'] == tennis for g in b['matches'])
+    assert not game['trashed']
+
+
+def test_one_device_cookie_for_any_number_of_boards(system):
+    _, client = system
+    slugs = {create(client)['slug'] for _ in range(30)}
+    assert set(client.cookies.keys()) == {'score67_device'}
+    assert {b['slug'] for b in client.get('/api/dashboard').json()['boards']} == slugs
+    assert all(state(client, slug) and command(client, slug, 'period_start').status_code == 200 for slug in list(slugs)[:3])
+
+
+def test_old_per_board_cookies_are_taken_over(system):
+    app, client = system
+    a = create(client)['slug']
+    import hashlib
+    token = 'legacy-token-' + a
+    with app.state.sessions() as db:
+        db.add(Admin(id=str(uuid4()), slug=a, token_hash=hashlib.sha256(token.encode()).hexdigest(), label='Browser',
+                     last_seen_at=__import__('time').time()))
+        db.commit()
+    old = TestClient(app)
+    old.cookies.set(f'score67_{a}', token, domain='testserver.local')
+    assert [b['slug'] for b in old.get('/api/dashboard').json()['boards']] == [a]
+    assert f'score67_{a}' not in old.cookies and 'score67_device' in old.cookies
+    assert [b['slug'] for b in old.get('/api/dashboard').json()['boards']] == [a]
+    assert command(old, a, 'period_start').status_code == 200
+
+
+def test_connect_link_shares_the_board_list_between_browsers(system):
+    app, phone = system
+    first, second = create(phone)['slug'], create(phone)['slug']
+    laptop = TestClient(app)
+    own = create(laptop)['slug']
+    assert laptop.post('/api/device/join', json={'code': 'x' * 24}).status_code == 404
+    code = phone.post('/api/device/link', json={}).json()['code']
+    assert laptop.post('/api/device/join', json={'code': code}).json() == {'boards': 3}
+    for browser in (phone, laptop):
+        listing = browser.get('/api/dashboard').json()
+        assert {b['slug'] for b in listing['boards']} == {first, second, own}
+        assert listing['device'] == {'browsers': 2}
+    # Later boards show up on both, and the viewer page offers "Controller" without PIN.
+    later = create(laptop)['slug']
+    assert later in {b['slug'] for b in phone.get('/api/dashboard').json()['boards']}
+    assert 'id="controller-button"' in phone.get(f'/s/{later}').text
+    # A browser after "clear browsing data" gets everything back with the saved link.
+    fresh = TestClient(app)
+    assert fresh.post('/api/device/join', json={'code': code}).json() == {'boards': 4}
+    assert command(fresh, first, 'period_start').status_code == 200
+    # A new link replaces the old one.
+    phone.post('/api/device/link', json={})
+    assert TestClient(app).post('/api/device/join', json={'code': code}).status_code == 404

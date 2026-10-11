@@ -117,6 +117,25 @@ class DisplayAdmin(Base):
     created_at: Mapped[float] = mapped_column(Float)
 
 
+class Device(Base):
+    """A browser, or several browsers joined through a connect link. Its boards are
+    the admin entries pointing at it ("Meine Scoreboards" without email login)."""
+    __tablename__ = "device"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    # Hash of the current connect link code; a new link replaces the old one.
+    link_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
+    created_at: Mapped[float] = mapped_column(Float)
+
+
+class DeviceToken(Base):
+    """One per browser (cookie score67_device); only the hash is stored."""
+    __tablename__ = "device_token"
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    device_id: Mapped[str] = mapped_column(ForeignKey("device.id", ondelete="CASCADE"), index=True)
+    created_at: Mapped[float] = mapped_column(Float)
+    last_seen_at: Mapped[float] = mapped_column(Float)
+
+
 class Admin(Base):
     __tablename__ = "scoreboard_admin"
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
@@ -127,6 +146,8 @@ class Admin(Base):
     revoked: Mapped[bool] = mapped_column(Boolean, default=False)
     # Set for the admin entry an owner gets through email login (no device cookie).
     account_id: Mapped[str | None] = mapped_column(ForeignKey("account.id"), nullable=True, index=True)
+    # The browser (or group of connected browsers) this entry belongs to.
+    device_id: Mapped[str | None] = mapped_column(ForeignKey("device.id"), nullable=True, index=True)
 
 
 class Match(Base):
@@ -207,6 +228,6 @@ def database(url: str | None = None):
     else:
         with engine.connect() as connection:
             version = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            if version != "0016_drop_legacy_displays":
+            if version != "0017_devices":
                 raise RuntimeError("Database schema does not match this release; run migrations first")
     return engine, sessionmaker(engine, expire_on_commit=False)
