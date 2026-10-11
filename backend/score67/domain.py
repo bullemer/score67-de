@@ -93,6 +93,32 @@ def initial_state(period_count=None, period_length_min=None, sport="football", l
     return result
 
 
+def football_extra_time_default(period_length_min):
+    """Extra time per half: 15 min after 2 × 45, about a third of a youth half."""
+    return min(15, max(5, round(period_length_min / 3)))
+
+
+def shootout_summary(shootout):
+    """Score, next kicker and winner of a penalty shootout. Teams alternate,
+    five kicks each, then sudden death in pairs. Decided as soon as the
+    other team can no longer catch up."""
+    first = shootout["first"]
+    second = "away" if first == "home" else "home"
+    kicks = {team: [k["scored"] for k in shootout["kicks"] if k["team"] == team] for team in ("home", "away")}
+    taken = {team: len(kicks[team]) for team in kicks}
+    goals = {team: sum(kicks[team]) for team in kicks}
+    winner = None
+    if max(taken.values()) <= 5:
+        left = {team: 5 - taken[team] for team in taken}
+        for team, other in (("home", "away"), ("away", "home")):
+            if goals[team] > goals[other] + left[other]:
+                winner = team
+    elif taken["home"] == taken["away"] and goals["home"] != goals["away"]:
+        winner = "home" if goals["home"] > goals["away"] else "away"
+    following = None if winner else first if taken[first] == taken[second] else second
+    return {"score": [goals["home"], goals["away"]], "next": following, "winner": winner}
+
+
 def period_ms(state):
     return (state.get("overtime_length_min", 5) if state["period"] > state["period_count"] else state["period_length_min"]) * 60000
 
@@ -322,8 +348,13 @@ def apply(state, action, data, now_ms):
         event.update(team=data["team"], player=player_snapshot(s, data["team"], data.get("player_id")), target=data.get("event_id"))
     elif action in ("period_start", "overtime_start"):
         overtime = action == "overtime_start"
-        if overtime and (not basketball or phase != "break" or s["period"] < s["period_count"]):
-            raise RuleError("invalid_transition")
+        football = s["sport"] == "football"
+        if overtime and (phase != "break" or s["period"] < s["period_count"]
+                         or (football and s["period"] > s["period_count"] + 1)):
+            raise RuleError("invalid_transition")  # football: two halves of extra time
+        if overtime and football and s["period"] == s["period_count"]:
+            minutes = data.get("length_min")
+            s["overtime_length_min"] = football_extra_time_default(s["period_length_min"]) if minutes is None else integer(minutes, 1, 30)
         if not overtime and (phase not in ("pre_game", "break") or s["period"] >= s["period_count"]):
             raise RuleError("invalid_transition")
         s.update(phase="period_running", period=s["period"] + 1)
@@ -332,12 +363,33 @@ def apply(state, action, data, now_ms):
         event["clock_ms"] = 0 if c["enabled"] else None
         event["period_duration_ms"] = period_ms(s)
     elif action in ("period_end", "game_end"):
-        if action == "period_end" and (phase != "period_running" or (not basketball and s["period"] >= s["period_count"])):
+        # Football: the end of regular time (tied) and of each extra-time half
+        # is a break, from which extra time or the shootout follows.
+        if action == "period_end" and (phase != "period_running" or (
+                not basketball and s["period"] >= s["period_count"] and s["sport"] != "football")):
             raise RuleError("invalid_transition")
         if action == "game_end" and phase == "finished":
             raise RuleError("invalid_transition")
         c.update(elapsed_ms=round(elapsed(s, now_ms)), running=False, started_at=None)
         s["phase"] = "finished" if action == "game_end" else "break"
+    elif action == "shootout_start":
+        if s["sport"] != "football" or phase != "break" or s["period"] not in (s["period_count"], s["period_count"] + 2):
+            raise RuleError("invalid_transition")
+        first = data.get("first", "home")
+        if first not in ("home", "away"):
+            raise RuleError("invalid_value")
+        s.update(phase="shootout", shootout={"first": first, "kicks": []})
+        event.update(team=first, clock_ms=None)
+    elif action == "shootout_kick":
+        if phase != "shootout":
+            raise RuleError("invalid_transition")
+        team = shootout_summary(s["shootout"])["next"]
+        if team is None:
+            raise RuleError("invalid_transition")  # decided: end the game
+        kick = {"team": team, "scored": boolean(data.get("scored")),
+                "player": player_snapshot(s, team, data.get("player_id"))}
+        s["shootout"] = {**s["shootout"], "kicks": [*s["shootout"]["kicks"], kick]}
+        event.update(kick, clock_ms=None)
     elif action in ("clock_start", "clock_stop", "clock_set"):
         if not basketball or not c["enabled"] or phase == "finished":
             raise RuleError("invalid_transition")

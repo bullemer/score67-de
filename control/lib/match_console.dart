@@ -60,6 +60,9 @@ class MatchConsole extends StatefulWidget {
 
   /// Tap on a header score: admin adjustment of a wrong score.
   final void Function(String team) onScoreTap;
+
+  /// Penalty shootout: records the next kick (the server knows whose turn).
+  final void Function(bool scored)? onShootoutKick;
   final List<(String, Widget)> tabs;
   const MatchConsole({
     super.key,
@@ -94,6 +97,7 @@ class MatchConsole extends StatefulWidget {
     required this.onEditTeam,
     required this.onEditPlayer,
     required this.onScoreTap,
+    this.onShootoutKick,
     required this.tabs,
   });
 
@@ -1043,6 +1047,7 @@ class MatchConsoleState extends State<MatchConsole> {
         ),
       ),
     );
+    if (football && s['phase'] == 'shootout') return shootoutPanel(undo);
     if (football) {
       return SizedBox(
         width: 176,
@@ -1068,6 +1073,101 @@ class MatchConsoleState extends State<MatchConsole> {
           row([actionButton(a['foul']!), actionButton(a['tech']!)]),
           row([actionButton(a['reb']!), actionButton(a['timeout']!)]),
           row([undo, actionButton(a['subs']!)]),
+        ],
+      ),
+    );
+  }
+
+  /// The shootout replaces the action buttons: whose kick it is, a mark per
+  /// kick (● scored, ○ missed), GOAL / MISSED, undo.
+  Widget shootoutPanel(Widget undo) {
+    final shootout = Map<String, dynamic>.from(s['shootout'] ?? {});
+    final kicks = (shootout['kicks'] as List? ?? []).cast<Map>();
+    final next = shootout['next'] as String?;
+    Widget marks(String team) => Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 40,
+            child: Text(
+              s[team]['short'],
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
+                color: next == team ? Colors.white : Colors.white60,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Wrap(
+              spacing: 2,
+              children: [
+                for (final k in kicks.where((k) => k['team'] == team))
+                  Text(
+                    k['scored'] == true ? '●' : '○',
+                    style: TextStyle(
+                      fontSize: 18,
+                      color: k['scored'] == true
+                          ? const Color(0xff22c55e)
+                          : const Color(0xffef4444),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+    Widget kick(bool scored) => Expanded(
+      child: Padding(
+        padding: const EdgeInsets.all(3),
+        child: FilledButton(
+          style: FilledButton.styleFrom(
+            backgroundColor: scored
+                ? const Color(0xff16a34a)
+                : const Color(0xffb91c1c),
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(6),
+            ),
+          ),
+          onPressed:
+              widget.canTap && next != null && widget.onShootoutKick != null
+              ? () => widget.onShootoutKick!(scored)
+              : null,
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              t(scored ? 'shootout.scored' : 'shootout.missed'),
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+            ),
+          ),
+        ),
+      ),
+    );
+    return SizedBox(
+      width: 176,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(6, 6, 6, 2),
+            child: Text(
+              next == null
+                  ? t('shootout')
+                  : t('shootout.next').replaceAll('{team}', s[next]['short']),
+              style: const TextStyle(
+                color: Colors.orange,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          marks('home'),
+          marks('away'),
+          kick(true),
+          kick(false),
+          Expanded(child: undo),
         ],
       ),
     );

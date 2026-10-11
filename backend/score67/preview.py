@@ -15,13 +15,15 @@ BACKGROUND, MUTED, ACCENT = "#0b1018", "#9fb0c4", "#b6f36e"
 TEXTS = {
     "de": {"live": "LIVE", "break": "PAUSE", "finished": "ENDSTAND", "pre_game": "VORSCHAU",
            "football": "Fußball", "basketball": "Basketball", "tennis": "Tennis", "set": "Satz {n}", "half": "{n}. Halbzeit", "quarter": "{n}. Viertel",
-           "period": "Periode {n}/{count}", "ot": "Verlängerung {n}", "kickoff": "Anpfiff",
+           "period": "Periode {n}/{count}", "ot": "Verlängerung {n}", "et": "{n}. Halbzeit der Verlängerung", "kickoff": "Anpfiff",
+           "shootout": "ELFMETERSCHIESSEN", "shootout_result": "{h}:{a} i. E.",
            "tagline": "Live-Spielstand – ohne App, ohne Anmeldung.", "private": "Privates Spiel",
            "private_text": "Dieses Spiel ist privat.", "site": "Live-Scoreboard für Fußball, Basketball und Tennis",
            "site_text": "Vom Handy steuern, per Link teilen, im Stream zeigen."},
     "en": {"live": "LIVE", "break": "BREAK", "finished": "FULL TIME", "pre_game": "UPCOMING",
            "football": "Football", "basketball": "Basketball", "tennis": "Tennis", "set": "Set {n}", "half": "Half {n}", "quarter": "Quarter {n}",
-           "period": "Period {n}/{count}", "ot": "Overtime {n}", "kickoff": "Kick-off",
+           "period": "Period {n}/{count}", "ot": "Overtime {n}", "et": "Extra time, half {n}", "kickoff": "Kick-off",
+           "shootout": "PENALTIES", "shootout_result": "{h}–{a} on pens",
            "tagline": "Live score – no app, no sign-up.", "private": "Private game",
            "private_text": "This game is private.", "site": "Live scoreboard for football, basketball and tennis",
            "site_text": "Control from your phone, share a link, show it in your stream."},
@@ -50,8 +52,15 @@ def period_name(s, w):
         return w["set"].format(n=period)
     if s.get("sport") == "basketball" and period > count:
         return w["ot"].format(n=period - count)
+    if period > count:
+        return w["et"].format(n=period - count)
     key = "half" if count == 2 else "quarter" if count == 4 else "period"
     return w[key].format(n=period, count=count)
+
+
+def shootout_result(s, w):
+    home, away = s["shootout"]["score"]
+    return w["shootout_result"].format(h=home, a=away)
 
 
 def status(s, w):
@@ -60,6 +69,8 @@ def status(s, w):
         return w["finished"]
     if phase == "break":
         return w["break"]
+    if phase == "shootout":
+        return w["shootout"]
     if phase == "period_running":
         return w["live"]
     return w["pre_game"]
@@ -74,7 +85,10 @@ def summary(s, language):
         if s.get("scheduled_at"):
             title += f" · {berlin(s['scheduled_at'])}"
     else:
-        title = f"{home['name']} {home.get('score', 0)} : {away.get('score', 0)} {away['name']} · {status(s, w)}"
+        title = f"{home['name']} {home.get('score', 0)} : {away.get('score', 0)} {away['name']}"
+        if s.get("shootout"):
+            title += f" ({shootout_result(s, w)})"
+        title += f" · {status(s, w)}"
     facts = [w.get(s.get("sport"), ""), period_name(s, w) if s.get("phase") != "finished" else ""]
     if s.get("location"):
         facts.append(s["location"].get("label") or "")
@@ -125,7 +139,7 @@ def render(s=None, language="de", logo=None):
     label = status(s, w)
     pill = font(30)
     tw = draw.textlength(label, font=pill)
-    fill = "#dc2626" if label == w["live"] else "#d97706" if label == w["break"] else "#1f2937"
+    fill = "#dc2626" if label in (w["live"], w["shootout"]) else "#d97706" if label == w["break"] else "#1f2937"
     draw.rounded_rectangle((WIDTH - 60 - tw - 40, 44, WIDTH - 60, 96), radius=12, fill=fill)
     draw.text((WIDTH - 60 - tw - 20, 52), label, font=pill, fill="#ffffff")
     column = (WIDTH - 120 - 80) // 2
@@ -156,6 +170,10 @@ def render(s=None, language="de", logo=None):
     if s.get("phase") not in ("pre_game", "no_match"):
         colon = font(120)
         draw.text(((WIDTH - draw.textlength(":", font=colon)) / 2, 330), ":", font=colon, fill="#5c6b7d")
+        if s.get("shootout"):
+            text = shootout_result(s, w)
+            f = font(44)
+            draw.text(((WIDTH - draw.textlength(text, font=f)) / 2, 480), text, font=f, fill=ACCENT)
     elif s.get("scheduled_at"):
         when = f"{w['kickoff']}: {berlin(s['scheduled_at'])}"
         f = font(50)

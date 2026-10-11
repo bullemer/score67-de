@@ -68,6 +68,10 @@ function finishedCard(game) {
     row.append(name, textNode('strong', team.score, 'live-score'));
     card.append(row);
   }
+  if (game.shootout) {
+    const [h, a] = game.shootout.score;
+    card.append(textNode('p', (words['shootout.result'] || '{h}:{a}').replace('{h}', h).replace('{a}', a), 'live-shootout'));
+  }
   if (game.automatic) card.append(textNode('p', words['live.auto_ended'], 'live-auto'));
   extras(card, game);
   return card;
@@ -89,7 +93,7 @@ function render() {
   const cards = games.map(game => {
     const card = cardShell(`/s/${encodeURIComponent(game.scoreboard)}?lang=${lang}`);
     const meta = document.createElement('div'); meta.className = 'live-meta';
-    meta.append(textNode('span', `${words[game.sport || 'football']} · ${words[game.phase === 'break' ? 'break' : 'live.now']}`));
+    meta.append(textNode('span', `${words[game.sport || 'football']} · ${words[game.phase === 'break' ? 'break' : game.phase === 'shootout' ? 'shootout' : 'live.now']}`));
     const clock = textNode('span', '', 'live-clock'); clock.dataset.match = game.match_id; meta.append(clock);
     card.append(meta);
     for (const side of ['home', 'away']) {

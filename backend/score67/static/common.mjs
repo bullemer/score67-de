@@ -19,19 +19,35 @@ export function saveLanguage(lang) {
 }
 export function periodLabel(s, t) {
   if (s.sport === 'tennis') return s.period ? `${t['tennis.set'] || 'Set'} ${s.period}` : '';
+  if (s.phase === 'shootout') return t['shootout.short'] || 'pens';
+  if (s.shootout && s.phase === 'finished') return '';
   if (s.sport === 'basketball' && s.period > s.period_count) return `OT${s.period - s.period_count}`;
+  if (s.period > s.period_count) return (t.extra_time || 'ET {n}').replace('{n}', s.period - s.period_count);
   if (!s.period || s.period_count === 1) return '';
   if (s.period_count === 2) return t.half.replace('{n}', s.period);
   if (s.period_count === 4) return t.quarter.replace('{n}', s.period);
   return `${s.period}/${s.period_count}`;
 }
+/** Shootout score of a game that went to penalties ("4:3"), else ''. */
+export function shootoutScore(s) {
+  const score = s.shootout?.score;
+  return score ? `${score[0]}:${score[1]}` : '';
+}
+/** Football minute at which a period starts: extra time follows regular time
+ * (2 × 45 + 2 × 15: the halves of extra time start at 90:00 and 105:00). */
+export function periodStartMs(s, period, regularMin = s.period_length_min, extraMin = s.overtime_length_min || 15) {
+  const regular = Math.min(Math.max(0, period - 1), s.period_count) * regularMin;
+  return (regular + Math.max(0, period - 1 - s.period_count) * extraMin) * 60000;
+}
 export function clockText(s, now) {
+  if (s.phase === 'shootout') return shootoutScore(s);
+  if (s.shootout && s.phase === 'finished') return '';  // the shootout result shows instead
   if (!s.clock.enabled) return '';
   const c = s.clock;
   const elapsed = c.elapsed_ms + (c.running ? Math.max(0, now - c.started_at) : 0);
-  const length = (s.period > s.period_count && s.sport === 'basketball' ? s.overtime_length_min || 5 : s.period_length_min) * 60000;
+  const length = (s.period > s.period_count ? s.overtime_length_min || 5 : s.period_length_min) * 60000;
   if (c.direction === 'down') return mmss(Math.ceil(Math.max(0, length - elapsed) / 1000) * 1000);
-  const start = Math.max(0, s.period - 1) * length;
+  const start = periodStartMs(s, s.period);
   if (elapsed > length) return `${Math.round((start + length) / 60000)}+${Math.ceil((elapsed - length) / 60000)}`;
   return mmss(start + elapsed);
 }
@@ -61,12 +77,15 @@ export class DelayedStates {
 }
 
 export function eventTime(event, state, words) {
-  if (event.clock_ms == null || !event.period) return periodLabel({...state, period: event.period}, words);
+  if (event.type?.startsWith('shootout')) return words['shootout.short'] || 'pens';
+  if (event.clock_ms == null || !event.period) return periodLabel({...state, phase: null, period: event.period}, words);
   if (state.sport === 'basketball') {
     const length = event.period_duration_ms ?? event.period_length_min * 60000;
     return `${periodLabel({...state, period: event.period}, words)} ${mmss(Math.ceil(Math.max(0, length - event.clock_ms) / 1000) * 1000)}`.trim();
   }
-  return `${Math.floor(event.clock_ms / 60000) + (event.period - 1) * event.period_length_min + 1}′`;
+  const extra = event.period > event.period_count ? (event.period_duration_ms ?? 0) / 60000 : state.overtime_length_min;
+  const start = periodStartMs({period_count: event.period_count ?? state.period_count}, event.period, event.period_length_min, extra);
+  return `${Math.floor((start + event.clock_ms) / 60000) + 1}′`;
 }
 
 // European date/time in every language: "Sa., 03.10.2026 · 19:57", 24-hour clock.

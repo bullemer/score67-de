@@ -24,7 +24,7 @@ from sqlalchemy import func, select
 
 from . import display_feed, firmware, fixtures, forum, guides, led_messages, mail, preview, seo
 from .db import Account, AccountSession, Admin, Asset, Device, DeviceToken, LoginToken, Board, Display, DisplayAdmin, Match, MatchEvent, RateLimit, Receipt, database
-from .domain import FOOTBALL, BASKETBALL, TENNIS, RuleError, apply, period_ms, initial_state, normalize_clock, foul_mode, BASKETBALL_STATS, player_statistics, SHORT_MAX, FOOTBALL_EVENTS
+from .domain import FOOTBALL, BASKETBALL, TENNIS, RuleError, apply, period_ms, initial_state, normalize_clock, foul_mode, BASKETBALL_STATS, player_statistics, SHORT_MAX, FOOTBALL_EVENTS, shootout_summary
 
 ROOT = Path(__file__).resolve().parents[2]
 RELEASE = json.loads((ROOT / "shared/release.json").read_text())
@@ -720,6 +720,8 @@ def create_app(db_url=None, secure_cookies=None):
                     index = min(max(e.payload.get("period", 0), 1), len(periods)) - 1
                     periods[index] += e.payload.get("points", 0)
             s[team]["period_scores"] = periods
+        if s.get("shootout"):
+            s["shootout"] = {**s["shootout"], **shootout_summary(s["shootout"])}
         if s["sport"] == "tennis":
             from .tennis import point_labels
             s["tennis"]["point_labels"] = point_labels(s["tennis"])
@@ -1224,7 +1226,8 @@ def create_app(db_url=None, secure_cookies=None):
                     games.append({**{k: s[k] for k in ("sport", "team_fouls_enabled", "match_id", "revision", "phase", "home", "away", "period_count",
                         "period_length_min", "created_at", "scheduled_at", "archived", "active", "trashed", "trash_reason", "trashed_at")},
                         "lineup_size": s.get("lineup_size"), "fixture": m.fixture,
-                        **({"tennis": s["tennis"]} if s["sport"] == "tennis" else {})})
+                        **({"tennis": s["tennis"]} if s["sport"] == "tennis" else {}),
+                        **({"shootout": s["shootout"]} if s.get("shootout") else {})})
                 boards.append({"slug": b.slug, "name": b.name, "active_match": b.active_match, "description": b.description, "stream_url": b.stream_url,
                                "creator": b.creator, "created_at": round(b.created_at * 1000), "matches": games,
                                "owned": bool(account and b.owner_id == account.id)})
@@ -1281,12 +1284,13 @@ def create_app(db_url=None, secure_cookies=None):
             games = []
             active = db.scalars(select(Board).join(Match, Board.active_match == Match.id).where(
                 Board.private.is_(False), Match.deleted_at.is_(None), Match.archived_at.is_(None),
-                Match.state["phase"].as_string().in_(("period_running", "break")))
+                Match.state["phase"].as_string().in_(("period_running", "break", "shootout")))
                 .order_by(Match.created_at.desc(), Board.slug))
             for b in active:
                 s = state(db, b)
-                games.append({k: s[k] for k in ("sport", "overtime_length_min", "team_fouls_enabled", "scoreboard", "match_id", "home", "away", "clock",
-                    "phase", "period", "period_count", "period_length_min", "server_now", "location", "description", "stream_url", "creator")})
+                games.append({**{k: s[k] for k in ("sport", "overtime_length_min", "team_fouls_enabled", "scoreboard", "match_id", "home", "away", "clock",
+                    "phase", "period", "period_count", "period_length_min", "server_now", "location", "description", "stream_url", "creator")},
+                              "shootout": s.get("shootout")})
             # Planned games with a start time in the next days (public boards only).
             now = time.time()
             horizon = now + hours_env("LIVE_UPCOMING_HOURS", 72)
@@ -1332,7 +1336,8 @@ def create_app(db_url=None, secure_cookies=None):
                     "home": {k: s["home"].get(k) for k in ("name", "color", "logo", "score", "counters")},
                     "away": {k: s["away"].get(k) for k in ("name", "color", "logo", "score", "counters")},
                     "location": {k: location[k] for k in ("lat", "lng", "label")} if location else None,
-                    "description": b.description, "stream_url": b.stream_url, "creator": b.creator})
+                    "description": b.description, "stream_url": b.stream_url, "creator": b.creator,
+                    "shootout": s.get("shootout")})
             finished.sort(key=lambda g: g["ended_at"], reverse=True)
             return {"games": games, "upcoming": upcoming, "finished": finished[:30], "server_now": round(now * 1000)}
 
@@ -1395,14 +1400,14 @@ def create_app(db_url=None, secure_cookies=None):
                     if body.data.get("expected_active_match", b.active_match) != b.active_match:
                         raise HTTPException(409, "state_changed")
                     current = db.get(Match, b.active_match) if b.active_match else None
-                    if current and current.id != m.id and current.state["phase"] in ("period_running", "break"):
+                    if current and current.id != m.id and current.state["phase"] in ("period_running", "break", "shootout"):
                         raise HTTPException(409, "finish_first")
                     if m.archived_at or m.trashed_at:
                         raise HTTPException(409, "restore_first")
                     b.active_match = m.id
                     m.touched_at = time.time()
                 elif body.action in ("archive", "delete"):
-                    if body.action == "archive" and m.state["phase"] in ("period_running", "break"):
+                    if body.action == "archive" and m.state["phase"] in ("period_running", "break", "shootout"):
                         raise HTTPException(409, "finish_first")
                     if body.action == "archive":
                         m.archived_at = time.time()
@@ -1431,7 +1436,7 @@ def create_app(db_url=None, secure_cookies=None):
                     raise HTTPException(409, "finish_first")
                 # A rematch never replaces a game that is running on this board.
                 active = db.get(Match, b.active_match) if b.active_match and b.active_match != m.id else None
-                if active and active.state["phase"] in ("period_running", "break"):
+                if active and active.state["phase"] in ("period_running", "break", "shootout"):
                     raise HTTPException(409, "game_running")
                 new = Match(id=str(uuid4()), slug=slug,
                             state=initial_state(m.state["period_count"], m.state["period_length_min"], m.state["sport"], m.state.get("lineup_size")))
@@ -1482,7 +1487,14 @@ def create_app(db_url=None, secure_cookies=None):
                                        and (e.payload["type"] == "personal_foul" if body.action == "assign_foul_player" else e.payload["type"] in ("score", "red_card", "yellow_card") + FOOTBALL_EVENTS)), None)
                         if not target:
                             raise HTTPException(422, "event_unavailable")
-                if body.action == "overtime_start":
+                # Extra time and the shootout only follow a draw (a football
+                # game's second extra-time half starts whatever the score).
+                # Ending regular time or extra time without a winner is a break,
+                # otherwise the game ends (game_end).
+                if body.action == "shootout_start" or (body.action == "overtime_start" and (
+                        m.state["sport"] == "basketball" or m.state["period"] == m.state["period_count"])) or (
+                        body.action == "period_end" and m.state["sport"] == "football"
+                        and m.state["period"] in (m.state["period_count"], m.state["period_count"] + 2)):
                     current = state(db, b)
                     if current["home"]["score"] != current["away"]["score"]:
                         raise HTTPException(422, "invalid_transition")
@@ -1505,14 +1517,17 @@ def create_app(db_url=None, secure_cookies=None):
                 db.add(MatchEvent(match_id=m.id, admin_id=admin.id, payload=payload, before=before))
                 # Ending the last basketball period ends the match unless tied
                 # (then overtime is offered). Undo reverts the game end first.
-                if body.action == "period_end" and m.state["sport"] == "basketball" and m.state["period"] >= m.state["period_count"]:
+                # Likewise the kick that decides a shootout ends the match.
+                decided = body.action == "shootout_kick" and shootout_summary(m.state["shootout"])["winner"]
+                if decided or (body.action == "period_end" and m.state["sport"] == "basketball" and m.state["period"] >= m.state["period_count"]):
                     db.flush()
                     current = state(db, b, m.id)
-                    if current["home"]["score"] != current["away"]["score"]:
+                    if decided or current["home"]["score"] != current["away"]["score"]:
                         finished, final, before_end = apply(m.state, "game_end", {}, round(time.time() * 1000))
                         m.state = finished
                         final["command_id"] = str(body.command_id)
-                        final["automatic"] = True
+                        # Ended by the result, not because the game was forgotten.
+                        final["decided"] = True
                         db.add(MatchEvent(match_id=m.id, admin_id=admin.id, payload=final, before=before_end))
             m.revision += 1
             db.add(Receipt(id=key, fingerprint=fingerprint))
