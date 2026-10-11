@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:js_interop';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'input_dialog.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_web_plugins/flutter_web_plugins.dart';
 import 'package:http/http.dart' as http;
@@ -956,10 +957,7 @@ class _Score67State extends State<Score67> {
     await showDialog<void>(
       context: navigator.currentContext!,
       builder: (context) => StatefulBuilder(
-        builder: (context, update) => AlertDialog(
-          // Top-aligned so the phone keyboard never covers the fields.
-          alignment: Alignment.topCenter,
-          insetPadding: const EdgeInsets.fromLTRB(24, 12, 24, 12),
+        builder: (context, update) => InputDialog(
           title: Text(t('settings')),
           content: SizedBox(
             width: 440,
@@ -1516,14 +1514,13 @@ class _Score67State extends State<Score67> {
     final creator = TextEditingController(text: state['creator'] ?? '');
     final saved = await showDialog<bool>(
       context: navigator.currentContext!,
-      builder: (context) => AlertDialog(
-        // Top-aligned so the phone keyboard never covers the fields.
-        alignment: Alignment.topCenter,
-        insetPadding: const EdgeInsets.fromLTRB(24, 12, 24, 12),
+      builder: (context) => InputDialog(
         title: Text(t('description.edit')),
         content: SizedBox(
           width: 440,
           child: SingleChildScrollView(
+            // The outlined label sticks out above the first field.
+            padding: const EdgeInsets.only(top: 8),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -1981,14 +1978,13 @@ class _Score67State extends State<Score67> {
     await showDialog<void>(
       context: navigator.currentContext!,
       builder: (context) => StatefulBuilder(
-        builder: (context, update) => AlertDialog(
-          // Top-aligned so the phone keyboard never covers the fields.
-          alignment: Alignment.topCenter,
-          insetPadding: const EdgeInsets.fromLTRB(24, 12, 24, 12),
+        builder: (context, update) => InputDialog(
           title: Text(t('team.edit')),
           content: SizedBox(
             width: 420,
             child: SingleChildScrollView(
+              // The outlined label sticks out above the first field.
+              padding: const EdgeInsets.only(top: 8),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2262,10 +2258,8 @@ class _Score67State extends State<Score67> {
     final revision = state['revision'], match = state['match_id'];
     await showDialog<void>(
       context: navigator.currentContext!,
-      builder: (context) => AlertDialog(
-        // Top-aligned so the phone keyboard never covers the fields.
-        alignment: Alignment.topCenter,
-        insetPadding: const EdgeInsets.fromLTRB(24, 12, 24, 12),
+      builder: (context) => InputDialog(
+        scrollable: true,
         title: Text(t('clock_set')),
         content: TextField(
           controller: input,
@@ -2860,9 +2854,8 @@ class _Score67State extends State<Score67> {
           void step(int by) => update(() {
             input.text = '${((value ?? current) + by).clamp(0, 999)}';
           });
-          return AlertDialog(
-            alignment: Alignment.topCenter,
-            insetPadding: const EdgeInsets.fromLTRB(24, 12, 24, 12),
+          return InputDialog(
+            scrollable: true,
             title: Text('${t('score.adjust')} · ${state[team]['name']}'),
             content: SizedBox(
               width: 360,
@@ -2953,10 +2946,8 @@ class _Score67State extends State<Score67> {
     final revision = state['revision'];
     final ok = await showDialog<bool>(
       context: navigator.currentContext!,
-      builder: (context) => AlertDialog(
-        // Top-aligned so the phone keyboard never covers the fields.
-        alignment: Alignment.topCenter,
-        insetPadding: const EdgeInsets.fromLTRB(24, 12, 24, 12),
+      builder: (context) => InputDialog(
+        scrollable: true,
         title: Text('${t('player.edit')} · ${state[team]['short']}'),
         content: SizedBox(
           width: 360,

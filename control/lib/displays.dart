@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'input_dialog.dart';
 
 import 'display_api.dart';
 import 'display_disconnect.dart';
@@ -148,8 +149,8 @@ class _DisplaysDialogState extends State<DisplaysDialog> {
     final input = TextEditingController(text: d['name']);
     final value = await showDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
-        alignment: Alignment.topCenter,
+      builder: (context) => InputDialog(
+        scrollable: true,
         title: Text(t('display.rename')),
         content: TextField(
           controller: input,

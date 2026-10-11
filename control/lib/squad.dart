@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'input_dialog.dart';
 import 'package:uuid/uuid.dart';
 
 class SquadDialog extends StatefulWidget {
@@ -175,9 +176,7 @@ class _SquadDialogState extends State<SquadDialog> {
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
-    alignment: Alignment.topCenter,
-    insetPadding: const EdgeInsets.fromLTRB(24, 12, 24, 12),
+  Widget build(BuildContext context) => InputDialog(
     title: Text('${t('squad')} · ${widget.teamName}'),
     content: SizedBox(
       width: 520,

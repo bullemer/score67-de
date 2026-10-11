@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'input_dialog.dart';
 import 'package:uuid/uuid.dart';
 
 typedef Api =
@@ -176,9 +177,7 @@ class _GameEditorDialogState extends State<GameEditorDialog> {
   );
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
-    alignment: Alignment.topCenter,
-    insetPadding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+  Widget build(BuildContext context) => InputDialog(
     title: Text(t('game.edit')),
     content: SizedBox(
       width: 520,
