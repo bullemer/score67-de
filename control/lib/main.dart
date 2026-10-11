@@ -11,6 +11,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'account.dart';
 import 'app_settings.dart';
 import 'dashboard.dart';
+import 'device_link.dart';
 import 'dates.dart';
 import 'squad.dart';
 import 'match_console.dart';
@@ -68,6 +69,7 @@ class _Score67State extends State<Score67> {
   String lang = 'en', slug = '', error = '';
   bool dashboardPage = false, loginPage = false, appSettingsPage = false;
   String loginToken = '';
+  String? deviceConnectCode;
 
   /// The live match console; tennis also supports portrait.
   bool get liveConsole =>
@@ -209,6 +211,15 @@ class _Score67State extends State<Score67> {
     appSettingsPage = url.path == '/settings';
     loginPage = url.path == '/login';
     loginToken = Uri.splitQueryString(url.fragment)['t'] ?? '';
+    if (dashboardPage && url.fragment.startsWith('connect=')) {
+      deviceConnectCode = connectCode(url.fragment);
+      // The code is a credential: keep it out of the address bar and history.
+      web.window.history.replaceState(
+        null,
+        '',
+        url.removeFragment().toString(),
+      );
+    }
     try {
       final preferences = jsonDecode(
         web.window.localStorage.getItem('score67-settings') ?? '{}',
@@ -1189,6 +1200,18 @@ class _Score67State extends State<Score67> {
   String get spectatorUrl =>
       uri('/s/$slug').replace(queryParameters: {'lang': lang}).toString();
 
+  /// System share sheet; false where the browser has none.
+  Future<bool> shareUrl(String url) async {
+    final data = web.ShareData(url: url);
+    try {
+      if (!web.window.navigator.canShare(data)) return false;
+      await web.window.navigator.share(data).toDart;
+    } catch (_) {
+      /* Cancelled or unsupported. */
+    }
+    return true;
+  }
+
   Future<void> nativeShare() async {
     final data = web.ShareData(title: t('spectator'), url: spectatorUrl);
     bool supported = false;
@@ -1878,6 +1901,8 @@ class _Score67State extends State<Score67> {
     action(t('claim'), busy || !connected ? null : claim, primary: true),
     const Divider(height: 32),
     Text(t('claim.forgot')),
+    const SizedBox(height: 8),
+    Text(t('claim.device')),
     const SizedBox(height: 10),
     AccountPanel(
       api: (path, method, body) => api(path, method: method, body: body),
@@ -4288,6 +4313,9 @@ class _Score67State extends State<Score67> {
                                     pickLogo: pickLogo,
                                     openLink: (url) =>
                                         web.window.open(url, '_blank'),
+                                    origin: web.window.location.origin,
+                                    connectCode: deviceConnectCode,
+                                    share: shareUrl,
                                   )
                                 else if (slug.isEmpty)
                                   createView()
