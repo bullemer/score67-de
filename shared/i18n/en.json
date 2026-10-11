@@ -743,5 +743,8 @@
   "device.link_invalid": "This link is invalid or was replaced by a newer one.",
   "device.error": "The link could not be created. Please try again.",
   "claim.device": "Did you create this scoreboard in another browser (e.g. because a WhatsApp link opens in a different browser)? There, open \"My scoreboards\" → \"Create connect link\" and open the link here. Then you need no PIN.",
-  "error.link_invalid": "This link is invalid or was replaced by a newer one."
+  "error.link_invalid": "This link is invalid or was replaced by a newer one.",
+  "creator.label": "Your nickname (optional)",
+  "creator.hint": "Shown to viewers as \"Created by …\".",
+  "creator.by": "Created by {name}"
 }

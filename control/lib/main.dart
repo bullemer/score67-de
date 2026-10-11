@@ -153,6 +153,8 @@ class _Score67State extends State<Score67> {
   final deviceName = TextEditingController(text: 'Browser');
   final draftDescription = TextEditingController();
   final draftStream = TextEditingController();
+  // Optional nickname shown as "created by"; remembered for the next game.
+  final draftCreator = TextEditingController(text: savedNickname());
   DateTime? draftStart;
   // Taken over from a fussball.de / basketball-bund.net game link (optional).
   Map<String, dynamic>? draftFixture;
@@ -775,6 +777,8 @@ class _Score67State extends State<Score67> {
               ? null
               : draftDescription.text.trim(),
           'scheduled_at': draftStart?.millisecondsSinceEpoch,
+          if (draftCreator.text.trim().isNotEmpty)
+            'creator': draftCreator.text.trim(),
           'stream_url': draftStream.text.trim().isEmpty
               ? null
               : draftStream.text.trim(),
@@ -793,6 +797,7 @@ class _Score67State extends State<Score67> {
       );
       // Straight to the console; the PIN is in game settings and links in Sharing.
       savePin(result['slug'], result['pin']);
+      saveNickname(draftCreator.text.trim());
       web.window.location.assign('/s/${result['slug']}/control?lang=$lang');
       return;
     } on ApiError catch (e) {
@@ -1508,6 +1513,7 @@ class _Score67State extends State<Score67> {
   Future<void> editDescription() async {
     final input = TextEditingController(text: state['description'] ?? '');
     final stream = TextEditingController(text: state['stream_url'] ?? '');
+    final creator = TextEditingController(text: state['creator'] ?? '');
     final saved = await showDialog<bool>(
       context: navigator.currentContext!,
       builder: (context) => AlertDialog(
@@ -1548,6 +1554,17 @@ class _Score67State extends State<Score67> {
                     border: const OutlineInputBorder(),
                   ),
                 ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: creator,
+                  maxLength: 40,
+                  decoration: InputDecoration(
+                    labelText: t('creator.label'),
+                    helperText: t('creator.hint'),
+                    helperMaxLines: 2,
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
               ],
             ),
           ),
@@ -1564,16 +1581,24 @@ class _Score67State extends State<Score67> {
         ],
       ),
     );
-    final (text, link) = (input.text.trim(), stream.text.trim());
+    final (text, link, nickname) = (
+      input.text.trim(),
+      stream.text.trim(),
+      creator.text.trim(),
+    );
     await Future<void>.delayed(const Duration(milliseconds: 300));
     input.dispose();
     stream.dispose();
+    creator.dispose();
     if (saved != true) return;
     try {
       await api(
         '/api/s/$slug/description',
         method: 'PUT',
-        body: {'description': text.isEmpty ? null : text},
+        body: {
+          'description': text.isEmpty ? null : text,
+          'creator': nickname.isEmpty ? null : nickname,
+        },
       );
       await api(
         '/api/s/$slug/stream',
@@ -1615,6 +1640,11 @@ class _Score67State extends State<Score67> {
               if (state['created_at'] != null)
                 Text(
                   '${t('created')}: ${dateLabel(state['created_at'])}',
+                  style: muted,
+                ),
+              if ((state['creator'] ?? '').isNotEmpty)
+                Text(
+                  t('creator.by').replaceAll('{name}', state['creator']),
                   style: muted,
                 ),
               if (state['scheduled_at'] != null)
@@ -1823,6 +1853,17 @@ class _Score67State extends State<Score67> {
           ),
         ),
     const SizedBox(height: 16),
+    TextField(
+      controller: draftCreator,
+      maxLength: 40,
+      decoration: InputDecoration(
+        labelText: t('creator.label'),
+        helperText: t('creator.hint'),
+        helperMaxLines: 2,
+        border: const OutlineInputBorder(),
+      ),
+    ),
+    const SizedBox(height: 4),
     TextField(
       controller: draftDescription,
       maxLength: 300,
@@ -3290,6 +3331,20 @@ class _Score67State extends State<Score67> {
     }
   }
 
+  static String savedNickname() {
+    try {
+      return web.window.localStorage.getItem('score67-nickname') ?? '';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  void saveNickname(String value) {
+    try {
+      web.window.localStorage.setItem('score67-nickname', value);
+    } catch (_) {}
+  }
+
   void savePin(String board, String value) {
     try {
       web.window.localStorage.setItem('score67-pin:$board', value);
@@ -4361,6 +4416,7 @@ class _Score67State extends State<Score67> {
     pinInput.dispose();
     deviceName.dispose();
     draftDescription.dispose();
+    draftCreator.dispose();
     for (final c in draftTeams.values) {
       c.dispose();
     }

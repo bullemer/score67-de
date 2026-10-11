@@ -22,6 +22,7 @@ function cardShell(href, extraClass = '') {
 }
 function extras(card, game) {
   if (game.description) card.append(textNode('p', game.description, 'live-description'));
+  if (game.creator) card.append(textNode('p', (words['creator.by'] || '{name}').replace('{name}', game.creator), 'live-creator'));
   if (game.location) card.append(textNode('p', `📍 ${game.location.label || `${game.location.lat.toFixed(5)}, ${game.location.lng.toFixed(5)}`}`, 'live-venue'));
   const actions = document.createElement('div'); actions.className = 'live-actions';
   const open = textNode('a', `${words['live.open']} →`, 'live-open'); open.href = card.dataset.href;
