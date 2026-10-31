@@ -2,7 +2,7 @@
 // the scoreboard (render.cpp). Buttons: DOWN short = show the connection
 // code for 10 s during a game; UP held 5 s = Wi-Fi setup hotspot; UP + DOWN
 // held 10 s = factory reset (new display, new code).
-// Serial (115200): ? status, c code, w portal, r factory reset.
+// Serial (115200): ? status, c code, w portal, r factory reset, t1..t8 panel test (t0 off).
 #include <Arduino.h>
 #include <Adafruit_Protomatter.h>
 #include "config.h"
@@ -28,6 +28,34 @@ Feed feed;
 uint32_t received = 0;        // millis() when the current feed arrived (clock, scrolling)
 uint32_t showCodeUntil = 0;   // DOWN pressed during a game: the code instead of the score
 uint32_t bothSince = 0;
+int testPattern = 0;          // serial t1..t8: panel test instead of the feed (t0 = back)
+
+// Full-brightness test patterns to tell panel faults from controller faults:
+// a pixel dark in t1-t4 is a dead LED (or channel), lit in t5 is stuck on.
+void drawTest(uint32_t now) {
+  static const uint16_t solid[] = {0xffff, 0xf800, 0x07e0, 0x001f, 0x0000};
+  if (testPattern <= 5) { panel.fillScreen(solid[testPattern - 1]); return; }
+  if (testPattern == 6) {   // checkerboard, swaps every second
+    int phase = (now / 1000) & 1;
+    for (int y = 0; y < PANEL_H; y++)
+      for (int x = 0; x < PANEL_W; x++) panel.drawPixel(x, y, ((x + y + phase) & 1) ? 0xffff : 0);
+    return;
+  }
+  if (testPattern == 7) {   // one white pixel walking row by row, position on serial
+    static int i = -1;
+    static uint32_t last = 0;
+    if (now - last >= 150) { i = (i + 1) % (PANEL_W * PANEL_H); last = now; Serial.printf("[test] x %d y %d\n", i % PANEL_W, i / PANEL_W); }
+    panel.drawPixel(i % PANEL_W, i / PANEL_W, 0xffff);
+    return;
+  }
+  // t8: grid lines every 8 pixels, labelled corners
+  for (int x = 0; x < PANEL_W; x += 8) panel.drawFastVLine(x, 0, PANEL_H, 0x07e0);
+  for (int y = 0; y < PANEL_H; y += 8) panel.drawFastHLine(0, y, PANEL_W, 0x07e0);
+  panel.drawFastVLine(PANEL_W - 1, 0, PANEL_H, 0x07e0);
+  panel.drawFastHLine(0, PANEL_H - 1, PANEL_W, 0x07e0);
+  panel.drawPixel(0, 0, 0xf800);
+  panel.drawPixel(PANEL_W - 1, PANEL_H - 1, 0x001f);
+}
 
 void onFeed(const Feed &f) {
   bool first = !feed.valid;
@@ -134,6 +162,10 @@ void loop() {
       else if (line == "c") showCodeUntil = now + 10000;
       else if (line == "w") { net.startPortal(); feed = Feed(); }
       else if (line == "r") { net.forgetDevice(); feed = Feed(); }
+      else if (line.length() == 2 && line[0] == 't' && line[1] >= '0' && line[1] <= '8') {
+        testPattern = line[1] - '0';
+        Serial.printf("[test] pattern %d\n", testPattern);
+      }
       line = "";
     } else line += ch;
   }
@@ -144,6 +176,7 @@ void loop() {
   const NetStatus &st = net.status();
   canvas.brightness = feed.valid ? feed.brightness : 60;
   panel.fillScreen(0);
+  if (testPattern) { drawTest(now); panel.show(); return; }
   if (!feed.valid) statusScreen(st, now);
   else if (now < showCodeUntil) codeScreen();
   else renderFeed(canvas, feed, now - received);
