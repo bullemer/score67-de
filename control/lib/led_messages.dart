@@ -170,6 +170,16 @@ class _LedMessagePanelState extends State<LedMessagePanel> {
           spacing: 8,
           runSpacing: 8,
           children: [
+            FilledButton.tonalIcon(
+              onPressed: can ? () => send({'kind': 'polonia'}) : null,
+              icon: Image.asset('assets/polonia.png', width: 30, height: 30),
+              label: const Text('Polonia'),
+            ),
+            FilledButton.tonalIcon(
+              onPressed: can ? () => send({'kind': 'bram'}) : null,
+              icon: Image.asset('assets/bramfelder.png', width: 30, height: 30),
+              label: const Text('Bramfelder SV'),
+            ),
             for (final (label, presetIcon) in presets)
               FilledButton.tonal(
                 onPressed: can && label.trim().isNotEmpty
