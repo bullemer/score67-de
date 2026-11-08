@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'display_api.dart';
 import 'display_disconnect.dart';
@@ -136,6 +137,8 @@ class _BoardDisplaysPanelState extends State<BoardDisplaysPanel> {
               child: TextField(
                 controller: code,
                 maxLength: 6,
+                // The panel shows "472 913": a typed space must not use up a digit.
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 keyboardType: TextInputType.number,
                 onSubmitted: can ? (_) => connect() : null,
                 decoration: InputDecoration(

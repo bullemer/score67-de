@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -174,6 +176,9 @@ class MatchConsoleState extends State<MatchConsole> {
   void dispose() {
     hintTimer?.cancel();
     skipTimer?.cancel();
+    for (final scroll in columnScroll.values) {
+      scroll.dispose();
+    }
     super.dispose();
   }
 
@@ -185,6 +190,8 @@ class MatchConsoleState extends State<MatchConsole> {
       () => mounted ? setState(() => hint = null) : null,
     );
   }
+
+  final columnScroll = {'home': ScrollController(), 'away': ScrollController()};
 
   List<String> onCourt(String team) =>
       (s[team]['on_court'] as List? ?? []).cast<String>();
@@ -943,31 +950,41 @@ class MatchConsoleState extends State<MatchConsole> {
       width: 84,
       child: LayoutBuilder(
         builder: (context, constraints) {
-          // Up to six tiles share the height; longer squads scroll.
-          // Football: eleven on the pitch, so tiles keep a fixed height and scroll.
-          final height = football
+          // Tiles shrink so the whole squad fits; only what still cannot
+          // fit scrolls, and then the scrollbar shows there is more.
+          final usual = football
               ? 52.0
               : (constraints.maxHeight / 6).clamp(48.0, 120.0);
-          return ListView(
-            padding: EdgeInsets.zero,
-            children: [
-              SizedBox(
-                height: height,
-                child: tile(
-                  team,
-                  null,
-                  s[team]['short'],
-                  badge: lineup.isEmpty ? null : '${lineup.length}',
-                ),
-              ),
-              for (final p in court) SizedBox(height: height, child: player(p)),
-              if (bench.isNotEmpty) const SizedBox(height: 8),
-              for (final p in bench)
+          final units = 1 + court.length + bench.length * .75;
+          final fit = (constraints.maxHeight - (bench.isEmpty ? 0 : 8)) / units;
+          final height = math.max(36.0, math.min(usual, fit));
+          final scroll = columnScroll[team]!;
+          return Scrollbar(
+            controller: scroll,
+            thumbVisibility: true,
+            child: ListView(
+              controller: scroll,
+              padding: EdgeInsets.zero,
+              children: [
                 SizedBox(
-                  height: (height * .75).clamp(40.0, 72.0),
-                  child: player(p, bench: true),
+                  height: height,
+                  child: tile(
+                    team,
+                    null,
+                    s[team]['short'],
+                    badge: lineup.isEmpty ? null : '${lineup.length}',
+                  ),
                 ),
-            ],
+                for (final p in court)
+                  SizedBox(height: height, child: player(p)),
+                if (bench.isNotEmpty) const SizedBox(height: 8),
+                for (final p in bench)
+                  SizedBox(
+                    height: math.max(27.0, height * .75),
+                    child: player(p, bench: true),
+                  ),
+              ],
+            ),
           );
         },
       ),

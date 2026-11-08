@@ -1683,9 +1683,9 @@ def create_app(db_url=None, secure_cookies=None):
             d.token_hash, d.last_seen_at = digest(token), now
             if body.fw:
                 d.fw_version = body.fw[:20]
+            # A claimed panel keeps its code too: re-registering (a reconnect on
+            # weak Wi-Fi) must not invalidate the code someone is just typing.
             code = None if claimed(db, d) else claim_code(db, d, now)
-            if code is None:
-                d.pairing_code = d.pairing_expires_at = None
             db.commit()
             return {"display_id": d.id, "name": d.name, "token": token, "code": code}
 
