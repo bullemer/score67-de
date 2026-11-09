@@ -4,6 +4,8 @@
 #include <string.h>
 #include <stdio.h>
 #include "tables.h"
+#include "polonia_logo.h"
+#include "bramfelder_logo.h"
 
 namespace {
 constexpr int W = LED_W, H = LED_H;
@@ -233,7 +235,84 @@ int wrapText(const char *s, int max, char lines[][12], int maxLines) {
   return count;
 }
 
+static void renderLogo(Canvas &c, bool bram) {
+  int size = c.height() >= 64 ? 60 : 30;
+  const uint16_t *pixels = bram ? (size == 60 ? BRAMFELDER_60 : BRAMFELDER_30) : (size == 60 ? POLONIA_60 : POLONIA_30);
+  int left = (c.width()-size)/2, top = (c.height()-size)/2;
+  for (int y=0; y<size; ++y) for (int x=0; x<size; ++x) {
+    uint16_t v = pixels[y*size+x];
+    uint32_t rgb = ((v>>11)*255/31<<16) | (((v>>5)&63)*255/63<<8) | ((v&31)*255/31);
+    if (v) c.set(left+x, top+y, rgb);
+  }
+}
+void renderPolonia(Canvas &c) { renderLogo(c, false); }
+
 void renderFeed(Canvas &c, const Feed &feed, long sinceMs) {
+  if (feed.valid && !strcmp(feed.mode, "game") && feed.msg.present &&
+      (!strcmp(feed.msg.kind, "polonia") || !strcmp(feed.msg.kind, "bram")) && sinceMs < feed.msg.ms) {
+    renderLogo(c, !strcmp(feed.msg.kind, "bram")); return;
+  }
+  if (c.width() >= 64 && c.height() == 64) {
+    const int w = c.width();
+    bool game = feed.valid && !strcmp(feed.mode, "game");
+    if (!game || (feed.msg.present && sinceMs < feed.msg.ms)) {
+      struct Centred : Canvas {
+        Canvas &target;
+        explicit Centred(Canvas &canvas) : target(canvas) {}
+        void set(int x, int y, uint32_t color) override { target.set(x + (target.width() - 64) / 2, y + 16, color); }
+      } centred(c);
+      renderFeed(centred, feed, sinceMs);
+      return;
+    }
+    const FeedTeam &home = feed.home, &guest = feed.guest;
+    big(c, home.shortName, 1, 3, readable(home.color));
+    big(c, guest.shortName, w - 1 - (codePoints(guest.shortName) * 8 - 2), 3, readable(guest.color));
+    for (int i = 0; i < home.redCards && i < 3; ++i) for (int y = 16; y < 20; ++y) c.set(2 + i * 3, y, COLOR_RED);
+    for (int i = 0; i < guest.redCards && i < 3; ++i) for (int y = 16; y < 20; ++y) c.set(w - 3 - i * 3, y, COLOR_RED);
+    if (!strcmp(feed.possession, "home")) text(c, "<", w / 2 - 6, 15, COLOR_TEXT);
+    if (!strcmp(feed.possession, "away")) text(c, ">", w / 2 + 2, 15, COLOR_TEXT);
+    bool narrow = home.score >= 100 || guest.score >= 100;
+    bool single = home.score < 10 && guest.score < 10;
+    const int sx = single ? 3 : 2, sy = single ? 4 : 3, top = single ? 17 : 20;
+    auto score = [&](int value, bool left) {
+      char digits[12]; snprintf(digits, sizeof digits, "%d", value);
+      int digitWidth = (narrow ? 4 : 5) * sx, gap = 2, n = strlen(digits);
+      int width = n * digitWidth + (n - 1) * gap;
+      int x = left ? w / 2 - 4 - width : w / 2 + 4;
+      for (const char *p = digits; *p; ++p) {
+        int d = *p - '0'; if (d < 0 || d > 9) continue;
+        const uint8_t *rows = narrow ? FONT_NARROW[d] : FONT_CLOCK[d];
+        int cols = narrow ? 4 : 5;
+        for (int row=0; row<7; ++row) for (int col=0; col<cols; ++col)
+          if (rows[row] & (1 << (cols-1-col))) for (int dy=0; dy<sy; ++dy) for (int dx=0; dx<sx; ++dx)
+            c.set(x+col*sx+dx, top+row*sy+dy, COLOR_SCORE);
+        x += digitWidth + gap;
+      }
+    };
+    score(home.score, true); score(guest.score, false);
+    for (int dot=0; dot<2; ++dot) for (int dy=0; dy<2; ++dy) for (int dx=0; dx<2; ++dx) c.set(w/2-1+dx, top+7+dot*9+dy, COLOR_SCORE);
+    bool finished = !strcmp(feed.phase, "finished");
+    if (feed.clock.visible) {
+      long ms = feed.clock.ms;
+      if (feed.clock.running) ms = feed.clock.down ? (ms - sinceMs > 0 ? ms - sinceMs : 0) : ms + sinceMs;
+      char value[12]; clockText(ms, feed.clock.down, value);
+      uint32_t color = feed.clock.running ? COLOR_RUNNING : COLOR_STOPPED;
+      big(c, value, (w - (codePoints(value) * 8 - 2)) / 2, 52, color);
+    } else if (finished) {
+      const char *word = !strcmp(feed.lang, "de") ? "ENDE" : "FINAL";
+      big(c, word, (w - (codePoints(word) * 8 - 2)) / 2, 50, COLOR_STOPPED);
+    }
+    if (feed.period[0] && !finished) text(c, feed.period, 1, 46, COLOR_DIM);
+    if (home.fouls >= 0 && guest.fouls >= 0) {
+      char fouls[12]; snprintf(fouls, sizeof fouls, "%d-%d", home.fouls, guest.fouls);
+      text(c, fouls, w - 1 - textWidth(fouls), 46, COLOR_DIM);
+    }
+    if (feed.identify && (sinceMs / 400) % 2 == 0) {
+      for (int x=0; x<w; ++x) { c.set(x, 0, COLOR_TEXT); c.set(x, 63, COLOR_TEXT); }
+      for (int y=0; y<64; ++y) { c.set(0, y, COLOR_TEXT); c.set(w - 1, y, COLOR_TEXT); }
+    }
+    return;
+  }
   if (!feed.valid) return;
   bool game = !strcmp(feed.mode, "game");
   if (game && feed.msg.present && sinceMs < feed.msg.ms) { renderMessage(c, feed.msg, sinceMs); return; }

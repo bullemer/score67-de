@@ -9,8 +9,12 @@
 #include <WebSocketsClient.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
+#include <Update.h>
+#include <esp_ota_ops.h>
+#include <mbedtls/sha256.h>
 #include "certs.h"
 #include "config.h"
+#include "intro.h"
 #include "secrets.h"
 
 Net net;
@@ -73,6 +77,10 @@ void portalPage() {
                   "small{color:#666}</style><script>function fill(b){document.getElementById('s').value=b.dataset.s}</script>"
                   "</head><body><h2>Score67 LED-Tafel</h2>");
   if (portalMessage[0]) page += String("<p class=m>") + portalMessage + "</p>";
+  page += F("<p>Choose Score67 below. Games will be added in a future update.</p><details><summary>Intro administrator</summary>");
+  if (!Intro::hasPassword()) page += F("<p>Set an admin password over USB first.</p>");
+  else page += F("<form method=post action=/intro><input name=password type=password placeholder='Admin password' required maxlength=80><input name=text placeholder='INTRO TEXT (A-Z, 0-9)' required maxlength=40><label>Colour <input name=color type=color value=#00ffff></label><button>Save intro</button></form>");
+  page += F("</details><h3>Score67 scoreboard</h3>");
   page += F("<p>WLAN wählen (nur 2,4 GHz; iPhone-Hotspot: „Maximale Kompatibilität“ einschalten) und Passwort eingeben.<br>"
             "<small>Choose a 2.4 GHz network and enter its password.</small></p><form method=post action=/save>");
   int found = WiFi.scanComplete();
@@ -83,7 +91,7 @@ void portalPage() {
             htmlEscape(ssid) + " <small>" + WiFi.RSSI(i) + " dBm" + (WiFi.encryptionType(i) == WIFI_AUTH_OPEN ? ", offen" : "") + "</small></button>";
             htmlEscape(ssid) + " <small>" + WiFi.RSSI(i) + " dBm" + (WiFi.encryptionType(i) == WIFI_AUTH_OPEN ? ", offen" : "") + "</small></button>";
   }
-  page += F("<input id=s name=ssid placeholder='WLAN-Name' required maxlength=32><input name=pass type=password placeholder='Passwort' maxlength=63>"
+  page += F("<input id=s name=ssid placeholder='WLAN-Name' required maxlength=32><input name=pass type=text placeholder='WLAN-Passwort / Wi-Fi password' maxlength=63 autocapitalize=none autocorrect=off spellcheck=false>"
             "<button type=submit>Speichern und verbinden</button></form><form method=post action=/scan><button type=submit>Erneut suchen</button></form>");
   if (storedNetworks()) {
     page += F("<h3>Gespeicherte WLANs</h3>");
@@ -92,6 +100,18 @@ void portalPage() {
         page += "<form method=post action=/delete><input type=hidden name=i value=" + String(i) + "><button type=submit>" + htmlEscape(networks[i].ssid) + " – löschen</button></form>";
     page += F("<form method=post action=/done><button type=submit>Fertig (Tafel verbindet sich)</button></form>");
   }
+  Preferences displayPrefs;
+  int height = PANEL_H, width = PANEL_W;
+  if (displayPrefs.begin("s67-display", true)) {
+    height = displayPrefs.getInt("height", PANEL_H);
+    width = displayPrefs.getInt("width", PANEL_W);
+    displayPrefs.end();
+  }
+  page += F("<h3>LED-Panel / LED panel</h3><form method=post action=/display><label for=height>Panelgröße / Panel size</label><select id=height name=panel>");
+  page += String("<option value=64x32") + (width == 64 && height == 32 ? " selected" : "") + ">64 × 32 (1/16 scan)</option>";
+  page += String("<option value=64x64") + (width == 64 && height == 64 ? " selected" : "") + ">64 × 64 (1/32 scan, E)</option>";
+  page += String("<option value=128x64") + (width == 128 && height == 64 ? " selected" : "") + ">128 × 64 (2 × 64 × 64, 1/32 scan)</option>";
+  page += F("</select><button type=submit>Speichern und neu starten / Save and reboot</button></form>");
   page += F("<p><small>Die Tafel merkt sich bis zu 3 WLANs und probiert sie der Reihe nach.</small></p></body></html>");
   portal->send(200, "text/html; charset=utf-8", page);
 }
@@ -102,6 +122,7 @@ void portalRedirect() {
 }
 char deviceKey[48] = "", token[64] = "";
 bool socketOpen = false;
+char otaStatus[60] = "";
 char lastFeed[4096];   // the newest message, parsed in loop() (the callback must stay short)
 volatile bool feedPending = false;
 
@@ -169,13 +190,33 @@ void Net::startPortal() {
   WiFi.macAddress(mac);
   snprintf(st.apName, sizeof st.apName, "score67-%02X%02X", mac[4], mac[5]);
   WiFi.mode(WIFI_AP_STA);
-  WiFi.softAP(st.apName);
+  if (!WiFi.softAP(st.apName)) { Serial.println("[net] hotspot start failed"); st.state = NetState::OFFLINE; return; }
   strncpy(st.apIp, WiFi.softAPIP().toString().c_str(), sizeof st.apIp - 1);
   dns.start(53, "*", WiFi.softAPIP());
   WiFi.scanNetworks(true);   // async; the page shows what is there by the time it is opened
   if (!portal) {
     portal = new WebServer(80);
     portal->on("/", HTTP_GET, portalPage);
+    portal->on("/intro", HTTP_POST, [] {
+      String value = portal->arg("text"); value.toUpperCase();
+      String color = portal->arg("color");
+      if (color.length() != 7 || color[0] != '#') { portal->send(400, "text/plain", "Invalid color"); return; }
+      for (int i=1; i<7; ++i) if (!isxdigit(color[i])) { portal->send(400, "text/plain", "Invalid color"); return; }
+      if (!Intro::save(portal->arg("password"), value, strtoul(color.c_str()+1, nullptr, 16))) { portal->send(403, "text/plain", "Invalid password or intro text"); return; }
+      snprintf(portalMessage, sizeof portalMessage, "Intro saved."); portalRedirect();
+    });
+    portal->on("/display", HTTP_POST, [] {
+      String value = portal->arg("panel");
+      if (value != "64x32" && value != "64x64" && value != "128x64") { portal->send(400, "text/plain", "Invalid panel size"); return; }
+      Preferences displayPrefs;
+      if (!displayPrefs.begin("s67-display", false) || !displayPrefs.putInt("width", value == "128x64" ? 128 : 64) || !displayPrefs.putInt("height", value == "64x32" ? 32 : 64)) {
+        portal->send(500, "text/plain", "Could not save panel size"); return;
+      }
+      displayPrefs.end();
+      portal->send(200, "text/plain; charset=utf-8", "Saved. Restarting / Gespeichert. Neustart.");
+      delay(500);
+      ESP.restart();
+    });
     portal->on("/scan", HTTP_POST, [] { WiFi.scanNetworks(true); delay(2500); portalRedirect(); });
     portal->on("/save", HTTP_POST, [] {
       String ssid = portal->arg("ssid"), pass = portal->arg("pass");
@@ -215,7 +256,7 @@ void Net::portalLoop() {
   portal->handleClient();
   // Without anyone using it, a panel that knows a network goes back to work after 5 minutes.
   if (portal->client()) portalIdle = millis();
-  if (storedNetworks() && millis() - portalIdle > 300000) stopPortal();
+  // The open control hotspot stays available until a user chooses scoreboard mode.
 }
 
 // Starts the next connection attempt. A scan first: of the stored networks in
@@ -274,7 +315,7 @@ void Net::begin() {
   slot = -2;
   // Networks saved by the setup portal come first; the development network
   // from secrets.h is the fallback (empty in the field). Nothing at all: portal.
-  if (!nextNetwork()) startPortal();
+  startPortal();
   socket.onEvent(socketEvent);
   socket.setReconnectInterval(5000);
   socket.enableHeartbeat(15000, 5000, 2);
@@ -326,10 +367,74 @@ void Net::sendStatus() {
   doc["rssi"] = WiFi.RSSI();
   doc["uptime"] = (long)(millis() / 1000);
   doc["panel"] = "64x32";
+  if (otaStatus[0]) doc["ota"] = otaStatus;
   String json;
   serializeJson(doc, json);
   socket.sendTXT(json);
   lastStatus = millis();
+}
+
+void Net::checkUpdate(const FeedFirmware &offer) {
+  static uint32_t lastAttempt = 0;
+  static bool attempted = false;
+  if (!offer.present || !socketOpen || (attempted && millis() - lastAttempt < 300000)) return;
+  attempted = true; lastAttempt = millis();
+  // Only download an image from this server's fixed release endpoint.
+  char expectedPath[64];
+  snprintf(expectedPath, sizeof expectedPath, "/fw/%s.bin", offer.version);
+  int a, b, c; char tail;
+  if (sscanf(offer.version, "%d.%d.%d%c", &a, &b, &c, &tail) != 3 || a < 0 || b < 0 || c < 0 ||
+      strcmp(offer.url, expectedPath) || strlen(offer.sha256) != 64 || offer.size <= 0) {
+    strlcpy(otaStatus, "failed: invalid offer", sizeof otaStatus); sendStatus(); return;
+  }
+  const esp_partition_t *next = esp_ota_get_next_update_partition(nullptr);
+  const esp_partition_t *running = esp_ota_get_running_partition();
+  if (!next || !running || offer.size > (long)next->size) {
+    strlcpy(otaStatus, "failed: partition size", sizeof otaStatus); sendStatus(); return;
+  }
+  snprintf(otaStatus, sizeof otaStatus, "downloading %s", offer.version); sendStatus();
+  WiFiClientSecure secure; WiFiClient plain;
+  secure.setCACert(ISRG_ROOTS);
+  HTTPClient http;
+  String url = String(SCORE67_TLS ? "https://" : "http://") + SCORE67_HOST + ":" + SCORE67_PORT + offer.url;
+  if (!(SCORE67_TLS ? http.begin(secure, url) : http.begin(plain, url))) {
+    strlcpy(otaStatus, "failed: http init", sizeof otaStatus); sendStatus(); return;
+  }
+  http.setTimeout(15000);
+  http.addHeader("Authorization", String("Bearer ") + token);
+  int code = http.GET();
+  bool ok = code == 200 && http.getSize() == offer.size && Update.begin(offer.size);
+  mbedtls_sha256_context hash; mbedtls_sha256_init(&hash); mbedtls_sha256_starts_ret(&hash, 0);
+  uint8_t buffer[1024]; long total = 0; uint32_t progress = millis();
+  WiFiClient *stream = http.getStreamPtr();
+  while (ok && total < offer.size) {
+    int available = stream->available();
+    if (available > 0) {
+      int count = stream->readBytes(buffer, min((long)sizeof buffer, min((long)available, offer.size - total)));
+      if (count <= 0 || Update.write(buffer, count) != (size_t)count) { ok = false; break; }
+      mbedtls_sha256_update_ret(&hash, buffer, count); total += count; progress = millis();
+    } else if (!http.connected() || millis() - progress > 15000) ok = false;
+    else delay(2);
+  }
+  unsigned char digest[32]; mbedtls_sha256_finish_ret(&hash, digest); mbedtls_sha256_free(&hash);
+  char hex[65]; for (int i=0; i<32; ++i) snprintf(hex+i*2, 3, "%02x", digest[i]);
+  if (ok && strcasecmp(hex, offer.sha256)) { ok = false; strlcpy(otaStatus, "failed: sha256", sizeof otaStatus); }
+  if (ok) {
+    Preferences rollback;
+    ok = rollback.begin("s67-ota", false);
+    if (ok) {
+      ok = rollback.putUInt("previous", running->address) && rollback.putUInt("target", next->address) && rollback.putUInt("boots", 0);
+      rollback.end();
+    }
+    if (ok) ok = Update.end();
+  }
+  if (!ok) {
+    Update.abort();
+    if (strncmp(otaStatus, "failed:", 7)) strlcpy(otaStatus, "failed: download", sizeof otaStatus);
+    http.end(); sendStatus(); return;
+  }
+  http.end(); snprintf(otaStatus, sizeof otaStatus, "installed %s", offer.version); sendStatus();
+  delay(300); ESP.restart();
 }
 
 void Net::loop() {

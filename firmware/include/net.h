@@ -30,6 +30,7 @@ class Net {
   const NetStatus &status() const { return st; }
   // Status line to the server ({"fw", "rssi", "uptime", "panel"}), also sent every 30 s.
   void sendStatus();
+  void checkUpdate(const FeedFirmware &offer);
   // Forgets the device key: the panel becomes a new, unclaimed display (factory reset).
   void forgetDevice();
   // Opens the setup hotspot with the captive portal (UP held 5 s, or no network known).

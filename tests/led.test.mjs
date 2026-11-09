@@ -38,3 +38,15 @@ test('charts: period bars and the lead curve in team colours', () => {
   assert.equal(lead.pixels[18 * WIDTH + 2], '#1d4ed8');    // home ahead: above the line
   assert.equal(lead.pixels[20 * WIDTH + 3], '#c8102e');    // guest ahead: below
 });
+
+test('Polonia logo replaces the game briefly', () => {
+  const feed = game({kind: 'polonia', ms: 5000});
+  assert.ok(lit(render(feed, 1000)) > 100);
+  assert.deepEqual(render(feed, 5001).pixels, render(game(null), 5001).pixels);
+});
+
+test('Bramfelder logo replaces the game briefly', () => {
+  const feed = game({kind: 'bram', ms: 5000});
+  assert.ok(lit(render(feed, 1000)) > 100);
+  assert.deepEqual(render(feed, 5001).pixels, render(game(null), 5001).pixels);
+});

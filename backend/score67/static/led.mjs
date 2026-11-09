@@ -4,6 +4,8 @@
 //   top    y 1–5    home / guest short names (3×5), possession arrow, red cards
 //   middle y 8–21   score in 10×14 digits (8×14 from 100 points), colon
 //   bottom y 24–30  clock in 5×7 digits; period (left) and team fouls (right) in 3×5
+import { POLONIA } from './polonia.mjs';
+import { BRAMFELDER } from './bramfelder.mjs';
 export const WIDTH = 64, HEIGHT = 32;
 
 // 3×5 font: five rows of three bits (MSB = left).
@@ -208,6 +210,14 @@ const hue = h => {
 
 /** A message (feed.msg) instead of the score: text with icon, or a small chart. */
 function renderMessage(frame, msg, sinceMs) {
+  if (msg.kind === 'polonia' || msg.kind === 'bram') {
+    (msg.kind === 'polonia' ? POLONIA : BRAMFELDER).forEach((v, i) => {
+      if (!v) return;
+      const r = Math.floor((v >> 11) * 255 / 31), g = Math.floor(((v >> 5) & 63) * 255 / 63), b = Math.floor((v & 31) * 255 / 31);
+      frame.set(17 + i % 30, 1 + Math.floor(i / 30), `#${[r,g,b].map(n => n.toString(16).padStart(2, '0')).join('')}`);
+    });
+    return;
+  }
   if (msg.kind === 'periods') return drawPeriods(frame, msg);
   if (msg.kind === 'lead') return drawLead(frame, msg);
   if (msg.effect === 'blink' && Math.floor(sinceMs / 500) % 2 === 1) return;

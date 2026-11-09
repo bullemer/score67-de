@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Score67 Breakout controller</title>
+<style>body{font:18px system-ui;text-align:center;background:#151a24;color:white}button{font:inherit;padding:1rem 2rem;margin:.5rem;border-radius:.5rem;touch-action:none}#controls button{font-size:3rem;width:35vw}#status{min-height:2em}</style></head>
+<body><h1>Score67 Breakout</h1><p>Connect to open the game menu on the display.</p><button id="connect">Connect display</button><p id="status">Not connected</p><div id="controls"><button id="left" aria-label="Move left">◀</button><button id="right" aria-label="Move right">▶</button></div><div><button data-command="A">Up</button><button data-command="C">Down</button><button data-command="E">Select</button><button data-command="F">Back</button></div><p>Hold a button or use the arrow keys to move.</p>
+<script>
+const service='7f671001-8a60-4e16-9b3f-5c6e3331a001', input='7f671002-8a60-4e16-9b3f-5c6e3331a001';
+let characteristic, timer, busy=false, direction='';
+const status=document.querySelector('#status');
+async function send(){if(!characteristic||busy||!direction)return;busy=true;try{await characteristic.writeValueWithResponse(new TextEncoder().encode(direction))}catch(e){status.textContent='Connection lost';stop()}finally{busy=false}}
+function stop(){direction='';clearInterval(timer)}
+function move(d){if(direction===d)return;stop();direction=d;send();timer=setInterval(send,80)}
+document.querySelectorAll('[data-command]').forEach(b=>b.onclick=async()=>{if(!characteristic)return;try{await characteristic.writeValueWithResponse(new TextEncoder().encode(b.dataset.command))}catch(e){status.textContent=e.message}});
+document.querySelector('#connect').onclick=async()=>{try{const device=await navigator.bluetooth.requestDevice({filters:[{services:[service]}]});device.addEventListener('gattserverdisconnected',()=>{characteristic=null;stop();status.textContent='Disconnected'});const server=await device.gatt.connect();characteristic=await(await server.getPrimaryService(service)).getCharacteristic(input);status.textContent='Connected'}catch(e){status.textContent=e.message}};
+for(const [id,d] of [['left','L'],['right','R']]){const b=document.getElementById(id);b.onpointerdown=e=>{e.preventDefault();b.setPointerCapture(e.pointerId);move(d)};b.onpointerup=stop;b.onpointercancel=stop;b.onlostpointercapture=stop}
+window.onkeydown=e=>{if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();move(e.key==='ArrowLeft'?'L':'R')}};window.onkeyup=e=>{if(e.key==='ArrowLeft'||e.key==='ArrowRight')stop()};window.onblur=stop;
+</script></body></html>

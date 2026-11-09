@@ -5,12 +5,15 @@
 #include "feed.h"
 
 struct Canvas {
+  virtual int width() const { return 64; }
+  virtual int height() const { return 32; }
   virtual void set(int x, int y, uint32_t rgb) = 0;   // rgb = 0xRRGGBB
   virtual ~Canvas() {}
 };
 
 // sinceMs: local milliseconds since the feed message arrived (clock, scrolling, blinking).
 void renderFeed(Canvas &canvas, const Feed &feed, long sinceMs);
+void renderPolonia(Canvas &canvas);
 
 // Exposed for tests: words into lines of at most `max` characters (8 on 64 px);
 // returns the number of lines, or -1 when a word is longer than a line.

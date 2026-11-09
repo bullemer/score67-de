@@ -10,7 +10,7 @@ import time
 
 ICONS = ("heart", "star", "basketball", "football", "trophy", "flame")
 EFFECTS = ("static", "blink", "rainbow")
-KINDS = ("text", "periods", "lead")
+KINDS = ("text", "periods", "lead", "polonia", "bram")
 MIN_SECONDS, MAX_SECONDS = 3, 60
 MAX_TEXT = 60
 LEAD_COLUMNS = 62   # one column per pixel inside a 1 px border on 64 px
@@ -90,7 +90,7 @@ def create(slug, s, events, *, kind, text=None, icon=None, effect=None, color=No
         if color is not None and not re.fullmatch(r"#[0-9a-fA-F]{6}", color):
             raise ValueError("color")
         msg.update(text=text, icon=icon, effect=effect or "static", color=color or "#ffa31a")
-    else:
+    elif kind in ("periods", "lead"):
         msg.update(home=team(s, "home"), guest=team(s, "away"))
         if kind == "periods":
             msg["periods"] = period_points(s, events)

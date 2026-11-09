@@ -1707,6 +1707,9 @@ def test_led_messages_interrupt_the_score(system, monkeypatch):
     client.post(f'/api/s/{slug}/displays', json={'code': reg['code']})
     panel = lambda: device.get('/api/display/state?format=compact', headers={'Authorization': f'Bearer {reg["token"]}'}).json()
     assert panel()['msg']['kind'] == 'lead'
+    for logo in ('polonia', 'bram'):
+        assert client.post(url, json={'kind': logo, 'seconds': 5}).status_code == 200
+        assert panel()['msg']['kind'] == logo
     later = time.time() + 61
     monkeypatch.setattr(led_messages.time, 'time', lambda: later)
     assert 'msg' not in panel()
