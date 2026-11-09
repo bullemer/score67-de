@@ -91,7 +91,10 @@ String playerLabelOf(Map p) {
       for (final id in onCourt.keys) {
         since[id] = 0;
       }
-    } else if ((type == 'period_end' || type == 'game_end') && running) {
+    } else if ((type == 'period_end' ||
+            type == 'game_end' ||
+            type == 'period_set') &&
+        running) {
       final end = clock ?? (e['period_duration_ms'] as num?)?.toInt() ?? 0;
       for (final id in onCourt.keys.toList()) {
         credit(id, end);

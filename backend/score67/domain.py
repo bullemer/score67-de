@@ -362,6 +362,19 @@ def apply(state, action, data, now_ms):
         event["period"] = s["period"]
         event["clock_ms"] = 0 if c["enabled"] else None
         event["period_duration_ms"] = period_ms(s)
+    elif action == "period_set":
+        # Corrects a period started or ended by mistake: entries stay where they
+        # were booked, later ones go to the chosen period, the clock stands still.
+        target = integer(data.get("period"), 1, max(s["period_count"], s["period"]))
+        if phase == "shootout" or s.get("shootout") or (target == s["period"] and phase == "period_running"):
+            raise RuleError("invalid_transition")
+        event["from_period"] = s["period"]
+        s.update(phase="period_running", period=target)
+        resume = number(data.get("resume_ms", 0), 0, period_ms(s))
+        c.update(elapsed_ms=round(resume), running=False, started_at=None)
+        event["period"] = target
+        event["clock_ms"] = round(resume) if c["enabled"] else None
+        event["period_duration_ms"] = period_ms(s)
     elif action in ("period_end", "game_end"):
         # Football: the end of regular time (tied) and of each extra-time half
         # is a break, from which extra time or the shootout follows.

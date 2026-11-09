@@ -2122,3 +2122,54 @@ def test_led_feed_and_preview_for_extra_time_and_shootout():
     assert period_label(s) == 'P 4:3' and clock(s, 0) == {'visible': False}
     s.update(phase='finished', home={'name': 'A', 'score': 2}, away={'name': 'B', 'score': 2})
     assert summary(s, 'de')[0] == 'A 2 : 2 B (4:3 i. E.) · ENDSTAND'
+
+
+def test_saved_teams_belong_to_the_browser(system):
+    _, client = system
+    body = {"sport": "basketball", "name": "BHV U14", "short": "BHV", "color": "#c8102e",
+            "players": [{"number": "07", "name": "Kim"}, {"number": "4", "name": ""}]}
+    saved = client.post("/api/teams", json=body)
+    assert saved.status_code == 200
+    assert saved.json()["players"][0] == {"number": "7", "name": "Kim"}
+    # The same name replaces the earlier version.
+    client.post("/api/teams", json={**body, "name": "bhv u14", "players": [{"number": "9", "name": ""}]})
+    teams = client.get("/api/teams?sport=basketball").json()["teams"]
+    assert [len(t["players"]) for t in teams] == [1]
+    assert client.get("/api/teams?sport=football").json()["teams"] == []
+    # A repeated number is refused, also through the API.
+    twice = {**body, "players": [{"number": "7", "name": ""}, {"number": "07", "name": ""}]}
+    assert client.post("/api/teams", json=twice).status_code == 400
+    # Another browser neither sees nor deletes it.
+    cookies = dict(client.cookies)
+    client.cookies.clear()
+    assert client.get("/api/teams").json()["teams"] == []
+    assert client.delete(f"/api/teams/{teams[0]['id']}").status_code == 404
+    client.cookies.update(cookies)
+    assert client.delete(f"/api/teams/{teams[0]['id']}").status_code == 200
+    assert client.get("/api/teams").json()["teams"] == []
+
+
+def test_period_jump_back_and_forward_keeps_entries(system):
+    _, client = system
+    slug = create(client)['slug']
+    command(client, slug, 'settings', {'period_count': 4, 'period_length_min': 10})
+    command(client, slug, 'period_start')
+    command(client, slug, 'score', {'team': 'home', 'points': 1})
+    command(client, slug, 'period_end')
+    command(client, slug, 'period_start')  # period 2 started by mistake
+    command(client, slug, 'score', {'team': 'away', 'points': 1})
+    back = command(client, slug, 'period_set', {'period': 1}).json()
+    assert back['period'] == 1 and back['phase'] == 'period_running' and not back['clock']['running']
+    assert back['home']['score'] == 1 and back['away']['score'] == 1
+    # The jump itself can be undone.
+    undone = command(client, slug, 'undo', {'event_id': back['events'][-1]['id']}).json()
+    assert undone['period'] == 2
+    forward = command(client, slug, 'period_set', {'period': 4}).json()
+    assert forward['period'] == 4 and forward['clock']['elapsed_ms'] == 0
+    # An ended game can be reopened; nonsense is refused.
+    ended = command(client, slug, 'game_end').json()
+    assert ended['phase'] == 'finished'
+    reopened = command(client, slug, 'period_set', {'period': 4}).json()
+    assert reopened['phase'] == 'period_running'
+    assert command(client, slug, 'period_set', {'period': 4}).status_code == 422
+    assert command(client, slug, 'period_set', {'period': 9}).status_code == 422

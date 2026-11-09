@@ -764,5 +764,19 @@
   "shootout.kick_missed": "Penalty missed",
   "shootout_start": "Penalty shootout begins",
   "draw.title": "It's a draw – what next?",
-  "draw.end": "End game (draw)"
+  "draw.end": "End game (draw)",
+  "games.current": "Current",
+  "dashboard.show_older": "Show older",
+  "resume.title": "Continue",
+  "team.portrait": "Enter upright",
+  "team.enter_players": "Enter players",
+  "teams.save": "Save team",
+  "teams.load": "Load saved team",
+  "teams.name": "Team name",
+  "teams.saved": "Team saved.",
+  "teams.none": "No saved teams yet.",
+  "teams.replace_note": "Replaces this team's name, colour and squad.",
+  "teams.save_empty": "Enter players and a team name first.",
+  "period.jump": "Go to",
+  "flow.period_set": "Moved to {p}, clock stopped"
 }

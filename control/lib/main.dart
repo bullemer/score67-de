@@ -140,6 +140,9 @@ class _Score67State extends State<Score67> {
   web.WakeLockSentinel? wakeLock;
   bool landscapeRequested = false;
 
+  /// Players entered on a full upright page: far more rows fit above the keyboard.
+  bool teamPageOpen = false;
+
   /// Settings open as a full page from the ☰ menu (portrait allowed there).
   bool settingsOpen = false;
   // Bluetooth LED displays driven directly by this phone (Android Chrome).
@@ -506,6 +509,7 @@ class _Score67State extends State<Score67> {
       if (web.document.fullscreenElement == null) {
         await web.document.documentElement!.requestFullscreen().toDart;
       }
+      if (teamPageOpen) return;
       await web.window.screen.orientation.lock('landscape').toDart;
     } catch (_) {}
   }
@@ -523,6 +527,8 @@ class _Score67State extends State<Score67> {
         ),
         const SizedBox(height: 24),
         action(t('landscape.enter'), lockLandscape, primary: true),
+        const SizedBox(height: 12),
+        action(t('team.enter_players'), openTeamPage),
       ],
     ),
   );
@@ -2692,7 +2698,16 @@ class _Score67State extends State<Score67> {
       tabs: [
         (t('console.flow'), gameFlow()),
         (t('console.team'), teamTab()),
-        (t('console.period'), periodPanel()),
+        (
+          t('console.period'),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              periodJump(),
+              Expanded(child: periodPanel()),
+            ],
+          ),
+        ),
         (t('console.sharing'), sharingPanel()),
         ('LED', ledPanel()),
         (
@@ -3002,6 +3017,10 @@ class _Score67State extends State<Score67> {
         return t(
           'flow.period_started',
         ).replaceAll('{p}', periodName((e['period'] ?? 1) as int));
+      case 'period_set':
+        return t(
+          'flow.period_set',
+        ).replaceAll('{p}', periodName((e['period'] ?? 1) as int));
       case 'period_end':
         return t(
           'flow.period_ended',
@@ -3185,10 +3204,85 @@ class _Score67State extends State<Score67> {
     await command('squad', {'team': team, 'players': squad});
   }
 
-  Widget teamTab() => TeamEditor(
+  Future<void> openTeamPage() async {
+    teamPageOpen = true;
+    landscapeRequested = false;
+    setState(() {});
+    try {
+      web.window.screen.orientation.unlock();
+      await web.window.screen.orientation.lock('portrait').toDart;
+    } catch (_) {}
+  }
+
+  void closeTeamPage() {
+    setState(() => teamPageOpen = false);
+    if (liveConsole && !tennis) unawaited(lockLandscape());
+  }
+
+  Widget teamPage() => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Material(
+        color: const Color(0xff0b1018),
+        child: Row(
+          children: [
+            IconButton(
+              tooltip: t('back'),
+              icon: const Icon(Icons.arrow_back),
+              onPressed: closeTeamPage,
+            ),
+            Expanded(
+              child: Text(
+                t('team.enter_players'),
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      Expanded(child: teamTab(page: true)),
+    ],
+  );
+
+  Future<bool> applySavedTeam(String team, Map<String, dynamic> saved) async {
+    final current = state[team]['squad'] as List? ?? [];
+    final players = <Map<String, dynamic>>[];
+    for (final p in saved['players'] as List) {
+      final number = p['number'] as String;
+      final known = number.isEmpty
+          ? null
+          : current.where((c) => c['number'] == number).firstOrNull;
+      players.add({
+        // A number already in this game keeps its statistics.
+        'id': known?['id'] ?? const Uuid().v4(),
+        'number': number,
+        'name': p['name'],
+      });
+    }
+    if (!await command('settings', {
+      team: {
+        'name': saved['name'],
+        'short': saved['short'],
+        'color': saved['color'],
+      },
+    })) {
+      return false;
+    }
+    return command('squad', {'team': team, 'players': players});
+  }
+
+  Widget teamTab({bool page = false}) => TeamEditor(
     state: state,
     t: t,
     enabled: canWrite,
+    api: tennis
+        ? null
+        : (path, method, body) => api(path, method: method, body: body),
+    onApply: tennis ? null : applySavedTeam,
+    onPortrait: page ? null : openTeamPage,
     onSave: (team, players, onCourt) async {
       String roster(List list) => [
         for (final p in list) '${p['id']}|${p['number']}|${p['name']}',
@@ -3464,6 +3558,52 @@ class _Score67State extends State<Score67> {
         ],
       ],
     );
+  }
+
+  /// Started or ended a period by mistake: go straight to the right one.
+  /// Undo can only take back the very last entry.
+  Widget periodJump() {
+    if (tennis || state['phase'] == 'shootout' || state['shootout'] != null) {
+      return const SizedBox.shrink();
+    }
+    final current = state['period'] as int,
+        count = state['period_count'] as int;
+    final last = current > count ? current : count;
+    final running = state['phase'] == 'period_running';
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 6, 8, 2),
+      child: Row(
+        children: [
+          Text(t('period.jump')),
+          const SizedBox(width: 8),
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  for (var p = 1; p <= last; p++)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: ChoiceChip(
+                        label: Text(periodLabelFor(p)),
+                        selected: p == current && state['phase'] != 'pre_game',
+                        onSelected: canWrite && !(p == current && running)
+                            ? (_) => command('period_set', {'period': p})
+                            : null,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String periodLabelFor(int p) {
+    final label = periodLabel({...state, 'period': p});
+    return label.isEmpty ? '$p' : label;
   }
 
   Widget periodPanel() {
@@ -4431,7 +4571,11 @@ class _Score67State extends State<Score67> {
       builder: (context) => Listener(
         // Fullscreen and orientation lock need a user gesture: use the first tap.
         onPointerUp: (_) {
-          if (liveConsole && !tennis && !landscapeRequested && !settingsOpen) {
+          if (liveConsole &&
+              !tennis &&
+              !landscapeRequested &&
+              !settingsOpen &&
+              !teamPageOpen) {
             unawaited(lockLandscape());
           }
         },
@@ -4476,7 +4620,9 @@ class _Score67State extends State<Score67> {
                     ),
                   ),
                 ),
-          appBar: console(context) || (settingsOpen && liveConsole)
+          appBar:
+              console(context) ||
+                  ((settingsOpen || teamPageOpen) && liveConsole)
               ? null
               : AppBar(
                   leading: IconButton(
@@ -4512,7 +4658,9 @@ class _Score67State extends State<Score67> {
                           const SizedBox(width: 12),
                         ],
                 ),
-          body: settingsOpen && liveConsole
+          body: teamPageOpen && liveConsole
+              ? SafeArea(child: teamPage())
+              : settingsOpen && liveConsole
               ? SafeArea(child: settingsPage(context))
               : console(context)
               ? SafeArea(child: basketballConsole())
