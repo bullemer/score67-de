@@ -820,13 +820,6 @@ class _DashboardState extends State<Dashboard> {
         t('dashboard.device'),
         style: const TextStyle(color: Color(0xffb5c2d4)),
       ),
-      AccountPanel(
-        api: widget.api,
-        t: widget.t,
-        language: widget.language,
-        onChanged: refresh,
-        card: true,
-      ),
       const SizedBox(height: 18),
       FilledButton(
         onPressed: busy ? null : () => widget.navigate('/new'),
@@ -970,6 +963,13 @@ class _DashboardState extends State<Dashboard> {
           onJoined: joined,
           share: widget.share,
         ),
+      AccountPanel(
+        api: widget.api,
+        t: widget.t,
+        language: widget.language,
+        onChanged: refresh,
+        card: true,
+      ),
     ],
   );
 }

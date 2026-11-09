@@ -334,7 +334,7 @@ def clean_matches(db, now=None):
     now = now or time.time()
     stale = hours_env("TRASH_STALE_HOURS", 24)
     planned = hours_env("TRASH_PLANNED_GRACE_HOURS", 24)
-    unscheduled = hours_env("TRASH_UNSCHEDULED_DAYS", 7) * 24
+    unscheduled = hours_env("TRASH_UNSCHEDULED_DAYS", 30) * 24
     retention = hours_env("TRASH_RETENTION_DAYS", 30) * 24
     trashed = purged = 0
     candidates = db.scalars(select(Match).where(Match.deleted_at.is_(None), Match.trashed_at.is_(None),

@@ -1037,12 +1037,14 @@ def test_cleaner_trashes_abandoned_and_unstarted_games_and_purges(system):
         assert clean_matches(db, t0 + 23 * hour) == (0, 0)
     with app.state.sessions() as db:
         assert clean_matches(db, t0 + 25 * hour) == (1, 0)          # abandoned running game
+    with app.state.sessions() as db:
+        assert clean_matches(db, t0 + 29 * 24 * hour) == (0, 0)          # an unstarted board survives four weeks
     gone = state(client, running)
     assert gone['phase'] == 'no_match'                               # removed from stream/controller
     game = next(g for b in client.get('/api/dashboard').json()['boards'] if b['slug'] == running for g in b['matches'])
     assert game['trashed'] and game['trash_reason'] == 'abandoned'
     with app.state.sessions() as db:
-        assert clean_matches(db, t0 + 7 * 24 * hour + hour) == (1, 0)  # never-used board, no start time
+        assert clean_matches(db, t0 + 30 * 24 * hour + hour) == (1, 0)  # never-used board, no start time
     assert state(client, fresh)['phase'] == 'no_match'
     assert state(client, finished)['phase'] == 'finished'            # finished games are never trashed
     assert state(client, scheduled)['phase'] == 'pre_game'           # start time still in the future
@@ -1057,7 +1059,7 @@ def test_cleaner_trashes_abandoned_and_unstarted_games_and_purges(system):
     # Trash older than the retention period is deleted permanently; the
     # restored game is abandoned again after another quiet day.
     with app.state.sessions() as db:
-        assert clean_matches(db, t0 + 40 * 24 * hour) == (1, 1)
+        assert clean_matches(db, t0 + 65 * 24 * hour) == (1, 1)
     boards = client.get('/api/dashboard').json()['boards']
     assert not any(g['match_id'] for b in boards if b['slug'] == fresh for g in b['matches'])
 
