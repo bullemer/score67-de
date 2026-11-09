@@ -17,12 +17,22 @@ class TeamEditor extends StatefulWidget {
     List<String> onCourt,
   )
   onSave;
+
+  /// Saved teams; left out where they do not apply (tennis, tests).
+  final Future<dynamic> Function(String, String, Map<String, dynamic>?)? api;
+  final Future<bool> Function(String team, Map<String, dynamic> saved)? onApply;
+
+  /// Opens the upright full-page editor (from the landscape console).
+  final VoidCallback? onPortrait;
   const TeamEditor({
     super.key,
     required this.state,
     required this.t,
     required this.enabled,
     required this.onSave,
+    this.api,
+    this.onApply,
+    this.onPortrait,
   });
 
   @override
@@ -89,6 +99,9 @@ class _TeamEditorState extends State<TeamEditor> {
   List<Timer> revealTimers = [];
   int editClock = 0;
   final paste = TextEditingController();
+  final teamName = TextEditingController();
+  String teamsMode = '', teamsNote = '';
+  List<dynamic> savedTeams = [];
 
   String t(String key) => widget.t(key);
   bool get basketball => widget.state['sport'] == 'basketball';
@@ -164,6 +177,7 @@ class _TeamEditorState extends State<TeamEditor> {
       }
     }
     paste.dispose();
+    teamName.dispose();
     super.dispose();
   }
 
@@ -272,6 +286,142 @@ class _TeamEditorState extends State<TeamEditor> {
       setState(() {});
     }
   }
+
+  Future<void> toggleTeams(String mode) async {
+    setState(() {
+      teamsNote = '';
+      teamsMode = teamsMode == mode ? '' : mode;
+      if (teamsMode == 'save') teamName.text = widget.state[team]['name'] ?? '';
+    });
+    if (teamsMode == 'load') await loadTeams();
+  }
+
+  Future<void> loadTeams() async {
+    try {
+      final result = await widget.api!(
+        '/api/teams?sport=${widget.state['sport']}',
+        'GET',
+        null,
+      );
+      if (mounted) setState(() => savedTeams = result['teams']);
+    } catch (_) {
+      if (mounted) setState(() => teamsNote = t('error.generic'));
+    }
+  }
+
+  Future<void> saveTeam(_Draft d) async {
+    final players = <Map<String, dynamic>>[];
+    final problem = duplicates(d).isNotEmpty
+        ? 'error.duplicate_player'
+        : collect(d, players, <String>[], hold: false);
+    final name = teamName.text.trim();
+    if (problem != null || players.isEmpty || name.isEmpty) {
+      setState(() => teamsNote = t(problem ?? 'teams.save_empty'));
+      return;
+    }
+    try {
+      await widget.api!('/api/teams', 'POST', {
+        'sport': widget.state['sport'],
+        'name': name,
+        'short': widget.state[d.team]['short'],
+        'color': widget.state[d.team]['color'],
+        'players': [
+          for (final p in players) {'number': p['number'], 'name': p['name']},
+        ],
+      });
+      if (!mounted) return;
+      setState(() {
+        teamsMode = '';
+        teamsNote = t('teams.saved');
+      });
+    } catch (_) {
+      if (mounted) setState(() => teamsNote = t('error.generic'));
+    }
+  }
+
+  Future<void> applyTeam(_Draft d, Map<String, dynamic> saved) async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    autosave?.cancel();
+    d.dirty = false; // the saved team replaces whatever was typed here
+    final ok = await widget.onApply!(d.team, saved);
+    if (mounted && ok) setState(() => teamsMode = '');
+  }
+
+  Future<void> deleteTeam(Map<String, dynamic> saved) async {
+    try {
+      await widget.api!('/api/teams/${saved['id']}', 'DELETE', null);
+      await loadTeams();
+    } catch (_) {
+      if (mounted) setState(() => teamsNote = t('error.generic'));
+    }
+  }
+
+  List<Widget> teamsPanel(_Draft d) => [
+    Wrap(
+      alignment: WrapAlignment.center,
+      children: [
+        TextButton(
+          onPressed: () => toggleTeams('load'),
+          child: Text(t('teams.load')),
+        ),
+        TextButton(
+          onPressed: () => toggleTeams('save'),
+          child: Text(t('teams.save')),
+        ),
+      ],
+    ),
+    if (teamsNote.isNotEmpty)
+      Text(
+        teamsNote,
+        textAlign: TextAlign.center,
+        style: const TextStyle(color: Colors.white70),
+      ),
+    if (teamsMode == 'load') ...[
+      Text(
+        t(savedTeams.isEmpty ? 'teams.none' : 'teams.replace_note'),
+        textAlign: TextAlign.center,
+        style: const TextStyle(fontSize: 13, color: Colors.white70),
+      ),
+      const SizedBox(height: 6),
+      Wrap(
+        spacing: 8,
+        runSpacing: 6,
+        alignment: WrapAlignment.center,
+        children: [
+          for (final saved in savedTeams)
+            InputChip(
+              label: Text(
+                '${saved['name']} (${(saved['players'] as List).length})',
+              ),
+              onPressed: widget.enabled
+                  ? () => applyTeam(d, Map<String, dynamic>.from(saved))
+                  : null,
+              onDeleted: () => deleteTeam(Map<String, dynamic>.from(saved)),
+            ),
+        ],
+      ),
+    ],
+    if (teamsMode == 'save')
+      Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: teamName,
+              maxLength: 60,
+              decoration: InputDecoration(
+                isDense: true,
+                counterText: '',
+                border: const OutlineInputBorder(),
+                labelText: t('teams.name'),
+              ),
+              onSubmitted: (_) => saveTeam(d),
+            ),
+          ),
+          const SizedBox(width: 8),
+          FilledButton(onPressed: () => saveTeam(d), child: Text(t('save'))),
+        ],
+      ),
+  ];
 
   void importPaste(_Draft d) {
     final numbers = d.rows
@@ -420,7 +570,10 @@ class _TeamEditorState extends State<TeamEditor> {
                     selected: team == side,
                     onSelected: (_) {
                       FocusManager.instance.primaryFocus?.unfocus();
-                      setState(() => team = side);
+                      setState(() {
+                        team = side;
+                        teamsMode = teamsNote = '';
+                      });
                     },
                   ),
                 ),
@@ -434,6 +587,12 @@ class _TeamEditorState extends State<TeamEditor> {
                   ),
                 ),
               ),
+              if (widget.onPortrait != null)
+                IconButton(
+                  tooltip: t('team.portrait'),
+                  icon: const Icon(Icons.stay_current_portrait),
+                  onPressed: widget.onPortrait,
+                ),
               const SizedBox(width: 8),
               FilledButton(
                 style: FilledButton.styleFrom(minimumSize: const Size(72, 40)),
@@ -533,6 +692,7 @@ class _TeamEditorState extends State<TeamEditor> {
                     ),
                   ),
                 ),
+              if (widget.api != null) ...teamsPanel(d),
               TextButton(
                 onPressed: () => setState(() => pasteOpen = !pasteOpen),
                 child: Text(t('squad.paste')),

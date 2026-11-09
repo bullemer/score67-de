@@ -69,3 +69,4 @@ a.forum-post:hover,a.forum-post:focus-visible{border-color:#b6f36e}
 .quickstart-tennis[hidden]{display:none}
 .quickstart-tennis label{display:flex;flex-direction:column;gap:6px}
 .quickstart-tennis select{max-width:100%;padding:12px;border-radius:8px;border:1px solid #526176;background:#151e2a;color:#fff;font:inherit}
+.resume{display:block;margin:24px 0 0;padding:16px 20px;border-radius:12px;background:#b6f36e;color:#0b1018;font-size:20px;font-weight:800;text-align:center;text-decoration:none}.resume[hidden]{display:none}

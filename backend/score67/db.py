@@ -129,6 +129,20 @@ class Device(Base):
     created_at: Mapped[float] = mapped_column(Float)
 
 
+class SavedTeam(Base):
+    """A team kept for later games; belongs to a browser and, if signed in, an account."""
+    __tablename__ = "saved_team"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    device_id: Mapped[str | None] = mapped_column(ForeignKey("device.id", ondelete="SET NULL"), nullable=True, index=True)
+    account_id: Mapped[str | None] = mapped_column(ForeignKey("account.id", ondelete="CASCADE"), nullable=True, index=True)
+    sport: Mapped[str] = mapped_column(String(12))
+    name: Mapped[str] = mapped_column(String(60))
+    short: Mapped[str] = mapped_column(String(8))
+    color: Mapped[str] = mapped_column(String(7))
+    players: Mapped[list] = mapped_column(JSON)
+    updated_at: Mapped[float] = mapped_column(Float)
+
+
 class DeviceToken(Base):
     """One per browser (cookie score67_device); only the hash is stored."""
     __tablename__ = "device_token"
@@ -230,6 +244,6 @@ def database(url: str | None = None):
     else:
         with engine.connect() as connection:
             version = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            if version != "0018_board_creator":
+            if version != "0019_saved_teams":
                 raise RuntimeError("Database schema does not match this release; run migrations first")
     return engine, sessionmaker(engine, expire_on_commit=False)

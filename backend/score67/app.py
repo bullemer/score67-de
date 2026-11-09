@@ -20,10 +20,10 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 
 from . import display_feed, firmware, fixtures, forum, guides, led_messages, mail, preview, seo
-from .db import Account, AccountSession, Admin, Asset, Device, DeviceToken, LoginToken, Board, Display, DisplayAdmin, Match, MatchEvent, RateLimit, Receipt, database
+from .db import Account, AccountSession, Admin, Asset, Device, DeviceToken, LoginToken, Board, Display, DisplayAdmin, Match, MatchEvent, RateLimit, Receipt, SavedTeam, database
 from .domain import FOOTBALL, BASKETBALL, TENNIS, RuleError, apply, period_ms, initial_state, normalize_clock, foul_mode, BASKETBALL_STATS, player_statistics, SHORT_MAX, FOOTBALL_EVENTS, shootout_summary
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -254,6 +254,19 @@ class Claim(StrictModel):
     label: str = Field(default="Browser", min_length=1, max_length=60)
 
 
+class SavedPlayer(StrictModel):
+    number: str = Field(default="", pattern=r"^[0-9]{0,3}$")
+    name: str = Field(default="", max_length=60)
+
+
+class SavedTeamBody(StrictModel):
+    sport: Literal["football", "basketball"]
+    name: str = Field(min_length=1, max_length=60)
+    short: str = Field(min_length=1, max_length=SHORT_MAX)
+    color: str = Field(pattern=r"^#[0-9a-fA-F]{6}$")
+    players: list[SavedPlayer] = Field(max_length=40)
+
+
 class DeviceJoin(StrictModel):
     code: str = Field(min_length=16, max_length=64)
 
@@ -321,7 +334,7 @@ def clean_matches(db, now=None):
     now = now or time.time()
     stale = hours_env("TRASH_STALE_HOURS", 24)
     planned = hours_env("TRASH_PLANNED_GRACE_HOURS", 24)
-    unscheduled = hours_env("TRASH_UNSCHEDULED_DAYS", 7) * 24
+    unscheduled = hours_env("TRASH_UNSCHEDULED_DAYS", 30) * 24
     retention = hours_env("TRASH_RETENTION_DAYS", 30) * 24
     trashed = purged = 0
     candidates = db.scalars(select(Match).where(Match.deleted_at.is_(None), Match.trashed_at.is_(None),
@@ -1240,6 +1253,64 @@ def create_app(db_url=None, secure_cookies=None):
                     "account": {"email": account.email} if account else None,
                     "device": {"browsers": browsers}}
 
+    def my_saved_teams(db, request):
+        device_id = device_of(db, request)
+        account = current_account(db, request.cookies)
+        owners = [*([SavedTeam.device_id == device_id] if device_id else []),
+                  *([SavedTeam.account_id == account.id] if account else [])]
+        return list(db.scalars(select(SavedTeam).where(or_(*owners)))) if owners else []
+
+    def saved_team_info(team):
+        return {"id": team.id, "sport": team.sport, "name": team.name, "short": team.short,
+                "color": team.color, "players": team.players}
+
+    @app.get("/api/teams")
+    def list_saved_teams(request: Request, sport: str | None = None):
+        with lock, app.state.sessions() as db:
+            teams = [team for team in my_saved_teams(db, request) if not sport or team.sport == sport]
+            return {"teams": [saved_team_info(team) for team in sorted(teams, key=lambda team: team.name.lower())]}
+
+    @app.post("/api/teams")
+    def save_team(body: SavedTeamBody, request: Request, response: Response):
+        """Same name and sport replaces the earlier version."""
+        players = [{"number": str(int(p.number)) if p.number else "", "name": p.name.strip()} for p in body.players]
+        players = [p for p in players if p["number"] or p["name"]]
+        numbers = [p["number"] for p in players if p["number"]]
+        if len(numbers) != len(set(numbers)):
+            raise HTTPException(400, "duplicate_player")
+        name = body.name.strip()
+        if not name:
+            raise HTTPException(400, "invalid_value")
+        with lock, app.state.sessions() as db:
+            now = time.time()
+            if limited(db, "teams:" + digest(request.client.host if request.client else "unknown"), 120, 3600, now):
+                db.commit()
+                raise HTTPException(429, "rate_limited")
+            device_id = ensure_device(db, request, response)
+            account = current_account(db, request.cookies)
+            mine = my_saved_teams(db, request)
+            team = next((t for t in mine if t.sport == body.sport and t.name.lower() == name.lower()), None)
+            if not team:
+                if len(mine) >= 100:
+                    raise HTTPException(409, "teams_limit")
+                team = SavedTeam(id=str(uuid4()), sport=body.sport)
+                db.add(team)
+            team.device_id, team.account_id = device_id, account.id if account else team.account_id
+            team.name, team.short, team.color = name, body.short.strip().upper(), body.color.lower()
+            team.players, team.updated_at = players, now
+            db.commit()
+            return saved_team_info(team)
+
+    @app.delete("/api/teams/{team_id}")
+    def delete_saved_team(team_id: str, request: Request):
+        with lock, app.state.sessions() as db:
+            team = next((t for t in my_saved_teams(db, request) if t.id == team_id), None)
+            if not team:
+                raise HTTPException(404, "not_found")
+            db.delete(team)
+            db.commit()
+            return {"ok": True}
+
     @app.post("/api/device/link")
     def device_link(request: Request, response: Response):
         """A link that connects another browser to this one: both then show the
@@ -1267,6 +1338,8 @@ def create_app(db_url=None, secure_cookies=None):
                     admin.device_id = target.id
                 for row in db.scalars(select(DeviceToken).where(DeviceToken.device_id == own)):
                     row.device_id = target.id
+                for team in db.scalars(select(SavedTeam).where(SavedTeam.device_id == own)):
+                    team.device_id = target.id
                 db.flush()
                 db.delete(db.get(Device, own))
             elif not own:
@@ -1499,6 +1572,13 @@ def create_app(db_url=None, secure_cookies=None):
                     if current["home"]["score"] != current["away"]["score"]:
                         raise HTTPException(422, "invalid_transition")
                 data = dict(body.data)
+                if body.action == "period_set":
+                    # Back into a period: its clock continues where that period stopped.
+                    data = {"period": body.data.get("period"), "resume_ms": 0}
+                    for event in db.scalars(select(MatchEvent).where(MatchEvent.match_id == m.id, MatchEvent.cancelled == False)
+                                            .order_by(MatchEvent.id)):
+                        if event.payload["type"] in ("period_end", "game_end") and event.payload.get("period") == data["period"]:
+                            data["resume_ms"] = min(event.payload.get("clock_ms") or 0, m.state["period_length_min"] * 60000)
                 if correcting and body.action == "score_correction":
                     if "points" in data and (isinstance(data["points"], bool) or data["points"] != -target.payload["points"]):
                         raise HTTPException(422, "invalid_score")

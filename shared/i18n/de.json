@@ -764,5 +764,19 @@
   "shootout.kick_missed": "Elfmeter verschossen",
   "shootout_start": "Elfmeterschießen beginnt",
   "draw.title": "Unentschieden – wie geht es weiter?",
-  "draw.end": "Spiel beenden (Unentschieden)"
+  "draw.end": "Spiel beenden (Unentschieden)",
+  "games.current": "Aktuell",
+  "dashboard.show_older": "Ältere anzeigen",
+  "resume.title": "Weiter",
+  "team.portrait": "Hochkant eingeben",
+  "team.enter_players": "Spieler eintragen",
+  "teams.save": "Team speichern",
+  "teams.load": "Gespeichertes Team laden",
+  "teams.name": "Teamname",
+  "teams.saved": "Team gespeichert.",
+  "teams.none": "Noch keine gespeicherten Teams.",
+  "teams.replace_note": "Ersetzt Name, Farbe und Kader dieser Mannschaft.",
+  "teams.save_empty": "Erst Spieler und Teamnamen eintragen.",
+  "period.jump": "Gehe zu",
+  "flow.period_set": "Zu {p} gewechselt, Uhr gestoppt"
 }

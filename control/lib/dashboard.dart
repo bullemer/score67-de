@@ -61,7 +61,8 @@ class Dashboard extends StatefulWidget {
 class _DashboardState extends State<Dashboard> {
   List<dynamic> boards = [];
   int browsers = 0;
-  String filter = 'planned', error = '';
+  String filter = 'current', error = '';
+  bool showOlder = false;
   bool loading = true, busy = false, online = false, refreshing = false;
   Map<String, dynamic>? pending;
   Timer? timer;
@@ -195,7 +196,14 @@ class _DashboardState extends State<Dashboard> {
     return 'planned';
   }
 
-  List<Map<String, dynamic>> get visibleGames {
+  static const currentSections = ['running', 'planned', 'completed'];
+  static const recentFinished = 10;
+  int count(String key) => boards
+      .expand((b) => b['matches'] as List)
+      .where((g) => category(g) == key)
+      .length;
+
+  List<Map<String, dynamic>> gamesIn(String filter) {
     final entries = <Map<String, dynamic>>[
       for (final board in boards)
         for (final game in board['matches'])
@@ -222,6 +230,17 @@ class _DashboardState extends State<Dashboard> {
       );
     });
     return entries;
+  }
+
+  List<String> get shownSections =>
+      filter == 'current' ? currentSections : [filter];
+
+  /// In the combined list only the latest finished games, until asked.
+  List<Map<String, dynamic>> limited(String section) {
+    final games = gamesIn(section);
+    return filter == 'current' && section == 'completed' && !showOlder
+        ? games.take(recentFinished).toList()
+        : games;
   }
 
   String dateLabel(int milliseconds) {
@@ -801,22 +820,6 @@ class _DashboardState extends State<Dashboard> {
         t('dashboard.device'),
         style: const TextStyle(color: Color(0xffb5c2d4)),
       ),
-      if (widget.origin.isNotEmpty)
-        DeviceLinkCard(
-          api: widget.api,
-          t: widget.t,
-          origin: widget.origin,
-          browsers: browsers,
-          onJoined: joined,
-          share: widget.share,
-        ),
-      AccountPanel(
-        api: widget.api,
-        t: widget.t,
-        language: widget.language,
-        onChanged: refresh,
-        card: true,
-      ),
       const SizedBox(height: 18),
       FilledButton(
         onPressed: busy ? null : () => widget.navigate('/new'),
@@ -844,16 +847,12 @@ class _DashboardState extends State<Dashboard> {
           spacing: 8,
           runSpacing: 8,
           children: [
-            for (final key in [
-              'planned',
-              'running',
-              'completed',
-              'archived',
-              'trash',
-            ])
+            for (final key in ['current', 'archived', 'trash'])
               ChoiceChip(
                 label: Text(
-                  '${t('games.$key')} (${boards.expand((b) => b['matches'] as List).where((g) => category(g) == key).length})',
+                  key == 'current'
+                      ? t('games.current')
+                      : '${t('games.$key')} (${count(key)})',
                 ),
                 selected: filter == key,
                 onSelected: (_) => setState(() => filter = key),
@@ -862,51 +861,72 @@ class _DashboardState extends State<Dashboard> {
         ),
         const SizedBox(height: 20),
         if (boards.isEmpty) Text(t('dashboard.empty')),
-        if (boards.isNotEmpty &&
-            !boards
-                .expand((b) => b['matches'] as List)
-                .any((g) => category(g) == filter))
+        if (boards.isNotEmpty && shownSections.every((k) => count(k) == 0))
           Padding(
             padding: const EdgeInsets.only(bottom: 16),
             child: Text(t('games.filtered_empty')),
           ),
-        for (final entry in visibleGames)
-          Container(
-            key: ValueKey('match:${entry['game']['match_id']}'),
-            margin: const EdgeInsets.only(bottom: 20),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: const Color(0xff151e2a),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  [
-                    entry['board']['slug'],
-                    if ((entry['board']['creator'] ?? '').isNotEmpty)
-                      t(
-                        'creator.by',
-                      ).replaceAll('{name}', entry['board']['creator']),
-                  ].join(' · '),
+        for (final section in shownSections)
+          if (count(section) > 0) ...[
+            if (filter == 'current')
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Text(
+                  '${t('games.$section')} (${count(section)})',
                   style: const TextStyle(
-                    fontSize: 14,
-                    color: Color(0xffb5c2d4),
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
-                const SizedBox(height: 12),
-                gameCard(entry['board'], entry['game']),
-                if (!(entry['board']['matches'] as List).any(
-                  (g) => category(g) == 'running',
-                ))
-                  OutlinedButton(
-                    onPressed: enabled ? () => newGame(entry['board']) : null,
-                    child: Text(t('game.new')),
-                  ),
-              ],
-            ),
-          ),
+              ),
+            for (final entry in limited(section))
+              Container(
+                key: ValueKey('match:${entry['game']['match_id']}'),
+                margin: const EdgeInsets.only(bottom: 20),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xff151e2a),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      [
+                        entry['board']['slug'],
+                        if ((entry['board']['creator'] ?? '').isNotEmpty)
+                          t(
+                            'creator.by',
+                          ).replaceAll('{name}', entry['board']['creator']),
+                      ].join(' · '),
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Color(0xffb5c2d4),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    gameCard(entry['board'], entry['game']),
+                    if (!(entry['board']['matches'] as List).any(
+                      (g) => category(g) == 'running',
+                    ))
+                      OutlinedButton(
+                        onPressed: enabled
+                            ? () => newGame(entry['board'])
+                            : null,
+                        child: Text(t('game.new')),
+                      ),
+                  ],
+                ),
+              ),
+            if (limited(section).length < count(section))
+              Padding(
+                padding: const EdgeInsets.only(bottom: 20),
+                child: OutlinedButton(
+                  onPressed: () => setState(() => showOlder = true),
+                  child: Text(t('dashboard.show_older')),
+                ),
+              ),
+          ],
         if (boards.any((b) => (b['matches'] as List).isEmpty))
           ExpansionTile(
             title: Text(
@@ -933,6 +953,23 @@ class _DashboardState extends State<Dashboard> {
             ],
           ),
       ],
+      // Below the games: they are what people open this page for.
+      if (widget.origin.isNotEmpty)
+        DeviceLinkCard(
+          api: widget.api,
+          t: widget.t,
+          origin: widget.origin,
+          browsers: browsers,
+          onJoined: joined,
+          share: widget.share,
+        ),
+      AccountPanel(
+        api: widget.api,
+        t: widget.t,
+        language: widget.language,
+        onChanged: refresh,
+        card: true,
+      ),
     ],
   );
 }
