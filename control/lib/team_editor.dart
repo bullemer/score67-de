@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 
 /// Inline roster editor for the console's Team tab: shirt number, optional
-/// name and whether the player is on the court/pitch. Saving sends the squad
-/// first, then the lineup; checked players appear in the left columns.
+/// name and whether the player is on the court/pitch. Entries save themselves
+/// shortly after typing (squad first, then the lineup), a shirt number can only
+/// exist once per team, and rows are ordered by number when a row is left.
 class TeamEditor extends StatefulWidget {
   final Map<String, dynamic> state;
   final String Function(String) t;
@@ -31,31 +34,60 @@ class _Row {
   final TextEditingController number, name;
   final FocusNode focus = FocusNode();
   final GlobalKey key = GlobalKey();
+
+  /// Next on the phone keyboard moves between text fields only: landing on
+  /// the remove button closed the keyboard and lost the typed number.
+  final FocusNode tickFocus = FocusNode(skipTraversal: true);
+  final FocusNode removeFocus = FocusNode(skipTraversal: true);
   bool onCourt;
+
+  /// Focus is somewhere in this row.
+  bool active = false;
+
+  /// What the server has for this row; a refused duplicate falls back to it.
+  bool saved;
+  String savedNumber;
+
+  /// When the number was last typed: among equal numbers the oldest stays.
+  int edited = 0;
   _Row(Map<String, dynamic> p, {this.onCourt = false})
     : id = p['id'] ?? const Uuid().v4(),
       number = TextEditingController(text: p['number'] ?? ''),
-      name = TextEditingController(text: p['name'] ?? '');
+      name = TextEditingController(text: p['name'] ?? ''),
+      saved = p['id'] != null,
+      savedNumber = p['number'] ?? '';
   bool get blank => number.text.trim().isEmpty && name.text.trim().isEmpty;
+  String get normalized {
+    final value = int.tryParse(number.text.trim());
+    return value == null ? '' : '$value';
+  }
+
   void dispose() {
     number.dispose();
     name.dispose();
     focus.dispose();
+    tickFocus.dispose();
+    removeFocus.dispose();
   }
 }
 
 class _Draft {
+  final String team;
   final List<_Row> rows;
   bool dirty = false;
+  int version = 0;
   String error = '';
   String signature;
-  _Draft(this.rows, this.signature);
+  _Draft(this.team, this.rows, this.signature);
 }
 
 class _TeamEditorState extends State<TeamEditor> {
   String team = 'home';
   bool saving = false, pasteOpen = false;
   final drafts = <String, _Draft>{};
+  Timer? autosave;
+  List<Timer> revealTimers = [];
+  int editClock = 0;
   final paste = TextEditingController();
 
   String t(String key) => widget.t(key);
@@ -79,7 +111,7 @@ class _TeamEditorState extends State<TeamEditor> {
         int.tryParse(b['number'] ?? '') ?? 999,
       ),
     );
-    return _Draft([
+    return _Draft(team, [
       for (final p in squad) _Row(p, onCourt: onCourt.contains(p['id'])),
       _Row({}),
     ], signatureOf(team));
@@ -89,7 +121,9 @@ class _TeamEditorState extends State<TeamEditor> {
   _Draft draft(String team) {
     final current = drafts[team];
     if (current != null &&
-        (current.dirty || current.signature == signatureOf(team))) {
+        (current.dirty ||
+            current.signature == signatureOf(team) ||
+            current.rows.any((r) => r.active))) {
       return current;
     }
     for (final row in current?.rows ?? <_Row>[]) {
@@ -99,8 +133,32 @@ class _TeamEditorState extends State<TeamEditor> {
   }
 
   @override
+  void didUpdateWidget(TeamEditor old) {
+    super.didUpdateWidget(old);
+    // Back online: whatever was typed meanwhile goes out now.
+    if (widget.enabled && !old.enabled) {
+      for (final d in drafts.values.where((d) => d.dirty)) {
+        schedule(d);
+      }
+    }
+  }
+
+  @override
   void dispose() {
+    autosave?.cancel();
+    for (final timer in revealTimers) {
+      timer.cancel();
+    }
     for (final d in drafts.values) {
+      // Leaving the tab must not lose what was entered.
+      if (d.dirty) {
+        revertDuplicates(d);
+        final players = <Map<String, dynamic>>[];
+        final onCourt = <String>[];
+        if (collect(d, players, onCourt, hold: false) == null) {
+          unawaited(widget.onSave(d.team, players, onCourt));
+        }
+      }
       for (final row in d.rows) {
         row.dispose();
       }
@@ -110,24 +168,109 @@ class _TeamEditorState extends State<TeamEditor> {
   }
 
   /// Scroll the edited row to the top once the phone keyboard has opened.
-  void reveal(_Row row) =>
-      Future<void>.delayed(const Duration(milliseconds: 400), () {
-        final target = row.key.currentContext;
-        if (target != null && target.mounted) {
-          Scrollable.ensureVisible(
-            target,
-            alignment: 0,
-            duration: const Duration(milliseconds: 150),
-          );
-        }
-      });
+  void reveal(_Row row) {
+    void scroll() {
+      final target = row.key.currentContext;
+      if (target != null && target.mounted) {
+        Scrollable.ensureVisible(
+          target,
+          alignment: 0,
+          duration: const Duration(milliseconds: 150),
+        );
+      }
+    }
+
+    // The keyboard takes a moment to open, longer on slower phones.
+    for (final timer in revealTimers) {
+      timer.cancel();
+    }
+    revealTimers = [
+      Timer(const Duration(milliseconds: 350), scroll),
+      Timer(const Duration(milliseconds: 800), scroll),
+    ];
+  }
+
+  /// Fast entry: Enter/Next goes straight to the empty row at the end.
+  void advance(_Draft d, _Row row) {
+    final next = d.rows.last;
+    if (next.blank && next != row) next.focus.requestFocus();
+  }
 
   void changed(_Draft d) {
     d.dirty = true;
+    d.version++;
     d.error = '';
     // Keep one empty row at the end for fast entry.
     if (!d.rows.last.blank && d.rows.length < 40) d.rows.add(_Row({}));
+    schedule(d);
     setState(() {});
+  }
+
+  void schedule(_Draft d) {
+    autosave?.cancel();
+    autosave = Timer(const Duration(milliseconds: 900), () {
+      if (mounted) save(d, auto: true);
+    });
+  }
+
+  /// Rows repeating a number that an earlier-entered row already has.
+  Set<_Row> duplicates(_Draft d) {
+    final holder = <String, _Row>{};
+    final repeated = <_Row>{};
+    for (final row in d.rows) {
+      final number = row.normalized;
+      if (number.isEmpty) continue;
+      final current = holder[number];
+      if (current == null) {
+        holder[number] = row;
+      } else if (row.edited < current.edited) {
+        repeated.add(current);
+        holder[number] = row;
+      } else {
+        repeated.add(row);
+      }
+    }
+    return repeated;
+  }
+
+  bool revertDuplicates(_Draft d) {
+    final repeated = duplicates(d);
+    for (final row in repeated) {
+      row.number.text = row.savedNumber;
+    }
+    return repeated.isNotEmpty;
+  }
+
+  int rank(_Row row) => int.tryParse(row.normalized) ?? 1000;
+
+  /// By shirt number; players without one follow, empty rows stay at the end.
+  void sortRows(_Draft d) {
+    final filled = d.rows.where((r) => !r.blank).toList();
+    final blanks = d.rows.where((r) => r.blank).toList();
+    final position = {for (final (i, r) in filled.indexed) r: i};
+    filled.sort((a, b) {
+      final order = rank(a).compareTo(rank(b));
+      return order != 0 ? order : position[a]!.compareTo(position[b]!);
+    });
+    d.rows
+      ..clear()
+      ..addAll(filled)
+      ..addAll(blanks);
+  }
+
+  void rowFocus(_Draft d, _Row row, bool focused) {
+    row.active = focused;
+    if (focused) reveal(row);
+    if (focused || !mounted || drafts[d.team] != d) return;
+    final refused = revertDuplicates(d);
+    sortRows(d);
+    if (d.dirty || refused) {
+      changed(d);
+      if (refused) d.error = t('error.duplicate_player');
+      save(d, auto: true);
+    } else {
+      setState(() {});
+    }
   }
 
   void importPaste(_Draft d) {
@@ -157,19 +300,31 @@ class _TeamEditorState extends State<TeamEditor> {
     if (parsed.isEmpty) return;
     d.rows.removeWhere((r) => r.blank);
     d.rows.addAll(parsed);
+    sortRows(d);
     paste.clear();
     pasteOpen = false;
     changed(d);
   }
 
-  Future<void> save(_Draft d) async {
+  /// Fills [players] and [onCourt], returning null when they can be sent.
+  /// Otherwise the translation key of the problem, or '' for "not yet": a
+  /// row still being typed in ([hold]) must not be judged or deleted.
+  String? collect(
+    _Draft d,
+    List<Map<String, dynamic>> players,
+    List<String> onCourt, {
+    required bool hold,
+  }) {
     final numbers = <String>{};
-    final players = <Map<String, dynamic>>[];
-    final onCourt = <String>[];
-    for (final row in d.rows) {
+    final rows = [...d.rows];
+    rows.sort((a, b) => rank(a).compareTo(rank(b)));
+    for (final row in rows) {
       var number = row.number.text.trim();
       final name = row.name.text.trim();
-      if (number.isEmpty && name.isEmpty) continue;
+      if (number.isEmpty && name.isEmpty) {
+        if (hold && row.active && row.saved) return '';
+        continue;
+      }
       String? problem;
       if (basketball && number.isEmpty) {
         problem = 'error.player_number_required';
@@ -181,24 +336,54 @@ class _TeamEditorState extends State<TeamEditor> {
         number = int.parse(number).toString();
         if (!numbers.add(number)) problem = 'error.duplicate_player';
       }
-      if (problem != null) {
-        setState(() => d.error = t(problem!));
-        return;
-      }
+      if (problem != null) return hold && row.active ? '' : problem;
       players.add({'id': row.id, 'number': number, 'name': name});
       if (row.onCourt) onCourt.add(row.id);
     }
+    return null;
+  }
+
+  Future<void> save(_Draft d, {bool auto = false}) async {
+    autosave?.cancel();
+    if (!d.dirty || saving || !widget.enabled) return;
+    if (duplicates(d).isNotEmpty) {
+      if (!auto) setState(() => d.error = t('error.duplicate_player'));
+      return;
+    }
+    final players = <Map<String, dynamic>>[];
+    final onCourt = <String>[];
+    final problem = collect(d, players, onCourt, hold: auto);
+    if (problem != null) {
+      if (problem.isNotEmpty) setState(() => d.error = t(problem));
+      return;
+    }
+    final version = d.version;
+    final sent = [
+      for (final row in d.rows)
+        if (!row.blank) row,
+    ];
+    final numbers = [for (final row in sent) row.normalized];
     setState(() => saving = true);
-    final ok = await widget.onSave(team, players, onCourt);
+    final ok = await widget.onSave(d.team, players, onCourt);
     if (!mounted) return;
     setState(() {
       saving = false;
-      if (ok) {
-        d.dirty = false;
-        drafts.remove(team);
-        for (final row in d.rows) {
-          row.dispose();
-        }
+      if (!ok) return;
+      for (final (i, row) in sent.indexed) {
+        row
+          ..saved = true
+          ..savedNumber = numbers[i];
+      }
+      if (d.version != version) {
+        schedule(d); // typed on while this save was under way
+        return;
+      }
+      d.dirty = false;
+      d.signature = signatureOf(d.team);
+      if (d.rows.any((r) => r.active) || drafts[d.team] != d) return;
+      drafts.remove(d.team);
+      for (final row in d.rows) {
+        row.dispose();
       }
     });
   }
@@ -207,11 +392,16 @@ class _TeamEditorState extends State<TeamEditor> {
   Widget build(BuildContext context) {
     final d = draft(team);
     final checked = d.rows.where((r) => r.onCourt && !r.blank).length;
+    final repeated = duplicates(d);
+    final message = repeated.isNotEmpty ? t('error.duplicate_player') : d.error;
     const dense = InputDecoration(
       isDense: true,
       counterText: '',
       border: OutlineInputBorder(),
       contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+    );
+    const duplicateBorder = OutlineInputBorder(
+      borderSide: BorderSide(color: Colors.orange, width: 2),
     );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -228,7 +418,10 @@ class _TeamEditorState extends State<TeamEditor> {
                       '${widget.state[side]['short']}${drafts[side]?.dirty == true ? ' •' : ''}',
                     ),
                     selected: team == side,
-                    onSelected: (_) => setState(() => team = side),
+                    onSelected: (_) {
+                      FocusManager.instance.primaryFocus?.unfocus();
+                      setState(() => team = side);
+                    },
                   ),
                 ),
               Expanded(
@@ -252,10 +445,10 @@ class _TeamEditorState extends State<TeamEditor> {
             ],
           ),
         ),
-        if (d.error.isNotEmpty)
+        if (message.isNotEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: Text(d.error, style: const TextStyle(color: Colors.orange)),
+            child: Text(message, style: const TextStyle(color: Colors.orange)),
           ),
         Expanded(
           child: ListView(
@@ -265,68 +458,79 @@ class _TeamEditorState extends State<TeamEditor> {
                 Padding(
                   key: row.key,
                   padding: const EdgeInsets.symmetric(vertical: 3),
-                  child: Row(
-                    children: [
-                      Tooltip(
-                        message: t('team.on_court'),
-                        child: Checkbox(
-                          value: row.onCourt,
-                          onChanged:
-                              row.blank || (!row.onCourt && checked >= limit)
+                  child: Focus(
+                    skipTraversal: true,
+                    canRequestFocus: false,
+                    onFocusChange: (focused) => rowFocus(d, row, focused),
+                    child: Row(
+                      children: [
+                        Tooltip(
+                          message: t('team.on_court'),
+                          child: Checkbox(
+                            focusNode: row.tickFocus,
+                            value: row.onCourt,
+                            onChanged:
+                                row.blank || (!row.onCourt && checked >= limit)
+                                ? null
+                                : (value) {
+                                    row.onCourt = value ?? false;
+                                    changed(d);
+                                  },
+                          ),
+                        ),
+                        SizedBox(
+                          width: 64,
+                          child: TextField(
+                            controller: row.number,
+                            focusNode: row.focus,
+                            maxLength: 3,
+                            keyboardType: TextInputType.number,
+                            textInputAction: TextInputAction.next,
+                            decoration: dense.copyWith(
+                              hintText: t('player.number'),
+                              enabledBorder: repeated.contains(row)
+                                  ? duplicateBorder
+                                  : null,
+                              focusedBorder: repeated.contains(row)
+                                  ? duplicateBorder
+                                  : null,
+                            ),
+                            onChanged: (_) {
+                              row.edited = ++editClock;
+                              changed(d);
+                            },
+                            onTap: () => reveal(row),
+                            onEditingComplete: () => advance(d, row),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: TextField(
+                            controller: row.name,
+                            onEditingComplete: () => advance(d, row),
+                            maxLength: 60,
+                            textInputAction: TextInputAction.next,
+                            decoration: dense.copyWith(
+                              hintText: t('player.name'),
+                            ),
+                            onTap: () => reveal(row),
+                            onChanged: (_) => changed(d),
+                          ),
+                        ),
+                        IconButton(
+                          focusNode: row.removeFocus,
+                          tooltip: t('player.remove'),
+                          icon: const Icon(Icons.remove_circle_outline),
+                          onPressed: row.blank && row == d.rows.last
                               ? null
-                              : (value) {
-                                  row.onCourt = value ?? false;
+                              : () {
+                                  d.rows.remove(row);
+                                  if (d.rows.isEmpty) d.rows.add(_Row({}));
                                   changed(d);
                                 },
                         ),
-                      ),
-                      SizedBox(
-                        width: 64,
-                        child: TextField(
-                          controller: row.number,
-                          focusNode: row.focus,
-                          maxLength: 3,
-                          keyboardType: TextInputType.number,
-                          textInputAction: TextInputAction.next,
-                          decoration: dense.copyWith(
-                            hintText: t('player.number'),
-                          ),
-                          onChanged: (_) => changed(d),
-                          onTap: () => reveal(row),
-                          onSubmitted: (_) {
-                            final next = d.rows.indexOf(row) + 1;
-                            if (next < d.rows.length) {
-                              d.rows[next].focus.requestFocus();
-                              reveal(d.rows[next]);
-                            }
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: TextField(
-                          controller: row.name,
-                          maxLength: 60,
-                          textInputAction: TextInputAction.next,
-                          decoration: dense.copyWith(
-                            hintText: t('player.name'),
-                          ),
-                          onTap: () => reveal(row),
-                          onChanged: (_) => changed(d),
-                        ),
-                      ),
-                      IconButton(
-                        tooltip: t('player.remove'),
-                        icon: const Icon(Icons.remove_circle_outline),
-                        onPressed: row.blank && row == d.rows.last
-                            ? null
-                            : () {
-                                d.rows.remove(row);
-                                if (d.rows.isEmpty) d.rows.add(_Row({}));
-                                changed(d);
-                              },
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               TextButton(

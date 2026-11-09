@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'input_dialog.dart';
 
 import 'display_api.dart';
@@ -414,7 +415,9 @@ class _DisplaysDialogState extends State<DisplaysDialog> {
         Expanded(
           child: TextField(
             controller: claim,
-            maxLength: 7,
+            maxLength: 6,
+            // The panel shows "472 913": a typed space must not use up a digit.
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
             keyboardType: TextInputType.number,
             onSubmitted: (_) => claimPanel(),
             decoration: InputDecoration(

@@ -48,6 +48,7 @@ class _SquadDialogState extends State<SquadDialog> {
     rows = widget.players
         .map((p) => _PlayerRow(Map<String, dynamic>.from(p)))
         .toList();
+    rows.sort((a, b) => rank(a).compareTo(rank(b)));
     if (rows.isEmpty) rows.add(_PlayerRow({}));
   }
 
@@ -58,6 +59,21 @@ class _SquadDialogState extends State<SquadDialog> {
     }
     bulk.dispose();
     super.dispose();
+  }
+
+  int rank(_PlayerRow row) => int.tryParse(row.number.text.trim()) ?? 1000;
+
+  /// Warn while typing: a shirt number exists once per team.
+  void numberChanged() {
+    final seen = <int>{};
+    final repeated = rows
+        .map((r) => int.tryParse(r.number.text.trim()))
+        .whereType<int>()
+        .any((n) => !seen.add(n));
+    final message = t('error.duplicate_player');
+    setState(
+      () => error = repeated ? message : (error == message ? '' : error),
+    );
   }
 
   void focusRow(_PlayerRow row) {
@@ -172,6 +188,11 @@ class _SquadDialogState extends State<SquadDialog> {
       }
       players.add({'id': row.id, 'number': number, 'name': name});
     }
+    players.sort(
+      (a, b) => (int.tryParse(a['number']) ?? 1000).compareTo(
+        int.tryParse(b['number']) ?? 1000,
+      ),
+    );
     Navigator.pop(context, players);
   }
 
@@ -228,6 +249,7 @@ class _SquadDialogState extends State<SquadDialog> {
                       autofocus: rows.indexOf(row) == 0,
                       textInputAction: TextInputAction.next,
                       onSubmitted: (_) => addRow(row),
+                      onChanged: (_) => numberChanged(),
                       maxLength: 3,
                       keyboardType: TextInputType.number,
                       decoration: InputDecoration(

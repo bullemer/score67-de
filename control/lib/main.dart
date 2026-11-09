@@ -3190,11 +3190,30 @@ class _Score67State extends State<Score67> {
     t: t,
     enabled: canWrite,
     onSave: (team, players, onCourt) async {
+      String roster(List list) => [
+        for (final p in list) '${p['id']}|${p['number']}|${p['name']}',
+      ].join(',');
       // Squad first: the lineup may only name players in the saved squad.
-      if (!await command('squad', {'team': team, 'players': players})) {
+      if (roster(players) != roster(state[team]['squad'] as List? ?? []) &&
+          !await command('squad', {'team': team, 'players': players})) {
         return false;
       }
-      return command('lineup', {'team': team, 'player_ids': onCourt});
+      // The server may keep an older id for a number already used in fouls.
+      final squad = state[team]['squad'] as List? ?? [];
+      final numberOf = {for (final p in players) p['id']: p['number']};
+      final ids = <String>[
+        for (final id in onCourt)
+          squad.firstWhere(
+                (p) =>
+                    p['id'] == id ||
+                    ((numberOf[id] ?? '') != '' && p['number'] == numberOf[id]),
+                orElse: () => {'id': id},
+              )['id']
+              as String,
+      ];
+      final current = {...(state[team]['on_court'] as List? ?? [])};
+      if (current.length == ids.length && current.containsAll(ids)) return true;
+      return command('lineup', {'team': team, 'player_ids': ids});
     },
   );
 
