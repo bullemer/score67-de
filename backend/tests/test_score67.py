@@ -1022,7 +1022,7 @@ def test_football_console_events_lineup_and_penalty_goal(system):
 
 
 
-def test_cleaner_trashes_abandoned_and_unstarted_games_and_purges(system):
+def test_cleaner_preserves_unstarted_games_and_trashes_abandoned_games(system):
     app, client = system
     hour = 3600
     running = create(client)['slug']
@@ -1044,8 +1044,8 @@ def test_cleaner_trashes_abandoned_and_unstarted_games_and_purges(system):
     game = next(g for b in client.get('/api/dashboard').json()['boards'] if b['slug'] == running for g in b['matches'])
     assert game['trashed'] and game['trash_reason'] == 'abandoned'
     with app.state.sessions() as db:
-        assert clean_matches(db, t0 + 30 * 24 * hour + hour) == (1, 0)  # never-used board, no start time
-    assert state(client, fresh)['phase'] == 'no_match'
+        assert clean_matches(db, t0 + 7 * 24 * hour + hour) == (0, 0)  # preparation does not expire
+    assert state(client, fresh)['phase'] == 'pre_game'
     assert state(client, finished)['phase'] == 'finished'            # finished games are never trashed
     assert state(client, scheduled)['phase'] == 'pre_game'           # start time still in the future
     # Restore counts as activity, so the cleaner does not trash it again at once.
@@ -1059,9 +1059,12 @@ def test_cleaner_trashes_abandoned_and_unstarted_games_and_purges(system):
     # Trash older than the retention period is deleted permanently; the
     # restored game is abandoned again after another quiet day.
     with app.state.sessions() as db:
-        assert clean_matches(db, t0 + 65 * 24 * hour) == (1, 1)
+        assert clean_matches(db, t0 + 40 * 24 * hour) == (1, 0)
     boards = client.get('/api/dashboard').json()['boards']
-    assert not any(g['match_id'] for b in boards if b['slug'] == fresh for g in b['matches'])
+    assert any(g['match_id'] for b in boards if b['slug'] == fresh for g in b['matches'])
+    with app.state.sessions() as db:
+        assert clean_matches(db, 4102444800 + 40 * 86400) == (0, 1)
+    assert state(client, scheduled)['phase'] == 'pre_game'
 
 
 def test_overdue_games_end_automatically(system):

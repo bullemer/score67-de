@@ -106,7 +106,7 @@
   "score_correction": "Tor abgezogen",
   "error.score_zero": "Der Spielstand ist bereits 0.",
   "dashboard": "Meine Scoreboards",
-  "dashboard.device": "Hier findest du die Scoreboards, die dieser Browser als Controller steuern darf, und alle, die mit deiner E-Mail verbunden sind.",
+  "dashboard.device": "Hier findest du die Scoreboards, die dieser Browser als Controller steuern darf, und alle, die mit deiner E-Mail verbunden sind. Nicht gestartete Spiele bleiben gespeichert, bis du sie in den Papierkorb verschiebst. Sichere unten einen Verbindungslink oder verknüpfe deine E-Mail, um deine Anzeigetafeln in einem anderen Browser wiederzufinden.",
   "dashboard.empty": "Noch keine Scoreboards auf diesem Gerät. Lege eines an oder öffne einen vorhandenen Controller-Link und gib die PIN ein.",
   "back": "Zurück",
   "refresh": "Aktualisieren",

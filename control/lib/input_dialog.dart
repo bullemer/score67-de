@@ -29,7 +29,9 @@ class InputDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final compact = MediaQuery.sizeOf(context).height < compactDialogHeight;
+    final media = MediaQuery.of(context);
+    final availableHeight = media.size.height - media.viewInsets.vertical;
+    final compact = availableHeight < compactDialogHeight;
     final theme = Theme.of(context);
     final buttons = Wrap(
       alignment: WrapAlignment.end,
@@ -62,7 +64,7 @@ class InputDialog extends StatelessWidget {
                       child: title,
                     ),
                   ),
-                  if (compact) buttons,
+                  if (compact) Flexible(child: buttons),
                 ],
               ),
             ),

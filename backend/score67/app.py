@@ -326,30 +326,25 @@ def hours_env(name, default):
 
 
 def clean_matches(db, now=None):
-    """Move abandoned and never-started games to the trash; purge old trash.
+    """Move abandoned started games to the trash; purge old trash.
 
     Finished games are never touched, and an abandoned game in which something
     was scored is ended (flagged automatic) instead of trashed: a played game
     must stay under "finished". Returns (trashed, purged)."""
     now = now or time.time()
     stale = hours_env("TRASH_STALE_HOURS", 24)
-    planned = hours_env("TRASH_PLANNED_GRACE_HOURS", 24)
-    unscheduled = hours_env("TRASH_UNSCHEDULED_DAYS", 30) * 24
     retention = hours_env("TRASH_RETENTION_DAYS", 30) * 24
     trashed = purged = 0
     candidates = db.scalars(select(Match).where(Match.deleted_at.is_(None), Match.trashed_at.is_(None),
                                                 Match.archived_at.is_(None))).all()
     for m in candidates:
         phase = m.state.get("phase")
-        if phase == "finished":
+        if phase in ("pre_game", "finished"):
+            # Preparation is durable: only the user can discard an unstarted game.
             continue
         last = db.scalar(select(MatchEvent).where(MatchEvent.match_id == m.id).order_by(MatchEvent.id.desc()).limit(1))
         activity = max(m.created_at, m.touched_at or 0, (last.payload.get("occurred_at", 0) / 1000) if last else 0)
-        if phase == "pre_game":
-            due = (max(m.scheduled_at, m.touched_at or 0) + planned) if m.scheduled_at else activity + unscheduled
-            reason = "not_started"
-        else:
-            due, reason = activity + stale, "abandoned"
+        due, reason = activity + stale, "abandoned"
         if now < due:
             continue
         if reason == "abandoned" and end_played(db, m, now):
