@@ -24,6 +24,9 @@ function links() {
   el('take-control').href = `/s/${encodeURIComponent(document.body.dataset.slug)}/control?lang=${lang}`;
   const controller = document.getElementById('controller-button');
   if (controller) controller.href = el('take-control').href;
+  el('update-app').href = '/update?' + new URLSearchParams({
+    return: location.pathname + location.search + location.hash, lang,
+  });
   labels();
   el('share-whatsapp').href = `https://wa.me/?text=${encodeURIComponent(url)}`;
   el('share-facebook').href = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`;

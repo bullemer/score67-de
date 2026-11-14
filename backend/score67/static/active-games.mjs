@@ -25,6 +25,24 @@ async function refresh() {
       return link;
     }));
     bar.hidden = games.length === 0;
+    const quickstart = document.querySelector('#quickstart-toggle');
+    if (quickstart) {
+      if (games.length) {
+        quickstart.disabled = true;
+        quickstart.dataset.activeBoardBlocked = 'true';
+      } else if (quickstart.dataset.activeBoardBlocked) {
+        quickstart.disabled = false;
+        delete quickstart.dataset.activeBoardBlocked;
+      }
+      quickstart.title = games.length ? words['error.active_scoreboard_exists'] : '';
+      const status = document.querySelector('#quickstart-status');
+      if (games.length) {
+        status.textContent = words['error.active_scoreboard_exists'];
+        status.hidden = false;
+      } else if (status.textContent === words['error.active_scoreboard_exists']) {
+        status.hidden = true;
+      }
+    }
   } catch { /* Keep navigation usable during a temporary connection failure. */ }
   finally { loading = false; }
 }

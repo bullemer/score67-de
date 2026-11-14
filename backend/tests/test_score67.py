@@ -16,7 +16,7 @@ from score67.domain import RuleError, apply, elapsed, initial_state
 
 
 @pytest.fixture
-def system(tmp_path, monkeypatch):
+def system(tmp_path, monkeypatch, request):
     url = os.getenv('TEST_DATABASE_URL', f'sqlite:///{tmp_path}/test.db')
     if not url.startswith('sqlite'):
         # Only disposable test databases may be reset. Never use production here.
@@ -30,7 +30,9 @@ def system(tmp_path, monkeypatch):
     migrations.upgrade(Config(str(Path(__file__).parents[1] / 'alembic.ini')), 'head')
     monkeypatch.setenv('AUTO_CREATE_SCHEMA', 'false')
     monkeypatch.setenv('TRASH_INTERVAL_SECONDS', '0')
-    app = create_app(url, secure_cookies=False)
+    # Existing scenarios deliberately seed multiple legacy boards. Policy tests
+    # opt into the production default via indirect parametrization below.
+    app = create_app(url, secure_cookies=False, single_active_board=getattr(request, 'param', False))
     with TestClient(app) as client:
         yield app, client
 
@@ -2282,3 +2284,50 @@ def test_chat_rate_limit_and_recent_history(system):
     assert len(result.json()['messages']) == 100
     with app.state.sessions() as db:
         assert len(list(db.scalars(select(ChatMessage).where(ChatMessage.slug == slug)))) == 100
+
+
+@pytest.mark.parametrize('system', [True], indirect=True)
+def test_one_unfinished_scoreboard_per_device_until_end_or_trash(system):
+    app, client = system
+    slug = create(client)['slug']
+    blocked = client.post('/api/scoreboards', json={})
+    assert blocked.status_code == 409
+    assert blocked.json()['error'] == 'active_scoreboard_exists'
+    assert command(client, slug, 'archive').status_code == 409
+    other = TestClient(app)
+    other_board = create(other)
+    assert client.post(f"/api/s/{other_board['slug']}/admin/claim", json={'pin': other_board['pin']}).status_code == 409
+    assert command(client, slug, 'game_end').status_code == 200
+    next_slug = create(client)['slug']
+    assert client.get('/api/active-games').json()['games'][0]['slug'] == next_slug
+    assert command(client, slug, 'new_match').status_code == 409
+    assert command(client, slug, 'undo', {'event_id': state(client, slug)['events'][-1]['id']}).status_code == 409
+    assert command(client, next_slug, 'trash').status_code == 200
+    third = create(client)['slug']
+    assert third != next_slug
+    assert len(client.get('/api/dashboard').json()['boards']) == 3
+
+
+@pytest.mark.parametrize('system', [True], indirect=True)
+def test_creation_race_has_only_one_winner_on_known_device(system):
+    app, client = system
+    slug = create(client)['slug']
+    command(client, slug, 'game_end')
+    def attempt(_):
+        tab = TestClient(app)
+        tab.cookies.update(client.cookies)
+        return tab.post('/api/scoreboards', json={}).status_code
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        assert sorted(pool.map(attempt, range(2))) == [201, 409]
+
+
+def test_release_update_page_and_cache_headers(system):
+    _, client = system
+    release = client.get('/api/release')
+    assert release.status_code == 200 and release.json()['version'] == '0.36.0'
+    assert release.headers['cache-control'] == 'no-store'
+    page = client.get('/update?lang=en&return=/dashboard')
+    assert 'Update app' in page.text and 'update.mjs' in page.text
+    assert page.headers['cache-control'] == 'no-store'
+    for path in ['/static/update.mjs', '/i18n/en.json']:
+        assert client.get(path).headers['cache-control'] == 'no-cache'

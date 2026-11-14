@@ -9,11 +9,13 @@ class ActiveGames extends StatefulWidget {
     required this.label,
     required this.navigate,
     required this.child,
+    this.onGamesChanged,
   });
   final Future<dynamic> Function(String) api;
   final String label;
   final void Function(String) navigate;
   final Widget child;
+  final void Function(List<dynamic>)? onGamesChanged;
 
   @override
   State<ActiveGames> createState() => _ActiveGamesState();
@@ -42,7 +44,10 @@ class _ActiveGamesState extends State<ActiveGames> with WidgetsBindingObserver {
     loading = true;
     try {
       final data = await widget.api('/api/active-games');
-      if (mounted) setState(() => games = data['games'] as List);
+      if (mounted) {
+        setState(() => games = data['games'] as List);
+        widget.onGamesChanged?.call(games);
+      }
     } catch (_) {
       // A temporary connection failure should not remove the shortcut.
     } finally {

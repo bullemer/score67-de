@@ -465,7 +465,7 @@ def available_events(events):
     return available
 
 
-def create_app(db_url=None, secure_cookies=None):
+def create_app(db_url=None, secure_cookies=None, *, single_active_board=True):
     secure = secure_cookies if secure_cookies is not None else os.getenv("COOKIE_SECURE", "true").lower() == "true"
     lock = threading.RLock()
     audience = Audience()
@@ -540,6 +540,10 @@ def create_app(db_url=None, secure_cookies=None):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin" if request.url.path == "/location-picker" else "no-referrer"
         if request.url.path.startswith("/api/") or request.url.path.endswith("/control") or request.url.path in ("/", "/new", "/dashboard", "/login", "/settings"):
+            response.headers["Cache-Control"] = "no-store"
+        if request.url.path.startswith(("/app/", "/static/", "/i18n/")):
+            response.headers["Cache-Control"] = "no-cache"
+        if request.url.path == "/update":
             response.headers["Cache-Control"] = "no-store"
         return response
 
@@ -652,6 +656,27 @@ def create_app(db_url=None, secure_cookies=None):
                 raise HTTPException(401, "admin_required")
         admin.last_seen_at = time.time()
         return admin
+
+    def unfinished_device_boards(db, request):
+        slugs = device_slugs(db, request)
+        if not slugs:
+            return []
+        rows = db.scalars(select(Board).join(Match, Board.active_match == Match.id).where(
+            Board.slug.in_(slugs), Match.deleted_at.is_(None), Match.trashed_at.is_(None),
+            Match.archived_at.is_(None), Match.state["phase"].as_string() != "finished")
+            .order_by(Match.touched_at.desc(), Match.created_at.desc(), Board.slug)).all()
+        result = []
+        for b in rows:
+            try:
+                authorize(db, b.slug, request)
+                result.append(b)
+            except HTTPException:
+                pass
+        return result
+
+    def require_free_device(db, request, allowed_slug=None):
+        if single_active_board and any(b.slug != allowed_slug for b in unfinished_device_boards(db, request)):
+            raise HTTPException(409, "active_scoreboard_exists")
 
     def viewer_allowed(db, b, cookies, key):
         """Public boards are open; private ones only to controllers and OBS (overlay key)."""
@@ -779,6 +804,10 @@ def create_app(db_url=None, secure_cookies=None):
             db.execute(select(1))
         return {"status": "ok", "release": os.getenv("RELEASE_SHA", "development")}
 
+    @app.get("/api/release")
+    def release_info():
+        return {**RELEASE, "release": os.getenv("RELEASE_SHA", "development")}
+
     @app.get("/api/sports")
     def sports():
         return [FOOTBALL, BASKETBALL, TENNIS]
@@ -790,8 +819,11 @@ def create_app(db_url=None, secure_cookies=None):
 
     @app.post("/api/scoreboards", status_code=201)
     def create(body: CreateBoard, request: Request, response: Response):
+        with lock, app.state.sessions() as db:
+            require_free_device(db, request)
         logos = fixture_logos(body)
         with lock, app.state.sessions() as db:
+            require_free_device(db, request)
             now = time.time()
             key = "create:" + digest(request.client.host if request.client else "unknown")
             limit = db.get(RateLimit, key)
@@ -989,6 +1021,9 @@ def create_app(db_url=None, secure_cookies=None):
                     b.locked_until, b.failed_count = time.time() + 900, 0
                 db.commit()
                 raise HTTPException(401, "pin_invalid")
+            active = db.get(Match, b.active_match) if b.active_match else None
+            if active and active.state["phase"] != "finished":
+                require_free_device(db, request, slug)
             b.failed_count, b.locked_until = 0, 0
             grant(db, slug, request, response, body.label.strip() or "Browser")
             db.commit()
@@ -1289,10 +1324,13 @@ def create_app(db_url=None, secure_cookies=None):
 
     @app.get("/api/s/{slug}/control-state")
     @app.get("/api/s/{slug}/matches/{match_id}/control-state")
-    def control_state(slug: str, request: Request, match_id: str | None = None):
+    def control_state(slug: str, request: Request, response: Response, match_id: str | None = None):
         with lock, app.state.sessions() as db:
             authorize(db, slug, request)
             result = state(db, board(db, slug), match_id, private=True)
+            if single_active_board and slug not in device_slugs(db, request) and result["phase"] not in ("finished", "no_match"):
+                require_free_device(db, request, slug)
+                grant(db, slug, request, response, "Browser")
             db.commit()
             return result
 
@@ -1336,23 +1374,10 @@ def create_app(db_url=None, secure_cookies=None):
     def active_games(request: Request, response: Response):
         with lock, app.state.sessions() as db:
             adopt_legacy(db, request, response)
-            slugs = device_slugs(db, request)
-            account = current_account(db, request.cookies)
-            if account:
-                slugs += list(db.scalars(select(Board.slug).where(Board.owner_id == account.id)))
             games = []
-            for slug in dict.fromkeys(slugs):
-                try:
-                    authorize(db, slug, request)
-                    b = board(db, slug)
-                except HTTPException:
-                    continue
-                if not b.active_match:
-                    continue
+            for b in unfinished_device_boards(db, request)[:1]:
                 g = state(db, b)
-                if g["archived"] or g["trashed"] or g["phase"] in ("finished", "no_match"):
-                    continue
-                games.append({"slug": slug, "home": g["home"]["name"], "away": g["away"]["name"]})
+                games.append({"slug": b.slug, "home": g["home"]["name"], "away": g["away"]["name"]})
             db.commit()
             return {"games": games}
 
@@ -1565,6 +1590,7 @@ def create_app(db_url=None, secure_cookies=None):
                 if receipt.fingerprint != fingerprint:
                     raise HTTPException(409, "command_reused")
                 return state(db, b, private=True)
+            previous_phase = m.state["phase"]
             management = body.action in ("activate", "archive", "restore", "delete", "schedule", "trash")
             if m.deleted_at:
                 raise HTTPException(410, "match_deleted")
@@ -1576,14 +1602,16 @@ def create_app(db_url=None, secure_cookies=None):
                     if body.data.get("expected_active_match", b.active_match) != b.active_match:
                         raise HTTPException(409, "state_changed")
                     current = db.get(Match, b.active_match) if b.active_match else None
-                    if current and current.id != m.id and current.state["phase"] in ("period_running", "break", "shootout"):
+                    if current and current.id != m.id and current.state["phase"] in (("pre_game", "period_running", "break", "shootout") if single_active_board else ("period_running", "break", "shootout")):
                         raise HTTPException(409, "finish_first")
                     if m.archived_at or m.trashed_at:
                         raise HTTPException(409, "restore_first")
+                    if m.state["phase"] != "finished":
+                        require_free_device(db, request, slug)
                     b.active_match = m.id
                     m.touched_at = time.time()
                 elif body.action in ("archive", "delete"):
-                    if body.action == "archive" and m.state["phase"] in ("period_running", "break", "shootout"):
+                    if body.action == "archive" and m.state["phase"] in (("pre_game", "period_running", "break", "shootout") if single_active_board else ("period_running", "break", "shootout")):
                         raise HTTPException(409, "finish_first")
                     if body.action == "archive":
                         m.archived_at = time.time()
@@ -1608,11 +1636,12 @@ def create_app(db_url=None, secure_cookies=None):
                     m.scheduled_at = value / 1000 if value else None
                     m.touched_at = time.time()
             elif body.action == "new_match":
+                require_free_device(db, request, slug)
                 if m.state["phase"] != "finished":
                     raise HTTPException(409, "finish_first")
                 # A rematch never replaces a game that is running on this board.
                 active = db.get(Match, b.active_match) if b.active_match and b.active_match != m.id else None
-                if active and active.state["phase"] in ("period_running", "break", "shootout"):
+                if active and active.state["phase"] in (("pre_game", "period_running", "break", "shootout") if single_active_board else ("period_running", "break", "shootout")):
                     raise HTTPException(409, "game_running")
                 new = Match(id=str(uuid4()), slug=slug,
                             state=initial_state(m.state["period_count"], m.state["period_length_min"], m.state["sport"], m.state.get("lineup_size")))
@@ -1630,6 +1659,8 @@ def create_app(db_url=None, secure_cookies=None):
                 db.add(new)
                 b.active_match = new.id
             elif body.action == "undo":
+                if m.state["phase"] == "finished":
+                    require_free_device(db, request, slug)
                 last = db.scalar(select(MatchEvent).where(MatchEvent.match_id == m.id, MatchEvent.cancelled == False)
                                  .order_by(MatchEvent.id.desc()).limit(1))
                 if not last or body.data.get("event_id") != last.id:
@@ -1712,6 +1743,8 @@ def create_app(db_url=None, secure_cookies=None):
                         # Ended by the result, not because the game was forgotten.
                         final["decided"] = True
                         db.add(MatchEvent(match_id=m.id, admin_id=admin.id, payload=final, before=before_end))
+            if previous_phase == "finished" and m.state["phase"] != "finished":
+                require_free_device(db, request, slug)
             m.revision += 1
             db.add(Receipt(id=key, fingerprint=fingerprint))
             db.commit()
@@ -2139,13 +2172,17 @@ def create_app(db_url=None, secure_cookies=None):
                              "language": language}
         title = title or (context.get("og") or {}).get("title")
         html = seo.fill(templates.get_template(name).render(context), language, title)
-        if not context.get("overlay") and name != "location-picker.html":
+        if not context.get("overlay") and name not in ("location-picker.html", "update.html"):
             html = html.replace("</head>", '<link rel="stylesheet" href="/static/active-games.css"></head>')
             html = html.replace("</body>", '<script type="module" src="/static/active-games.mjs"></script></body>')
         response = HTMLResponse(html)
         if not index:
             response.headers["X-Robots-Tag"] = "noindex"
         return response
+
+    @app.get("/update", response_class=HTMLResponse)
+    def update_page(request: Request):
+        return page(request, "update.html", index=False)
 
     @app.get("/", response_class=HTMLResponse)
     def landing(request: Request):

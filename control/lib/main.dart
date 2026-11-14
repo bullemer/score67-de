@@ -70,6 +70,7 @@ class _Score67State extends State<Score67> {
   final stopwatch = Stopwatch()..start();
   Map<String, dynamic> words = {}, state = {};
   Map<String, dynamic>? draftLocation;
+  String? activeDeviceSlug;
   String lang = 'en', slug = '', error = '';
   bool dashboardPage = false, loginPage = false, appSettingsPage = false;
   String loginToken = '';
@@ -1753,7 +1754,19 @@ class _Score67State extends State<Score67> {
     );
   }
 
-  Widget createView() => section(t('create'), [
+  Widget createView() => activeDeviceSlug != null
+      ? section(t('create'), [
+          Text(t('error.active_scoreboard_exists')),
+          action(
+            t('resume.controller'),
+            () => navigate('/s/$activeDeviceSlug/control'),
+            primary: true,
+          ),
+          action(t('dashboard'), () => navigate('/dashboard')),
+        ])
+      : createForm();
+
+  Widget createForm() => section(t('create'), [
     if (draftSport != 'tennis')
       FixtureImport(
         api: (path, method, body) => api(path, method: method, body: body),
@@ -4326,6 +4339,24 @@ class _Score67State extends State<Score67> {
     );
   }
 
+  void updateApp() {
+    if (busy || sending || queue.isNotEmpty) {
+      notify(t('update.pending'));
+      return;
+    }
+    final current = Uri.parse(web.window.location.href);
+    web.window.location.assign(
+      Uri(
+        path: '/update',
+        queryParameters: {
+          'return':
+              '${current.path}${current.hasQuery ? '?${current.query}' : ''}${current.hasFragment ? '#${current.fragment}' : ''}',
+          'lang': lang,
+        },
+      ).toString(),
+    );
+  }
+
   Future<void> openMenu(BuildContext buttonContext) async {
     final overlay =
         Overlay.of(buttonContext).context.findRenderObject()! as RenderBox;
@@ -4344,6 +4375,7 @@ class _Score67State extends State<Score67> {
       context: buttonContext,
       position: position,
       items: [
+        PopupMenuItem<String>(enabled: false, child: Text(widget.releaseLabel)),
         // Other controls live in the console tabs (Team, Sharing, LED) and
         // the 🏁 button; settings get a full page, easier in portrait.
         for (final entry in [
@@ -4352,6 +4384,7 @@ class _Score67State extends State<Score67> {
           ('start', Icons.home_outlined, t('menu.start')),
           ('dashboard', Icons.dashboard_outlined, t('dashboard')),
           ('viewer', Icons.visibility_outlined, t('viewer')),
+          ('update', Icons.system_update_alt, t('update.title')),
           ('exit', Icons.logout, t('menu.exit')),
         ])
           PopupMenuItem<String>(
@@ -4369,6 +4402,8 @@ class _Score67State extends State<Score67> {
     if (!mounted || choice == null) return;
     final [kind, ...] = choice.split(':');
     switch (kind) {
+      case 'update':
+        updateApp();
       case 'settings':
         await openSettings();
       case 'app':
@@ -4584,6 +4619,12 @@ class _Score67State extends State<Score67> {
       api: (path) => api(path),
       label: t('resume.controller'),
       navigate: navigate,
+      onGamesChanged: (games) {
+        final next = games.isEmpty ? null : games.first['slug'] as String;
+        if (mounted && next != activeDeviceSlug) {
+          setState(() => activeDeviceSlug = next);
+        }
+      },
       child: Column(
         children: [
           if (slug.isNotEmpty && admin)
