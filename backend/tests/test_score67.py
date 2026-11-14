@@ -2178,3 +2178,107 @@ def test_period_jump_back_and_forward_keeps_entries(system):
     assert reopened['phase'] == 'period_running'
     assert command(client, slug, 'period_set', {'period': 4}).status_code == 422
     assert command(client, slug, 'period_set', {'period': 9}).status_code == 422
+
+
+def test_controller_shortcuts_follow_unfinished_games_and_permissions(system):
+    app, client = system
+    slug = create(client)['slug']
+    assert client.get('/api/active-games').json()['games'] == [
+        {'slug': slug, 'home': 'Home', 'away': 'Guest'}]
+    # Unstarted games remain reachable even after the former 24-hour limit.
+    with app.state.sessions() as db:
+        from score67.db import Match
+        match = db.get(Match, state(client, slug)['match_id'])
+        match.created_at -= 3 * 86400
+        db.commit()
+    assert client.get('/api/active-games').json()['games'][0]['slug'] == slug
+    with TestClient(app) as stranger:
+        assert stranger.get('/api/active-games').json() == {'games': []}
+    for path in ['/', '/features', '/about', '/forum', '/live', '/impressum',
+                 '/datenschutz', f'/s/{slug}', f'/s/{slug}/led']:
+        assert '/static/active-games.mjs' in client.get(path).text
+    assert '/static/active-games.mjs' not in client.get(f'/s/{slug}/overlay').text
+    command(client, slug, 'game_end')
+    assert client.get('/api/active-games').json() == {'games': []}
+    command(client, slug, 'undo', {'event_id': state(client, slug)['events'][-1]['id']})
+    assert client.get('/api/active-games').json()['games'][0]['slug'] == slug
+
+
+def test_watching_now_counts_spectators_but_not_controller_or_reads(system):
+    app, controller = system
+    slug = create(controller)['slug']
+    endpoint = f'/api/s/{slug}/audience'
+    first, second = TestClient(app), TestClient(app)
+    assert first.get(endpoint).json() == {'watching_now': 0}
+    assert controller.post(endpoint, json={}).json() == {'watching_now': 0}
+    assert first.post(endpoint, json={}).json() == {'watching_now': 1}
+    assert first.cookies.get('score67_viewer')
+    assert first.post(endpoint, json={}).json() == {'watching_now': 1}
+    assert second.post(endpoint, json={}).json() == {'watching_now': 2}
+    assert controller.get(endpoint).json() == {'watching_now': 2}
+    assert controller.get(endpoint).headers['cache-control'] == 'no-store'
+    assert 'id="watching-now"' in first.get(f'/s/{slug}').text
+    assert 'id="watching-now"' not in first.get(f'/s/{slug}/overlay').text
+    assert first.post('/api/s/nonexistent/audience', json={}).status_code == 404
+    with app.state.sessions() as db:
+        db.get(Board, slug).private = True
+        db.commit()
+    assert first.post(endpoint, json={}).status_code == 403
+    assert first.get(endpoint).status_code == 403
+    assert controller.get(endpoint).status_code == 200
+
+
+def test_chat_shared_delivery_validation_moderation_and_privacy(system):
+    app, controller = system
+    slug = create(controller)['slug']
+    endpoint = f'/api/s/{slug}/chat'
+    spectator = TestClient(app)
+    assert spectator.get(endpoint).json() == {'messages': []}
+    sent = spectator.post(endpoint, json={'name': ' Fan ', 'text': '<script>alert(1)</script>'})
+    assert sent.status_code == 201, sent.text
+    message = sent.json()['messages'][0]
+    assert message['name'] == 'Fan' and message['controller'] is False
+    assert message['text'] == '<script>alert(1)</script>'
+    assert controller.get(endpoint).json() == sent.json()
+    answer = controller.post(endpoint, json={'name': 'Scorer', 'text': 'Welcome!'}).json()['messages'][-1]
+    assert answer['controller'] is True
+    assert spectator.get(endpoint).json()['messages'][-1] == answer
+    assert spectator.delete(f"{endpoint}/{message['id']}").status_code == 401
+    assert controller.delete(f"{endpoint}/{message['id']}").json()['messages'] == [answer]
+    for body in [{'name': ' ', 'text': 'hi'}, {'name': 'Fan', 'text': ' '},
+                 {'name': 'Fan', 'text': 'a' * 501}, {'name': 'a' * 41, 'text': 'hi'}]:
+        assert spectator.post(endpoint, json=body).status_code == 422
+    assert spectator.post(endpoint, json={'name': 'Fan', 'text': 'Hi'},
+                          headers={'Origin': 'https://unrelated.example'}).status_code == 403
+    other = create(controller)['slug']
+    assert spectator.get(f'/api/s/{other}/chat').json() == {'messages': []}
+    assert controller.delete(f"/api/s/{other}/chat/{answer['id']}").status_code == 404
+    assert 'id="game-chat"' in spectator.get(f'/s/{slug}').text
+    assert 'id="game-chat"' not in spectator.get(f'/s/{slug}/overlay').text
+    with app.state.sessions() as db:
+        db.get(Board, slug).private = True
+        db.commit()
+    assert spectator.get(endpoint).status_code == 403
+    assert spectator.post(endpoint, json={'name': 'Fan', 'text': 'hi'}).status_code == 403
+    assert controller.get(endpoint).status_code == 200
+
+
+def test_chat_rate_limit_and_recent_history(system):
+    app, controller = system
+    slug = create(controller)['slug']
+    endpoint = f'/api/s/{slug}/chat'
+    spectator = TestClient(app)
+    for i in range(10):
+        assert spectator.post(endpoint, json={'name': 'Fan', 'text': str(i)}).status_code == 201
+    assert spectator.post(endpoint, json={'name': 'Fan', 'text': 'too many'}).status_code == 429
+    from score67.db import ChatMessage
+    with app.state.sessions() as db:
+        for i in range(105):
+            db.add(ChatMessage(id=str(uuid4()), slug=slug, name='Old', text=str(i),
+                               controller=False, created_at=i))
+        db.commit()
+    result = controller.post(endpoint, json={'name': 'Scorer', 'text': 'Latest'})
+    assert result.status_code == 201
+    assert len(result.json()['messages']) == 100
+    with app.state.sessions() as db:
+        assert len(list(db.scalars(select(ChatMessage).where(ChatMessage.slug == slug)))) == 100

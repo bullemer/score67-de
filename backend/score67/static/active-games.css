@@ -1,0 +1,5 @@
+.active-games{position:sticky;top:0;z-index:50;display:flex;gap:8px;overflow-x:auto;box-sizing:border-box;padding:8px 12px;background:#142515;font:600 14px/1.4 system-ui,sans-serif}
+.active-games[hidden]{display:none}
+.active-games a{display:block;flex-shrink:0;max-width:85vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:8px 12px;border-radius:8px;background:#b6f36e;color:#111b0c;text-decoration:none}
+.active-games a:focus-visible{outline:3px solid white;outline-offset:2px}
+.viewer-bar{top:var(--active-games-height,0px)}

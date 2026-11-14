@@ -244,6 +244,16 @@ def database(url: str | None = None):
     else:
         with engine.connect() as connection:
             version = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            if version != "0019_saved_teams":
+            if version != "0020_chat":
                 raise RuntimeError("Database schema does not match this release; run migrations first")
     return engine, sessionmaker(engine, expire_on_commit=False)
+
+
+class ChatMessage(Base):
+    __tablename__ = "chat_message"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    slug: Mapped[str] = mapped_column(ForeignKey("scoreboard.slug", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(40))
+    text: Mapped[str] = mapped_column(String(500))
+    controller: Mapped[bool] = mapped_column(Boolean)
+    created_at: Mapped[float] = mapped_column(Float)

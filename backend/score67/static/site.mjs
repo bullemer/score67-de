@@ -96,24 +96,3 @@ if (quickstartToggle) {
     }
   });
 }
-
-// Back to the game in progress, or one set up today and not started yet.
-const resume = document.querySelector('#resume');
-if (resume) (async () => {
-  try {
-    const response = await fetch('/api/dashboard');
-    if (!response.ok) return;
-    const {boards} = await response.json();
-    const games = boards.flatMap(board => board.matches.map(game => ({...game, slug: board.slug})))
-      .filter(game => !game.trashed && !game.archived)
-      .sort((a, b) => b.created_at - a.created_at);
-    const game = games.find(g => ['period_running', 'break', 'shootout'].includes(g.phase))
-      || games.find(g => g.phase === 'pre_game' && Date.now() - g.created_at < 86400000);
-    if (!game) return;
-    const lang = preferredLanguage();
-    const t = await translations(lang).catch(() => ({}));
-    resume.textContent = `${t['resume.title'] || 'Continue'}: ${game.home.name} – ${game.away.name}`;
-    resume.href = `/s/${encodeURIComponent(game.slug)}/control?lang=${lang}`;
-    resume.hidden = false;
-  } catch { /* Only a shortcut: the page works without it. */ }
-})();

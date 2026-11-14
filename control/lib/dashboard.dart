@@ -196,7 +196,7 @@ class _DashboardState extends State<Dashboard> {
     return 'planned';
   }
 
-  static const currentSections = ['running', 'planned', 'completed'];
+  static const currentSections = ['running', 'planned'];
   static const recentFinished = 10;
   int count(String key) => boards
       .expand((b) => b['matches'] as List)
@@ -232,8 +232,11 @@ class _DashboardState extends State<Dashboard> {
     return entries;
   }
 
-  List<String> get shownSections =>
-      filter == 'current' ? currentSections : [filter];
+  List<String> get shownSections => filter == 'current'
+      ? currentSections
+      : filter == 'archived'
+      ? ['completed', 'archived']
+      : [filter];
 
   /// In the combined list only the latest finished games, until asked.
   List<Map<String, dynamic>> limited(String section) {
@@ -852,7 +855,7 @@ class _DashboardState extends State<Dashboard> {
                 label: Text(
                   key == 'current'
                       ? t('games.current')
-                      : '${t('games.$key')} (${count(key)})',
+                      : '${t('games.$key')} (${count(key) + (key == 'archived' ? count('completed') : 0)})',
                 ),
                 selected: filter == key,
                 onSelected: (_) => setState(() => filter = key),

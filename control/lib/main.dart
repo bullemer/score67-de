@@ -12,6 +12,9 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'account.dart';
 import 'app_settings.dart';
 import 'dashboard.dart';
+import 'active_games.dart';
+import 'watching_now.dart';
+import 'chat.dart';
 import 'device_link.dart';
 import 'dates.dart';
 import 'squad.dart';
@@ -2479,8 +2482,15 @@ class _Score67State extends State<Score67> {
     ],
   );
 
+  Widget chatPanel() => GameChat(
+    key: ValueKey('chat:$slug'),
+    slug: slug,
+    t: t,
+    api: (path, method, body) => api(path, method: method, body: body),
+  );
+
   Widget tennisConsole() => DefaultTabController(
-    length: 5,
+    length: 6,
     child: Column(
       children: [
         Row(
@@ -2505,6 +2515,7 @@ class _Score67State extends State<Score67> {
           isScrollable: true,
           tabs: [
             Tab(text: t('tennis.match')),
+            Tab(text: t('chat.title')),
             const Tab(text: 'LED'),
             Tab(text: t('console.sharing')),
             Tab(text: t('console.settings')),
@@ -2527,6 +2538,7 @@ class _Score67State extends State<Score67> {
                 onEditHome: canWrite ? () => editTeam('home') : null,
                 onEditAway: canWrite ? () => editTeam('away') : null,
               ),
+              chatPanel(),
               ledPanel(),
               sharingPanel(),
               tennisSettings(),
@@ -2708,6 +2720,7 @@ class _Score67State extends State<Score67> {
             ],
           ),
         ),
+        (t('chat.title'), chatPanel()),
         (t('console.sharing'), sharingPanel()),
         ('LED', ledPanel()),
         (
@@ -4565,6 +4578,23 @@ class _Score67State extends State<Score67> {
       appBarTheme: const AppBarTheme(
         backgroundColor: Color(0xff0b1018),
         surfaceTintColor: Colors.transparent,
+      ),
+    ),
+    builder: (context, child) => ActiveGames(
+      api: (path) => api(path),
+      label: t('resume.controller'),
+      navigate: navigate,
+      child: Column(
+        children: [
+          if (slug.isNotEmpty && admin)
+            WatchingNow(
+              key: ValueKey(slug),
+              slug: slug,
+              api: (path) => api(path),
+              label: t('watching.now'),
+            ),
+          Expanded(child: child!),
+        ],
       ),
     ),
     home: Builder(

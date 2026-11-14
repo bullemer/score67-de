@@ -22,8 +22,9 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, or_, select
 
+from .audience import Audience
 from . import display_feed, firmware, fixtures, forum, guides, led_messages, mail, preview, seo
-from .db import Account, AccountSession, Admin, Asset, Device, DeviceToken, LoginToken, Board, Display, DisplayAdmin, Match, MatchEvent, RateLimit, Receipt, SavedTeam, database
+from .db import ChatMessage, Account, AccountSession, Admin, Asset, Device, DeviceToken, LoginToken, Board, Display, DisplayAdmin, Match, MatchEvent, RateLimit, Receipt, SavedTeam, database
 from .domain import FOOTBALL, BASKETBALL, TENNIS, RuleError, apply, period_ms, initial_state, normalize_clock, foul_mode, BASKETBALL_STATS, player_statistics, SHORT_MAX, FOOTBALL_EVENTS, shootout_summary
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -467,6 +468,7 @@ def available_events(events):
 def create_app(db_url=None, secure_cookies=None):
     secure = secure_cookies if secure_cookies is not None else os.getenv("COOKIE_SECURE", "true").lower() == "true"
     lock = threading.RLock()
+    audience = Audience()
 
     @asynccontextmanager
     async def lifespan(app):
@@ -1162,6 +1164,88 @@ def create_app(db_url=None, secure_cookies=None):
                 pass
         return {"ok": True}
 
+    class ChatInput(BaseModel):
+        name: str = Field(min_length=1, max_length=40)
+        text: str = Field(min_length=1, max_length=500)
+
+    def chat_messages(db, slug):
+        rows = list(db.scalars(select(ChatMessage).where(ChatMessage.slug == slug)
+                              .order_by(ChatMessage.created_at.desc(), ChatMessage.id.desc()).limit(100)))
+        return {"messages": [{"id": row.id, "name": row.name, "text": row.text,
+                              "controller": row.controller, "created_at": round(row.created_at * 1000)}
+                             for row in reversed(rows)]}
+
+    @app.get("/api/s/{slug}/chat")
+    def read_chat(slug: str, request: Request):
+        with lock, app.state.sessions() as db:
+            public_board(db, slug, request)
+            return chat_messages(db, slug)
+
+    @app.post("/api/s/{slug}/chat", status_code=201)
+    def send_chat(slug: str, body: ChatInput, request: Request, response: Response):
+        name, message = body.name.strip(), body.text.strip()
+        if not name or not message:
+            raise HTTPException(422, "invalid_request")
+        with lock, app.state.sessions() as db:
+            public_board(db, slug, request)
+            now = time.time()
+            token = request.cookies.get("score67_viewer", "")
+            if not re.fullmatch(r"[0-9a-f]{32}", token):
+                token = secrets.token_hex(16)
+                response.set_cookie("score67_viewer", token, httponly=True, secure=secure,
+                                    samesite="lax", path="/")
+            ip = request.client.host if request.client else "unknown"
+            blocked = limited(db, "chat-browser:" + digest(token), 10, 60, now)
+            blocked |= limited(db, "chat-ip:" + digest(ip), 120, 60, now)
+            if blocked:
+                db.commit()
+                raise HTTPException(429, "chat_rate_limit")
+            controller = False
+            try:
+                authorize(db, slug, request)
+                controller = True
+            except HTTPException:
+                pass
+            db.add(ChatMessage(id=str(uuid4()), slug=slug, name=name, text=message,
+                               controller=controller, created_at=now))
+            db.flush()
+            # Keep a bounded recent conversation, including across restarts.
+            old = list(db.scalars(select(ChatMessage).where(ChatMessage.slug == slug)
+                                 .order_by(ChatMessage.created_at.desc(), ChatMessage.id.desc()).offset(100)))
+            for row in old:
+                db.delete(row)
+            db.commit()
+            return chat_messages(db, slug)
+
+    @app.delete("/api/s/{slug}/chat/{message_id}")
+    def delete_chat(slug: str, message_id: str, request: Request):
+        with lock, app.state.sessions() as db:
+            authorize(db, slug, request)
+            row = db.get(ChatMessage, message_id)
+            if not row or row.slug != slug:
+                raise HTTPException(404, "not_found")
+            db.delete(row)
+            db.commit()
+            return chat_messages(db, slug)
+
+    @app.get("/api/s/{slug}/audience")
+    @app.post("/api/s/{slug}/audience")
+    def watching_now(slug: str, request: Request, response: Response):
+        with lock, app.state.sessions() as db:
+            b = public_board(db, slug, request)
+            viewer = None
+            # Controller browsers can read the count but never add themselves.
+            controller = cookie_admin(db, slug, request.cookies)
+            account = current_account(db, request.cookies) if b.owner_id else None
+            if request.method == "POST" and not controller and not (account and account.id == b.owner_id):
+                token = request.cookies.get("score67_viewer", "")
+                if not re.fullmatch(r"[0-9a-f]{32}", token):
+                    token = secrets.token_hex(16)
+                    response.set_cookie("score67_viewer", token, httponly=True, secure=secure,
+                                        samesite="lax", path="/")
+                viewer = digest(token)
+            return {"watching_now": audience.count(slug, viewer)}
+
     @app.get("/api/s/{slug}/state")
     def current_state(slug: str, request: Request):
         with lock, app.state.sessions() as db:
@@ -1247,6 +1331,30 @@ def create_app(db_url=None, secure_cookies=None):
             return {"boards": sorted(boards, key=lambda b: b["created_at"], reverse=True),
                     "account": {"email": account.email} if account else None,
                     "device": {"browsers": browsers}}
+
+    @app.get("/api/active-games")
+    def active_games(request: Request, response: Response):
+        with lock, app.state.sessions() as db:
+            adopt_legacy(db, request, response)
+            slugs = device_slugs(db, request)
+            account = current_account(db, request.cookies)
+            if account:
+                slugs += list(db.scalars(select(Board.slug).where(Board.owner_id == account.id)))
+            games = []
+            for slug in dict.fromkeys(slugs):
+                try:
+                    authorize(db, slug, request)
+                    b = board(db, slug)
+                except HTTPException:
+                    continue
+                if not b.active_match:
+                    continue
+                g = state(db, b)
+                if g["archived"] or g["trashed"] or g["phase"] in ("finished", "no_match"):
+                    continue
+                games.append({"slug": slug, "home": g["home"]["name"], "away": g["away"]["name"]})
+            db.commit()
+            return {"games": games}
 
     def my_saved_teams(db, request):
         device_id = device_of(db, request)
@@ -2030,7 +2138,11 @@ def create_app(db_url=None, secure_cookies=None):
             context["og"] = {"title": words[f"seo.{key}.title"], "description": words.get(f"seo.{key}.description"),
                              "language": language}
         title = title or (context.get("og") or {}).get("title")
-        response = HTMLResponse(seo.fill(templates.get_template(name).render(context), language, title))
+        html = seo.fill(templates.get_template(name).render(context), language, title)
+        if not context.get("overlay") and name != "location-picker.html":
+            html = html.replace("</head>", '<link rel="stylesheet" href="/static/active-games.css"></head>')
+            html = html.replace("</body>", '<script type="module" src="/static/active-games.mjs"></script></body>')
+        response = HTMLResponse(html)
         if not index:
             response.headers["X-Robots-Tag"] = "noindex"
         return response

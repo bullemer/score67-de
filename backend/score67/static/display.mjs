@@ -11,7 +11,11 @@ const el = id => document.getElementById(id);
 const queue = new DelayedStates();
 let state, lang = preferredLanguage(), words = {}, socket, reconnect = 500;
 let serverAt = Date.now(), receivedAt = performance.now(), online = false, pollBusy = false, lastReceived = -1;
-let languageVersion = 0, logSignature = '';
+let languageVersion = 0, logSignature = '', audienceCount = null;
+function renderAudience() {
+  if (!overlay && el('watching-now')) el('watching-now').textContent =
+    (words['watching.now'] || 'Watching now: {n}').replace('{n}', audienceCount ?? '–');
+}
 // Spectator page: simple (score only) or extended (scorers / player points).
 let tickerView = 'simple';
 try { tickerView = localStorage.getItem('score67-ticker-view') || 'simple'; } catch { /* optional */ }
@@ -125,6 +129,7 @@ async function setLanguage(next) {
   const translated = await translations(next);
   if (version !== languageVersion) return;
   lang = next; words = translated;
+  renderAudience();
   document.documentElement.lang = lang;
   document.querySelectorAll('[data-i18n]').forEach(e => e.textContent = words[e.dataset.i18n]);
   if (el('language')) el('language').textContent = lang === 'de' ? 'EN' : 'DE';
@@ -303,3 +308,27 @@ function connect() {
 await poll(); if (!historyMatch) connect();
 setInterval(() => { if (historyMatch || socket?.readyState !== WebSocket.OPEN) poll(); }, 2000);
 setInterval(poll, 15000);
+
+// Only visible spectator pages register presence; OBS and LED feeds never do.
+let audienceBusy = false;
+async function refreshAudience() {
+  if (overlay || document.hidden || audienceBusy) return;
+  audienceBusy = true;
+  try {
+    const response = await fetch(`/api/s/${encodeURIComponent(slug)}/audience`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}',
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!response.ok) return;
+    const data = await response.json();
+    audienceCount = data.watching_now;
+    renderAudience();
+  } catch { audienceCount = null; renderAudience(); }
+  finally { audienceBusy = false; }
+}
+if (!overlay) {
+  refreshAudience();
+  setInterval(refreshAudience, 20000);
+  document.addEventListener('visibilitychange', refreshAudience);
+  window.addEventListener('pageshow', refreshAudience);
+}

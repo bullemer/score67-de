@@ -6,7 +6,7 @@
 {% if private %}{% if not overlay %}<header><a class="brand" href="/">SCORE<span>67</span></a></header>
 <main class="private-notice"><h1>Privates Spiel · Private game</h1><p>Dieses Spiel ist privat und wird nicht öffentlich geteilt.</p><p>This game is private and not shared publicly.</p></main>
 <footer><a href="/live">Live</a><a href="/s/{{ slug }}/control">Controller</a></footer>{% endif %}
-{% else %}{% if not overlay %}<header class="viewer-bar"><a class="brand" href="/">SCORE<span>67</span></a>{% if controller %}<a id="controller-button" class="viewer-controller" href="/s/{{ slug }}/control">Controller</a>{% endif %}<button id="menu-button" aria-haspopup="dialog" aria-expanded="false" aria-controls="menu" data-label="menu.title"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg></button></header>
+{% else %}{% if not overlay %}<header class="viewer-bar"><a class="brand" href="/">SCORE<span>67</span></a>{% if controller %}<a id="controller-button" class="viewer-controller" href="/s/{{ slug }}/control">Controller</a>{% endif %}<a class="viewer-chat-link" href="#game-chat" data-i18n="chat.title">Chat</a><span id="watching-now" class="watching-now" aria-live="polite"></span><button id="menu-button" aria-haspopup="dialog" aria-expanded="false" aria-controls="menu" data-label="menu.title"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg></button></header>
 <div class="ticker-layout">{% endif %}
 <main id="scoreboard" class="scoreboard" hidden>
 <div id="phase" class="phase"></div>
@@ -30,6 +30,16 @@
 <section id="stats" class="detail-card" hidden><h2 data-i18n="ticker.points"></h2><div id="stats-body" class="stats-body"></div><table id="periods" class="period-table"></table></section>
 <section id="match-events" class="match-events detail-card" hidden><h2 data-i18n="log"></h2><ol id="event-list"></ol></section>
 </aside></div>
+<details id="game-chat" class="game-chat">
+<summary data-i18n="chat.title">Chat</summary>
+<div id="chat-messages" class="chat-messages" role="log" aria-live="polite"></div>
+<p id="chat-error" role="status"></p>
+<form id="chat-form">
+<label><span data-i18n="chat.name">Display name</span><input id="chat-name" maxlength="40" required autocomplete="nickname"></label>
+<label><span data-i18n="chat.message">Message</span><textarea id="chat-message" maxlength="500" rows="2" required></textarea></label>
+<button id="chat-send" type="submit" data-i18n="chat.send">Send</button>
+</form></details>
+<script type="module" src="/static/chat.mjs"></script>
 <div id="menu" class="viewer-menu" hidden><div class="menu-sheet" role="dialog" aria-modal="true" aria-labelledby="menu-title">
 <div class="menu-head"><h2 id="menu-title" data-i18n="menu.title"></h2><button id="menu-close" data-label="close"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M19 6.4 17.6 5 12 10.6 6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12z"/></svg></button></div>
 <p id="menu-description" class="menu-description" hidden></p>
