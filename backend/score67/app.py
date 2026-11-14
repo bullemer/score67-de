@@ -1200,13 +1200,13 @@ def create_app(db_url=None, secure_cookies=None, *, single_active_board=True):
         return {"ok": True}
 
     class ChatInput(BaseModel):
-        name: str = Field(min_length=1, max_length=40)
         text: str = Field(min_length=1, max_length=500)
 
     def chat_messages(db, slug):
         rows = list(db.scalars(select(ChatMessage).where(ChatMessage.slug == slug)
                               .order_by(ChatMessage.created_at.desc(), ChatMessage.id.desc()).limit(100)))
-        return {"messages": [{"id": row.id, "name": row.name, "text": row.text,
+        return {"server_now": round(time.time() * 1000),
+                "messages": [{"id": row.id, "name": "", "text": row.text,
                               "controller": row.controller, "created_at": round(row.created_at * 1000)}
                              for row in reversed(rows)]}
 
@@ -1218,8 +1218,8 @@ def create_app(db_url=None, secure_cookies=None, *, single_active_board=True):
 
     @app.post("/api/s/{slug}/chat", status_code=201)
     def send_chat(slug: str, body: ChatInput, request: Request, response: Response):
-        name, message = body.name.strip(), body.text.strip()
-        if not name or not message:
+        message = body.text.strip()
+        if not message:
             raise HTTPException(422, "invalid_request")
         with lock, app.state.sessions() as db:
             public_board(db, slug, request)
@@ -1241,7 +1241,7 @@ def create_app(db_url=None, secure_cookies=None, *, single_active_board=True):
                 controller = True
             except HTTPException:
                 pass
-            db.add(ChatMessage(id=str(uuid4()), slug=slug, name=name, text=message,
+            db.add(ChatMessage(id=str(uuid4()), slug=slug, name="", text=message,
                                controller=controller, created_at=now))
             db.flush()
             # Keep a bounded recent conversation, including across restarts.

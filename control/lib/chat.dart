@@ -1,5 +1,19 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'dates.dart';
+
+String chatAge(int createdAt, int now, String Function(String) t) {
+  final seconds = ((now - createdAt) ~/ 1000).clamp(0, 2147483647);
+  if (seconds == 0) return t('chat.age.now');
+  final (key, count) = seconds < 60
+      ? ('seconds', seconds)
+      : seconds < 3600
+      ? ('minutes', seconds ~/ 60)
+      : seconds < 86400
+      ? ('hours', seconds ~/ 3600)
+      : (seconds < 172800 ? 'day' : 'days', seconds ~/ 86400);
+  return t('chat.age.$key').replaceAll('{n}', '$count');
+}
 
 class GameChat extends StatefulWidget {
   const GameChat({
@@ -16,11 +30,16 @@ class GameChat extends StatefulWidget {
 }
 
 class _GameChatState extends State<GameChat> {
-  final name = TextEditingController();
   final message = TextEditingController();
   final scroll = ScrollController();
   List<dynamic> messages = [];
   Timer? timer;
+  final sinceResponse = Stopwatch();
+  int? serverAt;
+  int ticks = 0;
+  int get now => serverAt == null
+      ? DateTime.now().millisecondsSinceEpoch
+      : serverAt! + sinceResponse.elapsedMilliseconds;
   bool sending = false, polling = false;
   int version = 0;
   String error = '';
@@ -29,16 +48,22 @@ class _GameChatState extends State<GameChat> {
   @override
   void initState() {
     super.initState();
-    name.text = widget.t('control');
     refresh();
-    timer = Timer.periodic(const Duration(seconds: 3), (_) {
-      if (TickerMode.of(context)) refresh();
+    timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!TickerMode.of(context)) return;
+      setState(() {});
+      if (++ticks % 3 == 0) refresh();
     });
   }
 
   void receive(dynamic data) {
     final atBottom = !scroll.hasClients || scroll.position.extentAfter < 60;
     setState(() {
+      serverAt =
+          data['server_now'] as int? ?? DateTime.now().millisecondsSinceEpoch;
+      sinceResponse
+        ..reset()
+        ..start();
       messages = data['messages'] as List;
       error = '';
     });
@@ -69,8 +94,7 @@ class _GameChatState extends State<GameChat> {
 
   Future<void> write({String? remove}) async {
     if (sending) return;
-    if (remove == null &&
-        (name.text.trim().isEmpty || message.text.trim().isEmpty)) {
+    if (remove == null && message.text.trim().isEmpty) {
       return;
     }
     version++;
@@ -82,9 +106,7 @@ class _GameChatState extends State<GameChat> {
       final data = await widget.api(
         remove == null ? path : '$path/$remove',
         remove == null ? 'POST' : 'DELETE',
-        remove == null
-            ? {'name': name.text.trim(), 'text': message.text.trim()}
-            : null,
+        remove == null ? {'text': message.text.trim()} : null,
       );
       if (!mounted) return;
       if (remove == null) message.clear();
@@ -99,7 +121,6 @@ class _GameChatState extends State<GameChat> {
   @override
   void dispose() {
     timer?.cancel();
-    name.dispose();
     message.dispose();
     scroll.dispose();
     super.dispose();
@@ -118,12 +139,19 @@ class _GameChatState extends State<GameChat> {
                   itemCount: messages.length,
                   itemBuilder: (context, index) {
                     final row = messages[index];
+                    final created = DateTime.fromMillisecondsSinceEpoch(
+                      row['created_at'] as int,
+                    );
                     return ListTile(
                       dense: true,
-                      title: Text(
-                        '${row['name']}${row['controller'] == true ? ' · ${widget.t('control')}' : ''}',
+                      title: Text(row['text'] as String),
+                      subtitle: Tooltip(
+                        message:
+                            '${europeanDate(created)} ${europeanTime(created)}',
+                        child: Text(
+                          '${chatAge(row['created_at'] as int, now, widget.t)}${row['controller'] == true ? ' · ${widget.t('control')}' : ''}',
+                        ),
                       ),
-                      subtitle: Text(row['text'] as String),
                       trailing: IconButton(
                         tooltip: widget.t('chat.delete'),
                         icon: const Icon(Icons.delete_outline, size: 18),
@@ -140,18 +168,6 @@ class _GameChatState extends State<GameChat> {
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SizedBox(
-              width: 110,
-              child: TextField(
-                controller: name,
-                maxLength: 40,
-                decoration: InputDecoration(
-                  labelText: widget.t('chat.name'),
-                  counterText: '',
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
             Expanded(
               child: TextField(
                 controller: message,

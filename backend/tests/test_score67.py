@@ -2235,27 +2235,29 @@ def test_chat_shared_delivery_validation_moderation_and_privacy(system):
     slug = create(controller)['slug']
     endpoint = f'/api/s/{slug}/chat'
     spectator = TestClient(app)
-    assert spectator.get(endpoint).json() == {'messages': []}
-    sent = spectator.post(endpoint, json={'name': ' Fan ', 'text': '<script>alert(1)</script>'})
+    assert spectator.get(endpoint).json()['messages'] == []
+    sent = spectator.post(endpoint, json={'text': '<script>alert(1)</script>'})
     assert sent.status_code == 201, sent.text
     message = sent.json()['messages'][0]
-    assert message['name'] == 'Fan' and message['controller'] is False
+    assert message['name'] == '' and message['controller'] is False
+    assert 0 <= sent.json()['server_now'] - message['created_at'] < 1000
     assert message['text'] == '<script>alert(1)</script>'
-    assert controller.get(endpoint).json() == sent.json()
+    assert controller.get(endpoint).json()['messages'] == sent.json()['messages']
     answer = controller.post(endpoint, json={'name': 'Scorer', 'text': 'Welcome!'}).json()['messages'][-1]
     assert answer['controller'] is True
     assert spectator.get(endpoint).json()['messages'][-1] == answer
     assert spectator.delete(f"{endpoint}/{message['id']}").status_code == 401
     assert controller.delete(f"{endpoint}/{message['id']}").json()['messages'] == [answer]
-    for body in [{'name': ' ', 'text': 'hi'}, {'name': 'Fan', 'text': ' '},
-                 {'name': 'Fan', 'text': 'a' * 501}, {'name': 'a' * 41, 'text': 'hi'}]:
+    assert answer['name'] == ''  # Older clients may still send a name; it is ignored.
+    for body in [{'text': ' '}, {'text': 'a' * 501}, {}]:
         assert spectator.post(endpoint, json=body).status_code == 422
     assert spectator.post(endpoint, json={'name': 'Fan', 'text': 'Hi'},
                           headers={'Origin': 'https://unrelated.example'}).status_code == 403
     other = create(controller)['slug']
-    assert spectator.get(f'/api/s/{other}/chat').json() == {'messages': []}
+    assert spectator.get(f'/api/s/{other}/chat').json()['messages'] == []
     assert controller.delete(f"/api/s/{other}/chat/{answer['id']}").status_code == 404
     assert 'id="game-chat"' in spectator.get(f'/s/{slug}').text
+    assert 'id="chat-name"' not in spectator.get(f'/s/{slug}').text
     assert 'id="game-chat"' not in spectator.get(f'/s/{slug}/overlay').text
     with app.state.sessions() as db:
         db.get(Board, slug).private = True
@@ -2324,7 +2326,9 @@ def test_creation_race_has_only_one_winner_on_known_device(system):
 def test_release_update_page_and_cache_headers(system):
     _, client = system
     release = client.get('/api/release')
-    assert release.status_code == 200 and release.json()['version'] == '0.36.0'
+    import tomllib
+    version = tomllib.loads((Path(__file__).parents[1] / 'pyproject.toml').read_text())['project']['version']
+    assert release.status_code == 200 and release.json()['version'] == version
     assert release.headers['cache-control'] == 'no-store'
     page = client.get('/update?lang=en&return=/dashboard')
     assert 'Update app' in page.text and 'update.mjs' in page.text

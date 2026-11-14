@@ -1,12 +1,23 @@
 import {preferredLanguage, translations} from './common.mjs';
+import {chatAge} from './chat-time.mjs';
 const el = id => document.getElementById(id);
 const panel = el('game-chat');
 const endpoint = `/api/s/${encodeURIComponent(document.body.dataset.slug)}/chat`;
 let words = {}, sending = false, polling = false, version = 0, signature = '';
 const t = key => words[key] || key;
-try { el('chat-name').value = localStorage.getItem('score67-chat-name') || ''; } catch { /* Optional. */ }
+let serverAt = Date.now(), receivedAt = performance.now();
+function updateTimes() {
+  const now = serverAt + performance.now() - receivedAt;
+  panel.querySelectorAll('time[data-created]').forEach(time => {
+    const text = chatAge(Number(time.dataset.created), now, t);
+    if (time.textContent !== text) time.textContent = text;
+  });
+}
 async function translate() { words = await translations(preferredLanguage()); }
 function show(data) {
+  serverAt = data.server_now ?? Date.now();
+  receivedAt = performance.now();
+  updateTimes();
   const next = JSON.stringify(data.messages);
   if (next === signature) return;
   signature = next;
@@ -14,13 +25,21 @@ function show(data) {
   const atBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 60;
   list.replaceChildren(...data.messages.map(message => {
     const row = document.createElement('p');
-    const name = document.createElement('strong');
-    name.textContent = message.name + (message.controller ? ` · ${t('control')}` : '');
+    const meta = document.createElement('small');
+    const time = document.createElement('time');
+    const date = new Date(message.created_at);
+    time.dataset.created = String(message.created_at);
+    time.setAttribute('aria-live', 'off');
+    time.dateTime = date.toISOString();
+    time.title = date.toLocaleString();
+    meta.append(time);
+    if (message.controller) meta.append(document.createTextNode(` · ${t('control')}`));
     const body = document.createElement('span');
     body.textContent = message.text;
-    row.append(name, document.createElement('br'), body);
+    row.append(body, document.createElement('br'), meta);
     return row;
   }));
+  updateTimes();
   if (!data.messages.length) list.textContent = t('chat.empty');
   if (atBottom) list.scrollTop = list.scrollHeight;
 }
@@ -39,20 +58,19 @@ async function refresh() {
 }
 el('chat-form').addEventListener('submit', async event => {
   event.preventDefault();
-  const name = el('chat-name').value.trim(), text = el('chat-message').value.trim();
-  if (sending || !name || !text) return;
+  const text = el('chat-message').value.trim();
+  if (sending || !text) return;
   sending = true; version++;
   el('chat-send').disabled = true;
   el('chat-message').disabled = true;
   try {
     await translate();
     const response = await fetch(endpoint, {method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({name, text}), signal: AbortSignal.timeout(10000)});
+      body: JSON.stringify({text}), signal: AbortSignal.timeout(10000)});
     if (!response.ok) throw new Error();
     show(await response.json());
     el('chat-message').value = '';
     el('chat-error').textContent = '';
-    try { localStorage.setItem('score67-chat-name', name); } catch { /* Optional. */ }
   } catch { el('chat-error').textContent = t('chat.send_error'); }
   finally { sending = false; el('chat-send').disabled = false; el('chat-message').disabled = false; }
 });
@@ -60,3 +78,5 @@ document.querySelector('.viewer-chat-link').addEventListener('click', () => { pa
 panel.addEventListener('toggle', refresh);
 document.addEventListener('visibilitychange', refresh);
 setInterval(refresh, 3000);
+
+setInterval(() => { if (panel.open && !document.hidden) updateTimes(); }, 1000);
