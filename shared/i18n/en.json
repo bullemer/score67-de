@@ -127,6 +127,8 @@
   "game.reschedule": "Change date",
   "game.archive": "Archive",
   "game.restore": "Restore",
+  "game.cancel": "Cancel game",
+  "game.cancel.confirm": "Cancel this game and move it to the trash? It will not be marked as finished. You can restore it from the trash for 30 days.",
   "game.delete": "Move to trash",
   "game.archive.confirm": "Archive this game? You can restore it later. If its result is currently on stream, it will be hidden.",
   "game.delete.confirm": "Delete this game permanently? It cannot be restored.",

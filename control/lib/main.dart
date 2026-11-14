@@ -2480,6 +2480,7 @@ class _Score67State extends State<Score67> {
                 }
               : null,
         ),
+      if (state['phase'] != 'finished') cancelGameButton(),
       if (state['phase'] == 'finished')
         action(
           t('new_match'),
@@ -3486,6 +3487,25 @@ class _Score67State extends State<Score67> {
     }
   }
 
+  Future<void> cancelGame() async {
+    if (!canWrite || state['match_id'] == null || state['phase'] == 'finished') {
+      return;
+    }
+    final matchId = state['match_id'];
+    if (!await confirm(t('game.cancel.confirm')) || !mounted) return;
+    if (state['match_id'] != matchId || state['phase'] == 'finished') {
+      notify(t('error.state_changed'));
+      return;
+    }
+    if (await command('trash') && mounted) navigate('/dashboard');
+  }
+
+  Widget cancelGameButton() => OutlinedButton.icon(
+    icon: const Icon(Icons.delete_outline),
+    label: Text(t('game.cancel')),
+    onPressed: canWrite ? cancelGame : null,
+  );
+
   Widget footballPeriodPanel() {
     final phase = state['phase'];
     final last = state['period'] >= state['period_count'];
@@ -3553,6 +3573,7 @@ class _Score67State extends State<Score67> {
               }
             },
           ),
+        if (phase != 'finished') cancelGameButton(),
         if (phase == 'finished')
           action(
             t('new_match'),
@@ -3674,6 +3695,7 @@ class _Score67State extends State<Score67> {
                 : null,
             primary: finalBreak && !tied,
           ),
+        if (phase != 'finished') cancelGameButton(),
         if (phase == 'finished')
           action(
             t('new_match'),

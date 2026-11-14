@@ -127,6 +127,8 @@
   "game.reschedule": "Termin ändern",
   "game.archive": "Archivieren",
   "game.restore": "Wiederherstellen",
+  "game.cancel": "Spiel abbrechen",
+  "game.cancel.confirm": "Dieses Spiel abbrechen und in den Papierkorb verschieben? Es wird nicht als beendet gewertet. Du kannst es 30 Tage lang aus dem Papierkorb wiederherstellen.",
   "game.delete": "In den Papierkorb",
   "game.archive.confirm": "Dieses Spiel archivieren? Du kannst es später im Archiv wiederherstellen. Ein aktuell angezeigtes Ergebnis wird aus dem Stream ausgeblendet.",
   "game.delete.confirm": "Dieses Spiel endgültig löschen? Es lässt sich nicht wiederherstellen.",
