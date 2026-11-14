@@ -106,7 +106,7 @@
   "score_correction": "Goal removed",
   "error.score_zero": "The score is already 0.",
   "dashboard": "My scoreboards",
-  "dashboard.device": "Here are the scoreboards this browser may run as Controller, plus all scoreboards linked to your email.",
+  "dashboard.device": "Here are the scoreboards this browser may run as Controller, plus all scoreboards linked to your email. Unstarted games stay saved until you move them to trash. Use a connection link or link your email below to recover your boards in another browser.",
   "dashboard.empty": "No scoreboards on this device yet. Create one, or open an existing Controller link and enter its PIN.",
   "back": "Back",
   "refresh": "Refresh",

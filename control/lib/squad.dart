@@ -202,7 +202,9 @@ class _SquadDialogState extends State<SquadDialog> {
     content: SizedBox(
       width: 520,
       height: math.min(
-        MediaQuery.sizeOf(context).height * .55,
+        (MediaQuery.sizeOf(context).height -
+                MediaQuery.viewInsetsOf(context).vertical) *
+            .55,
         150.0 + rows.length * 76 + (bulkOpen ? 180 : 0),
       ),
       child: ListView(
