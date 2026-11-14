@@ -25,8 +25,13 @@ void main() {
         home: Scaffold(
           body: GameChat(
             slug: 'board',
-            t: (key) => key == 'chat.age.seconds' ? '{n} sec ago' : key,
+            t: (key) => key == 'chat.age.seconds'
+                ? '{n} sec ago'
+                : key == 'watching.now'
+                ? 'Watching now: {n}'
+                : key,
             api: (path, method, body) async {
+              if (path.endsWith('/audience')) return {'watching_now': 2};
               if (method == 'POST') {
                 expect(path, '/api/s/board/chat');
                 expect(body, {'text': 'Welcome'});
@@ -52,6 +57,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('Hello'), findsOneWidget);
+    expect(find.text('Watching now: 2'), findsOneWidget);
     expect(find.byType(TextField), findsOneWidget);
     expect(find.text('4 sec ago'), findsOneWidget);
     await tester.enterText(find.byType(TextField).last, 'Welcome');

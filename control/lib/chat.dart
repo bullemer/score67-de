@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'dates.dart';
+import 'watching_now.dart';
 
 String chatAge(int createdAt, int now, String Function(String) t) {
   final seconds = ((now - createdAt) ~/ 1000).clamp(0, 2147483647);
@@ -131,6 +132,12 @@ class _GameChatState extends State<GameChat> {
     padding: const EdgeInsets.all(8),
     child: Column(
       children: [
+        WatchingNow(
+          key: ValueKey(widget.slug),
+          slug: widget.slug,
+          api: (path) => widget.api(path, 'GET', null),
+          label: widget.t('watching.now'),
+        ),
         Expanded(
           child: messages.isEmpty
               ? Center(child: Text(widget.t('chat.empty')))

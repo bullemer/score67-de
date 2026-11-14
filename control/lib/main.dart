@@ -13,7 +13,6 @@ import 'account.dart';
 import 'app_settings.dart';
 import 'dashboard.dart';
 import 'active_games.dart';
-import 'watching_now.dart';
 import 'chat.dart';
 import 'device_link.dart';
 import 'dates.dart';
@@ -4616,6 +4615,7 @@ class _Score67State extends State<Score67> {
       ),
     ),
     builder: (context, child) => ActiveGames(
+      showBanner: slug.isEmpty,
       api: (path) => api(path),
       label: t('resume.controller'),
       navigate: navigate,
@@ -4625,18 +4625,7 @@ class _Score67State extends State<Score67> {
           setState(() => activeDeviceSlug = next);
         }
       },
-      child: Column(
-        children: [
-          if (slug.isNotEmpty && admin)
-            WatchingNow(
-              key: ValueKey(slug),
-              slug: slug,
-              api: (path) => api(path),
-              label: t('watching.now'),
-            ),
-          Expanded(child: child!),
-        ],
-      ),
+      child: child!,
     ),
     home: Builder(
       builder: (context) => Listener(

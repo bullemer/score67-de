@@ -10,11 +10,13 @@ class ActiveGames extends StatefulWidget {
     required this.navigate,
     required this.child,
     this.onGamesChanged,
+    this.showBanner = true,
   });
   final Future<dynamic> Function(String) api;
   final String label;
   final void Function(String) navigate;
   final Widget child;
+  final bool showBanner;
   final void Function(List<dynamic>)? onGamesChanged;
 
   @override
@@ -65,7 +67,7 @@ class _ActiveGamesState extends State<ActiveGames> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) => Column(
     children: [
-      if (games.isNotEmpty)
+      if (widget.showBanner && games.isNotEmpty)
         Material(
           color: const Color(0xff142515),
           child: SafeArea(
