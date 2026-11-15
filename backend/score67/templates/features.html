@@ -4,7 +4,26 @@
 {% include "_og.html" %}<link rel="stylesheet" href="/static/display.css"><link rel="stylesheet" href="/static/site.css"></head>
 <body class="site-page">{% include "_site_header.html" %}
 <main><p class="eyebrow" data-i18n="features.eyebrow"></p><h1 data-i18n="features.title"></h1><p data-i18n="features.intro"></p>
+<section class="controller-gallery" aria-labelledby="gallery-title">
+<h2 id="gallery-title" data-i18n="features.gallery.title"></h2>
+<p data-i18n="features.gallery.text"></p>
+<div class="controller-shots">
+<figure><a href="/static/features/scoring-{{ lang }}.webp" target="_blank" rel="noopener"><img src="/static/features/scoring-{{ lang }}.webp" width="1280" height="720" loading="lazy" decoding="async" alt="{{ 'Scoring and game flow' if lang == 'en' else 'Punkte und Spielverlauf' }}"></a><figcaption data-i18n="features.gallery.scoring"></figcaption></figure>
+<figure><a href="/static/features/squad-{{ lang }}.webp" target="_blank" rel="noopener"><img src="/static/features/squad-{{ lang }}.webp" width="1280" height="720" loading="lazy" decoding="async" alt="{{ 'Teams and lineups' if lang == 'en' else 'Teams und Aufstellung' }}"></a><figcaption data-i18n="features.gallery.squad"></figcaption></figure>
+<figure><a href="/static/features/period-{{ lang }}.webp" target="_blank" rel="noopener"><img src="/static/features/period-{{ lang }}.webp" width="1280" height="720" loading="lazy" decoding="async" alt="{{ 'Periods, clock and cancelling a game' if lang == 'en' else 'Perioden, Spielzeit und Spielabbruch' }}"></a><figcaption data-i18n="features.gallery.period"></figcaption></figure>
+<figure><a href="/static/features/chat-{{ lang }}.webp" target="_blank" rel="noopener"><img src="/static/features/chat-{{ lang }}.webp" width="1280" height="720" loading="lazy" decoding="async" alt="{{ 'Chat, timestamps and live viewers' if lang == 'en' else 'Chat, Zeitangaben und Zuschauerzahl' }}"></a><figcaption data-i18n="features.gallery.chat"></figcaption></figure>
+<figure><a href="/static/features/share-{{ lang }}.webp" target="_blank" rel="noopener"><img src="/static/features/share-{{ lang }}.webp" width="1280" height="720" loading="lazy" decoding="async" alt="{{ 'Sharing the game' if lang == 'en' else 'Spiel teilen' }}"></a><figcaption data-i18n="features.gallery.share"></figcaption></figure>
+<figure><a href="/static/features/led-{{ lang }}.webp" target="_blank" rel="noopener"><img src="/static/features/led-{{ lang }}.webp" width="1280" height="720" loading="lazy" decoding="async" alt="{{ 'LED displays' if lang == 'en' else 'LED-Anzeigen' }}"></a><figcaption data-i18n="features.gallery.led"></figcaption></figure>
+<figure><a href="/static/features/boxscore-{{ lang }}.webp" target="_blank" rel="noopener"><img src="/static/features/boxscore-{{ lang }}.webp" width="1280" height="720" loading="lazy" decoding="async" alt="{{ 'Player box score' if lang == 'en' else 'Spielerstatistik' }}"></a><figcaption data-i18n="features.gallery.boxscore"></figcaption></figure>
+<figure><a href="/static/features/menu-{{ lang }}.webp" target="_blank" rel="noopener"><img src="/static/features/menu-{{ lang }}.webp" width="1280" height="720" loading="lazy" decoding="async" alt="{{ 'Controller menu and app updates' if lang == 'en' else 'Controller-Menü und App-Updates' }}"></a><figcaption data-i18n="features.gallery.menu"></figcaption></figure>
+<figure><a href="/static/features/football-{{ lang }}.webp" target="_blank" rel="noopener"><img src="/static/features/football-{{ lang }}.webp" width="1280" height="720" loading="lazy" decoding="async" alt="{{ 'Football controller' if lang == 'en' else 'Fußball-Controller' }}"></a><figcaption data-i18n="features.gallery.football"></figcaption></figure>
+<figure><a href="/static/features/tennis-{{ lang }}.webp" target="_blank" rel="noopener"><img src="/static/features/tennis-{{ lang }}.webp" width="1280" height="720" loading="lazy" decoding="async" alt="{{ 'Tennis controller' if lang == 'en' else 'Tennis-Controller' }}"></a><figcaption data-i18n="features.gallery.tennis"></figcaption></figure>
+</div></section>
 <div class="feature-grid">
+<section class="feature"><h2 data-i18n="features.update.title"></h2><p data-i18n="features.update.text"></p></section>
+<section class="feature"><h2 data-i18n="features.tennis.title"></h2><p data-i18n="features.tennis.text"></p></section>
+<section class="feature"><h2 data-i18n="features.audience.title"></h2><p data-i18n="features.audience.text"></p></section>
+<section class="feature"><h2 data-i18n="features.chat.title"></h2><p data-i18n="features.chat.text"></p></section>
 <section class="feature"><h2 data-i18n="features.scoring.title"></h2><p data-i18n="features.scoring.text"></p><a class="feature-more" href="/basketball-liveticker" data-link="/basketball-liveticker" data-i18n="features.more">Mehr erfahren →</a></section>
 <section class="feature"><h2 data-i18n="features.clock.title"></h2><p data-i18n="features.clock.text"></p></section>
 <section class="feature"><h2 data-i18n="features.boxscore.title"></h2><p data-i18n="features.boxscore.text"></p><a class="feature-more" href="/basketball-liveticker" data-link="/basketball-liveticker" data-i18n="features.more">Mehr erfahren →</a></section>

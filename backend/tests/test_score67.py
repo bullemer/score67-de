@@ -1528,7 +1528,7 @@ def test_pages_are_readable_without_javascript_and_listed_for_search(system):
     assert '<link rel="canonical" href="http://testserver/">' in landing and 'hreflang="en"' in landing
     assert 'application/ld+json' in landing and 'Navisense GmbH' in landing
     english = client.get('/features?lang=en').text
-    assert 'lang="en"' in english and 'Features: live ticker' in english and '?lang=en">' in english
+    assert 'lang="en"' in english and 'Score67 Features: Live Scoreboards, Chat' in english and '?lang=en">' in english
     # Games, the Flutter app and moderation stay out of search results.
     slug = create(client)['slug']
     assert '<meta name="robots" content="noindex">' in client.get(f'/s/{slug}').text
