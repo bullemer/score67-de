@@ -1,20 +1,37 @@
-# Score67
+# Score67 — Live Sports Scoreboard & OBS Overlays
 
-A small, self-hosted scoreboard for sports streams. This checkout contains the **football, basketball and tennis scoreboards**, deployed directly from `main`; it is not the complete specification.
+Control a live scoreboard from your phone, share the score with spectators, and add an overlay to your sports stream. Score67 supports **football (soccer), basketball, and tennis**, with German and English interfaces.
 
-Original requirements remain unchanged in `Spezifikation Scoreboard für Sport-Livestreams.md` and `Score67-Designs-und-Vorlagen.docx`.
+**[Try Score67](https://score67.de)** · [Features](https://score67.de/features) · [Guides](https://score67.de/anzeigetafel/led-bauanleitung) · [Report a bug or suggest a feature](https://github.com/bullemer/score67-de/issues)
 
-- [Critical assessment and decisions](docs/PROJECT-ANALYSIS.md)
-- [Implementation stages and acceptance checklist](docs/IMPLEMENTATION-PLAN.md)
-- [API and implementation notes](docs/ARCHITECTURE.md)
-- [Production deployment, certificates and backups](docs/PRODUCTION.md)
+## For clubs, teams, and livestreamers
+
+- **Phone-based controls:** update scores, periods, clocks, fouls, and player statistics from a browser.
+- **Live score links:** let fans follow your football, basketball, or tennis match without an account, with spectator chat and a live viewer count.
+- **OBS Studio overlays:** add the scoreboard to a livestream as a browser source.
+- **LED scoreboards:** connect an ESP32-based LED matrix for a courtside or pitchside display.
+- **Game management:** prepare teams and lineups, keep completed results, and recover cancelled games from Trash.
+- **Self-hosting:** run the Python FastAPI backend and Flutter web controller on your own infrastructure.
+
+![Score67 basketball controller with score, clock, players and game controls](backend/score67/static/guides/bb-console.webp)
+
+## Explore the project
+
+- [Architecture and API notes](docs/ARCHITECTURE.md)
+- [Deployment, certificates, and backups](docs/PRODUCTION.md)
+- [LED display firmware](firmware/README.md)
+- [Implementation plan](docs/IMPLEMENTATION-PLAN.md)
+- [Project analysis](docs/PROJECT-ANALYSIS.md)
+
+For bugs, include the sport, browser/device, steps to reproduce, and the version shown in Score67. For ideas, describe the match-day problem you want to solve. Never post scoreboard PINs, device tokens, or other credentials in public issues.
 
 ## Run locally
 
 Requires Python 3.11+, uv, and Flutter (built with Flutter 3.38.9 / Dart 3.10.8). Node 22 is used only for display unit tests.
 
 ```bash
-cd /home/carsten/DEVPROJECTS/score67-de
+git clone https://github.com/bullemer/score67-de.git
+cd score67-de
 python scripts/stamp_release.py
 cd control
 flutter pub get

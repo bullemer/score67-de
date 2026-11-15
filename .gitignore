@@ -10,3 +10,14 @@ control/.flutter-plugins*
 control/.idea/
 *.iml
 dist/
+
+# Local credentials and database exports must never enter source control.
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.sqlite
+*.sqlite3
+*.db

@@ -2,7 +2,7 @@
 
 ## Delivery model
 
-- GitHub: https://github.com/bullemer/score67-de (private).
+- GitHub: https://github.com/bullemer/score67-de.
 - Live application: https://score67.de. `www` and HTTP redirect to the canonical HTTPS domain.
 - Branch: `main` goes directly to production after automated checks. There is no staging deployment and no manual approval gate.
 - GitHub environment: `production`, restricted to `main`.
@@ -12,7 +12,7 @@ Each push runs the API/rules suite against disposable SQLite and PostgreSQL data
 
 ## Server layout
 
-The existing server at `116.203.233.103` runs Nginx and other applications. Score67 has its own virtual host, Docker Compose project (`score67`), database volume, bridge network and loopback port (`127.0.0.1:8067`). No existing application is replaced.
+The deployment target is configured through the GitHub production environment; keep its credentials outside the repository. The host runs Nginx. Score67 has its own virtual host, Docker Compose project (`score67`), database volume, bridge network and loopback port (`127.0.0.1:8067`). No existing application is replaced.
 
 - Immutable releases: `/opt/score67/releases/<git-sha>`.
 - Current release link: `/opt/score67/current`.

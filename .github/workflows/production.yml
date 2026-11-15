@@ -9,7 +9,10 @@ concurrency:
   group: score67-production
   cancel-in-progress: false
 jobs:
+  secret-scan:
+    uses: ./.github/workflows/secret-scan.yml
   production:
+    needs: secret-scan
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 30

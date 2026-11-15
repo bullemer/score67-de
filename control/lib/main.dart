@@ -3488,7 +3488,9 @@ class _Score67State extends State<Score67> {
   }
 
   Future<void> cancelGame() async {
-    if (!canWrite || state['match_id'] == null || state['phase'] == 'finished') {
+    if (!canWrite ||
+        state['match_id'] == null ||
+        state['phase'] == 'finished') {
       return;
     }
     final matchId = state['match_id'];
@@ -4343,6 +4345,7 @@ class _Score67State extends State<Score67> {
             for (final (label, path) in const [
               ('Impressum', '/impressum'),
               ('Datenschutz', '/datenschutz'),
+              ('GitHub', 'https://github.com/bullemer/score67-de'),
             ])
               InkWell(
                 onTap: () => web.window.open(path, '_blank'),
@@ -4686,6 +4689,7 @@ class _Score67State extends State<Score67> {
                         for (final (label, path) in const [
                           ('Impressum', '/impressum'),
                           ('Datenschutz', '/datenschutz'),
+                          ('GitHub', 'https://github.com/bullemer/score67-de'),
                         ])
                           InkWell(
                             onTap: () => web.window.location.assign(path),
