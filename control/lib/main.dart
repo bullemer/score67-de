@@ -3133,8 +3133,10 @@ class _Score67State extends State<Score67> {
           ? '${(start + length) ~/ 60000}+${((ms - length) / 60000).ceil()}′'
           : '${(start + ms) ~/ 60000 + 1}′';
     }
-    final length = e['period_duration_ms'] ?? e['period_length_min'] * 60000;
-    return '$label ${mmss((length - e['clock_ms']).toInt().clamp(0, 3600000))}';
+    // Basketball: the game time played so far, counting up across periods
+    // (01:34 in the first quarter, 13:23 in the second of 4 × 10), although
+    // the game clock itself counts down.
+    return gameClock(basketballGameMs(e));
   }
 
   String flowWhat(dynamic e) {

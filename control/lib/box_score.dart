@@ -30,6 +30,27 @@ class BoxRow {
   }
 }
 
+/// Played game time of a basketball entry in milliseconds: the periods
+/// before it plus the time played in its own period. Counts up across the
+/// whole game, although the game clock itself counts down.
+int basketballGameMs(Map e) {
+  final period = (e['period'] as num).toInt(),
+      count = (e['period_count'] as num).toInt();
+  final regular = (e['period_length_min'] as num).toInt() * 60000;
+  // Length of the entry's own period (an overtime is shorter).
+  final length = ((e['period_duration_ms'] ?? regular) as num).toInt();
+  final before = period > count
+      ? count * regular + (period - 1 - count) * length
+      : (period - 1) * regular;
+  return before + (e['clock_ms'] as num).toInt().clamp(0, length);
+}
+
+/// "13:23": minutes and full seconds played.
+String gameClock(int ms) {
+  final seconds = ms ~/ 1000;
+  return '${(seconds ~/ 60).toString().padLeft(2, '0')}:${(seconds % 60).toString().padLeft(2, '0')}';
+}
+
 String playerLabelOf(Map p) {
   final number = '${p['number'] ?? ''}', name = '${p['name'] ?? ''}';
   if (number.isNotEmpty && name.isNotEmpty) return '#$number $name';
