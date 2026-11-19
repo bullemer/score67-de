@@ -19,13 +19,14 @@ class BallConsole extends StatefulWidget {
   final MatchConsole base;
   final void Function(String team) onAddPlayer;
 
-  /// The newest entry of the game flow, shown next to the cards.
-  final String? lastEntry;
+  /// The game flow, always in view in its own column on the right (the
+  /// classic view has it as a tab).
+  final Widget log;
   const BallConsole({
     super.key,
     required this.base,
     required this.onAddPlayer,
-    this.lastEntry,
+    required this.log,
   });
 
   @override
@@ -421,6 +422,11 @@ class BallConsoleState extends State<BallConsole> {
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8),
+                    // Outlined: a red Stop on a red team's bar would vanish.
+                    side: BorderSide(
+                      color: ink.withValues(alpha: .8),
+                      width: 2,
+                    ),
                   ),
                 ),
                 onPressed: c.canToggleClock ? c.onToggleClock : null,
@@ -774,16 +780,6 @@ class BallConsoleState extends State<BallConsole> {
             ),
           ),
         ),
-        if (widget.lastEntry != null)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(8, 2, 8, 4),
-            child: Text(
-              widget.lastEntry!,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: Colors.white60, fontSize: 13),
-            ),
-          ),
       ],
     );
   }
@@ -874,8 +870,38 @@ class BallConsoleState extends State<BallConsole> {
     );
   }
 
+  /// About a quarter of the screen: what was booked, newest first.
+  Widget logColumn() => LayoutBuilder(
+    builder: (context, _) => Container(
+      width: (MediaQuery.sizeOf(context).width * .25).clamp(150.0, 320.0),
+      margin: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: const Color(0xff151e2a),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 7, 8, 5),
+            child: Text(
+              t('console.flow'),
+              style: const TextStyle(
+                fontWeight: FontWeight.w800,
+                color: Color(0xffb6f36e),
+              ),
+            ),
+          ),
+          const Divider(height: 1),
+          Expanded(child: widget.log),
+        ],
+      ),
+    ),
+  );
+
   Widget middlePanel() {
-    final tabs = [(t('ball.scoring'), scoringTab()), ...c.tabs];
+    // The first classic tab is the game flow: here it has its own column.
+    final tabs = [(t('ball.scoring'), scoringTab()), ...c.tabs.skip(1)];
     return Container(
       margin: const EdgeInsets.all(3),
       decoration: BoxDecoration(
@@ -969,6 +995,7 @@ class BallConsoleState extends State<BallConsole> {
                       child: KeyedSubtree(key: middleKey, child: middlePanel()),
                     ),
                   ),
+                  side(logColumn()),
                 ],
               ),
             ),

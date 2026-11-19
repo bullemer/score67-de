@@ -43,7 +43,7 @@ void main() {
         home: Scaffold(
           body: BallConsole(
             onAddPlayer: (team) => log.add('add $team'),
-            lastEntry: 'BSV  Q2 08:45  2 PTS  #11',
+            log: const Text('BSV  Q2 08:45  2 PTS  #11'),
             base: MatchConsole(
               state: state,
               t: (key) => key,
@@ -88,7 +88,11 @@ void main() {
     expect(find.text('5'), findsOneWidget);
     expect(find.text('12'), findsOneWidget);
     expect(find.text('11'), findsNothing);
+    // The game flow has its own column and is no longer a tab.
     expect(find.textContaining('2 PTS'), findsOneWidget);
+    expect(find.text('console.flow'), findsOneWidget);
+    expect(find.text('Feed'), findsNothing);
+    expect(find.text('Teams'), findsOneWidget);
   });
 
   testWidgets('action then player, or player then action', (tester) async {
