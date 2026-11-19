@@ -10,6 +10,10 @@ services:
       PUBLIC_ORIGIN: https://score67.de
       AUTO_CREATE_SCHEMA: "false"
       RELEASE_SHA: ${RELEASE_SHA}
+      # New scoreboards per address and hour (0 = no limit) and open viewer
+      # connections per address; a whole hall on one Wi-Fi shares an address.
+      SCOREBOARD_CREATE_LIMIT: ${SCOREBOARD_CREATE_LIMIT:-30}
+      WS_PER_IP_LIMIT: ${WS_PER_IP_LIMIT:-300}
       # Email sign-in stays hidden until SMTP_HOST is set in the runtime .env.
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}

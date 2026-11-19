@@ -2335,3 +2335,52 @@ def test_release_update_page_and_cache_headers(system):
     assert page.headers['cache-control'] == 'no-store'
     for path in ['/static/update.mjs', '/i18n/en.json']:
         assert client.get(path).headers['cache-control'] == 'no-cache'
+
+
+def test_viewer_sockets_are_capped_per_address(system, monkeypatch):
+    from starlette.websockets import WebSocketDisconnect
+    monkeypatch.setenv('WS_PER_IP_LIMIT', '2')
+    with TestClient(create_app(os.environ['DATABASE_URL'], secure_cookies=False)) as client:
+        slug = create(client)['slug']
+        with client.websocket_connect(f'/ws/s/{slug}') as one, client.websocket_connect(f'/ws/s/{slug}') as two:
+            assert one.receive_json()['revision'] == two.receive_json()['revision']
+            with pytest.raises(WebSocketDisconnect) as refused:
+                with client.websocket_connect(f'/ws/s/{slug}'):
+                    pass
+            assert refused.value.code == 1013
+        # Closed sockets free their place again.
+        with client.websocket_connect(f'/ws/s/{slug}') as again:
+            assert again.receive_json()['match_id']
+
+
+def test_link_preview_is_drawn_once_per_score(system, monkeypatch):
+    from score67 import preview
+    _, client = system
+    slug = create(client)['slug']
+    drawn, render = [], preview.render
+    monkeypatch.setattr(preview, 'render', lambda *a, **k: drawn.append(1) or render(*a, **k))
+    first = client.get(f'/s/{slug}/preview.png?r=1')
+    assert first.status_code == 200 and client.get(f'/s/{slug}/preview.png?r=2').content == first.content
+    assert len(drawn) == 1
+    command(client, slug, 'period_start')
+    command(client, slug, 'score', {'team': 'home', 'points': 1})
+    assert client.get(f'/s/{slug}/preview.png').content != first.content and len(drawn) == 2
+    assert client.get('/preview.png').content == client.get('/preview.png?x=1').content and len(drawn) == 3
+
+
+def test_a_failing_maintenance_job_is_logged_and_does_not_stop_the_others(system, monkeypatch, caplog):
+    import time, score67.app as module
+    url = os.environ['DATABASE_URL']
+    monkeypatch.setenv('TRASH_INTERVAL_SECONDS', '0.05')
+    ran = []
+    def broken(db):
+        raise ValueError('bad row')
+    monkeypatch.setattr(module, 'finish_overdue_matches', broken)
+    monkeypatch.setattr(module, 'clean_matches', lambda db: ran.append(1))
+    with caplog.at_level('ERROR', logger='score67'), TestClient(create_app(url, secure_cookies=False)) as client:
+        for _ in range(40):
+            if ran:
+                break
+            client.get('/health')
+            time.sleep(0.05)
+    assert ran and 'maintenance job broken failed' in caplog.text
