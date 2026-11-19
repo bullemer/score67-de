@@ -44,8 +44,11 @@ function node(tag, text, className) {
   if (className) n.className = className;
   return n;
 }
+// An entry keeps the player as booked; a name typed in later comes from the squad as it is now.
 function playerLabel(player) {
-  return player ? [player.number ? `#${player.number}` : '', player.name].filter(Boolean).join(' ') : '';
+  if (!player) return '';
+  const name = player.name || ['home', 'away'].flatMap(team => state[team]?.squad || []).find(p => p.id === player.id)?.name;
+  return [player.number ? `#${player.number}` : '', name].filter(Boolean).join(' ');
 }
 function renderDetails() {
   const active = (state.events || []).filter(e => !e.cancelled && !e.corrected);
@@ -254,7 +257,7 @@ function render() {
     el('event-list').replaceChildren(...entries.map(event => {
       const row = document.createElement('li');
       const player = event.player;
-      const who = player ? [player.number ? `#${player.number}` : '', player.name].filter(Boolean).join(' ') : '';
+      const who = playerLabel(player);
       const minute = eventTime(event, state, words);
       const signed = `${event.points > 0 ? '+' : ''}${event.points}`;
       const label = event.type === 'shootout_kick' ? words[event.scored ? 'shootout.kick_scored' : 'shootout.kick_missed']

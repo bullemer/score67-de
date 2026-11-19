@@ -67,3 +67,14 @@ test('football extra time continues the minutes, the shootout shows its score', 
   assert.equal(periodLabel(shootout, words), 'i. E.');
   assert.equal(eventTime({type: 'shootout_kick', period: 4}, shootout, words), 'i. E.');
 });
+
+test('basketball entries show the played game time counting up', () => {
+  const s = {sport: 'basketball', period_count: 4, period_length_min: 10, overtime_length_min: 5};
+  const entry = (period, clock_ms, period_duration_ms = 600000) =>
+    ({type: 'score', period, period_count: 4, period_length_min: 10, period_duration_ms, clock_ms});
+  assert.equal(eventTime(entry(1, 94300), s, {}), '01:34');
+  assert.equal(eventTime(entry(2, 203000), s, {}), '13:23');
+  assert.equal(eventTime(entry(4, 600000), s, {}), '40:00');
+  assert.equal(eventTime(entry(5, 61000, 300000), s, {}), '41:01');
+  assert.equal(eventTime(entry(6, 0, 300000), s, {}), '45:00');
+});

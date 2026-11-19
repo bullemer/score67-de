@@ -199,8 +199,20 @@ void main() {
     expect(box('3pt').top, lessThan(box('ft_hit').top));
     for (final big in ['2pt', '3pt']) {
       expect(box(big).height, greaterThan(box('ft_hit').height));
-      expect(box(big).width, greaterThan(box('ft_hit').width));
     }
+    // Every points button is wider than its miss button.
+    for (final (made, miss) in [
+      ('2pt', 'miss2'),
+      ('3pt', 'miss3'),
+      ('ft_hit', 'ft_miss'),
+    ]) {
+      expect(box(made).width, greaterThan(box(miss).width));
+    }
+    // The bar spans the screen; log header and tab row are equally tall.
+    expect(
+      tester.getSize(find.byKey(const ValueKey('ball-header'))).width,
+      844,
+    );
   });
 
   testWidgets('team card, add player and long press on court', (tester) async {
