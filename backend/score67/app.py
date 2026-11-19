@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 import hashlib
 import hmac
 import json
+import logging
 import re
 import os
 from pathlib import Path
@@ -33,6 +34,9 @@ RELEASE = json.loads((ROOT / "shared/release.json").read_text())
 
 def digest(token):
     return hashlib.sha256(token.encode()).hexdigest()
+
+
+log = logging.getLogger("score67")
 
 
 def hash_pin(pin, salt=None):
@@ -471,6 +475,11 @@ def create_app(db_url=None, secure_cookies=None, *, single_active_board=True):
     secure = secure_cookies if secure_cookies is not None else os.getenv("COOKIE_SECURE", "true").lower() == "true"
     lock = threading.RLock()
     audience = Audience()
+    # Open viewer sockets per address. Each one polls the database, so a single
+    # client must not be able to open them without end. Generous: a whole hall
+    # on one Wi-Fi shares an address.
+    sockets, socket_limit = {}, int(os.getenv("WS_PER_IP_LIMIT", "300"))
+    previews, preview_lock = {}, threading.Lock()  # rendered link-preview images, newest last
 
     @asynccontextmanager
     async def lifespan(app):
@@ -478,18 +487,22 @@ def create_app(db_url=None, secure_cookies=None, *, single_active_board=True):
         app.state.sessions = sessions
 
         def clean():
-            with lock, sessions() as db:
-                finish_overdue_matches(db)
-                release_idle_displays(db)
-                return clean_matches(db)
+            # Each job on its own: one bad row must not silently switch off the
+            # others (auto end, panel release, trash) for good.
+            for job in (finish_overdue_matches, release_idle_displays, clean_matches):
+                try:
+                    with lock, sessions() as db:
+                        job(db)
+                except Exception:  # noqa: BLE001 - the cleaner must never stop the app
+                    log.exception("maintenance job %s failed", job.__name__)
 
         async def cleaner():
             interval = float(os.getenv("TRASH_INTERVAL_SECONDS", 600))
             while interval > 0:
                 try:
                     await asyncio.to_thread(clean)
-                except Exception:  # noqa: BLE001 - the cleaner must never stop the app
-                    pass
+                except Exception:  # noqa: BLE001
+                    log.exception("maintenance run failed")
                 await asyncio.sleep(interval)
 
         task = asyncio.create_task(cleaner())
@@ -824,31 +837,36 @@ def create_app(db_url=None, secure_cookies=None, *, single_active_board=True):
 
     @app.post("/api/scoreboards", status_code=201)
     def create(body: CreateBoard, request: Request, response: Response):
+        now = time.time()
         with lock, app.state.sessions() as db:
             require_free_device(db, request)
-        logos = fixture_logos(body)
-        with lock, app.state.sessions() as db:
-            require_free_device(db, request)
-            now = time.time()
+            # Refused here, before anything costly (logo download, PIN hash) runs.
             key = "create:" + digest(request.client.host if request.client else "unknown")
             limit = db.get(RateLimit, key)
             create_limit = int(os.getenv("SCOREBOARD_CREATE_LIMIT", "0"))
             if create_limit > 0 and limit and limit.reset_at > now and limit.count >= create_limit:
                 raise HTTPException(429, "rate_limited")
+            if body.scheduled_at is not None and body.scheduled_at <= now * 1000:
+                raise HTTPException(422, "schedule_future")
             if not limit:
                 limit = RateLimit(key=key, count=0, reset_at=now + 3600)
                 db.add(limit)
             if limit.reset_at <= now:
                 limit.count, limit.reset_at = 0, now + 3600
-            if body.scheduled_at is not None and body.scheduled_at <= now * 1000:
-                raise HTTPException(422, "schedule_future")
             limit.count += 1
+            db.commit()
+        logos = fixture_logos(body)
+        # Hashed outside the lock: 300,000 PBKDF2 rounds would hold up every scorer.
+        pin = f"{secrets.randbelow(1000000):06d}"
+        pin_hash = hash_pin(pin)
+        with lock, app.state.sessions() as db:
+            require_free_device(db, request)
             slug = "".join(secrets.choice("abcdefghijklmnopqrstuvwxyz0123456789") for _ in range(10))
             while db.get(Board, slug):
                 slug = "".join(secrets.choice("abcdefghijklmnopqrstuvwxyz0123456789") for _ in range(10))
-            pin, match_id = f"{secrets.randbelow(1000000):06d}", str(uuid4())
+            match_id = str(uuid4())
             label = datetime.fromtimestamp(now, timezone.utc).isoformat(sep=" ", timespec="milliseconds").replace("+00:00", " UTC")
-            b = Board(slug=slug, name=label, language=body.language, pin_hash=hash_pin(pin),
+            b = Board(slug=slug, name=label, language=body.language, pin_hash=pin_hash,
                       active_match=match_id, created_at=now, location=body.location.model_dump() if body.location else None,
                       description=clean_description(body.description), creator=clean_creator(body.creator),
                       overlay_key=secrets.token_urlsafe(12),
@@ -1020,7 +1038,13 @@ def create_app(db_url=None, secure_cookies=None, *, single_active_board=True):
             b = board(db, slug)
             if b.locked_until > time.time():
                 raise HTTPException(429, "pin_locked")
-            if not hmac.compare_digest(hash_pin(body.pin, b.pin_hash.split(":")[0]), b.pin_hash):
+            salt = b.pin_hash.split(":")[0]
+        attempt = hash_pin(body.pin, salt)  # outside the lock, see create()
+        with lock, app.state.sessions() as db:
+            b = board(db, slug)
+            if b.locked_until > time.time():
+                raise HTTPException(429, "pin_locked")
+            if not hmac.compare_digest(attempt, b.pin_hash):
                 b.failed_count += 1
                 if b.failed_count >= 5:
                     b.locked_until, b.failed_count = time.time() + 900, 0
@@ -1065,9 +1089,12 @@ def create_app(db_url=None, secure_cookies=None, *, single_active_board=True):
     def rotate_pin(slug: str, request: Request):
         with lock, app.state.sessions() as db:
             authorize(db, slug, request)
+        pin = f"{secrets.randbelow(1000000):06d}"
+        pin_hash = hash_pin(pin)  # outside the lock, see create()
+        with lock, app.state.sessions() as db:
+            authorize(db, slug, request)
             b = board(db, slug)
-            pin = f"{secrets.randbelow(1000000):06d}"
-            b.pin_hash, b.failed_count, b.locked_until = hash_pin(pin), 0, 0
+            b.pin_hash, b.failed_count, b.locked_until = pin_hash, 0, 0
             db.commit()
             return {"pin": pin}
 
@@ -1774,8 +1801,13 @@ def create_app(db_url=None, secure_cookies=None, *, single_active_board=True):
             if not b or not viewer_allowed(db, b, ws.cookies, key):
                 await ws.close(code=1008)
                 return
+        address = ws.client.host if ws.client else "unknown"
+        if socket_limit > 0 and sockets.get(address, 0) >= socket_limit:
+            await ws.close(code=1013)  # The pages fall back to polling.
+            return
+        sockets[address] = sockets.get(address, 0) + 1
         await ws.accept()
-        signature = None
+        signature, pinged = None, 0.0
         try:
             while True:
                 with lock, app.state.sessions() as db:
@@ -1793,7 +1825,9 @@ def create_app(db_url=None, secure_cookies=None, *, single_active_board=True):
                     signature = current
                 try:
                     message = await asyncio.wait_for(ws.receive_text(), timeout=0.25)
-                    if message == "ping":
+                    # At most one full state per second on request.
+                    if message == "ping" and time.monotonic() - pinged >= 1:
+                        pinged = time.monotonic()
                         with lock, app.state.sessions() as db:
                             s = state(db, board(db, slug))
                         await ws.send_json(s)
@@ -1801,6 +1835,10 @@ def create_app(db_url=None, secure_cookies=None, *, single_active_board=True):
                     pass
         except (WebSocketDisconnect, RuntimeError):
             pass
+        finally:
+            sockets[address] -= 1
+            if sockets[address] <= 0:
+                del sockets[address]
 
     # --- Anzeigetafeln (Score67 LED panels) --------------------------------
     # A panel registers itself with a device key and shows a code; the browser
@@ -2329,21 +2367,33 @@ def create_app(db_url=None, secure_cookies=None, *, single_active_board=True):
             b = board(db, slug)
             language = language or b.language
             if not viewer_allowed(db, b, request.cookies, request.query_params.get("k")):
-                data = preview.render(None, language)
+                s, key = None, language
             else:
                 s = preview_state(db, b, request)
+                # Kept as long as browsers keep it (the image shows the day and state).
+                key = (slug, s.get("match_id"), s["revision"], language, int(time.time() // 300))
+            # Drawing takes about 50 ms of CPU: once per score, not per request.
+            data = previews.get(key)
+            if data is None:
                 def logo(path):
                     asset = db.get(Asset, path.removeprefix("/media/").removesuffix(".png"))
                     return asset.data if asset and asset.slug == b.slug else None
-                data = preview.render(s, language, logo)
+                data = remember_preview(key, preview.render(s, language, logo))
         # Short cache: the URL carries the revision, so a new score is a new image.
         return Response(data, media_type="image/png", headers={"Cache-Control": "public, max-age=300"})
+
+    def remember_preview(key, data):
+        with preview_lock:
+            previews[key] = data
+            while len(previews) > 200:
+                previews.pop(next(iter(previews)))
+        return data
 
     @app.get("/preview.png")
     def site_preview(request: Request):
         language = request.query_params.get("lang") if request.query_params.get("lang") in ("de", "en") else "de"
-        return Response(preview.render(None, language), media_type="image/png",
-                        headers={"Cache-Control": "public, max-age=86400"})
+        data = previews.get(language) or remember_preview(language, preview.render(None, language))
+        return Response(data, media_type="image/png", headers={"Cache-Control": "public, max-age=86400"})
 
     @app.get("/new")
     @app.get("/login")
