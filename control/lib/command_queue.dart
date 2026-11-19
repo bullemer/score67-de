@@ -26,10 +26,14 @@ const tallyActions = {
 /// Lineup changes (a player tapped on court / to the bench) are queued too:
 /// each carries the whole lineup, so taps in quick succession build on the
 /// optimistic one before.
+///
+/// So is the squad: players typed in without reception, or just before the
+/// page is left, must not be lost.
 bool queueable(String action) =>
     tallyActions.contains(action.replaceFirst(RegExp(r'_correction$'), '')) ||
     action == 'assign_player' ||
-    action == 'lineup';
+    action == 'lineup' ||
+    action == 'squad';
 
 /// The basketball clock may be started and stopped behind unconfirmed taps:
 /// a whistle cannot wait for the network. Not replayed after a reload.
@@ -94,6 +98,10 @@ Map<String, dynamic> optimisticState(
     if (team != 'home' && team != 'away') continue;
     if (action == 'lineup') {
       (s[team] as Map)['on_court'] = data['player_ids'];
+      continue;
+    }
+    if (action == 'squad') {
+      (s[team] as Map)['squad'] = data['players'];
       continue;
     }
     final correcting = action.endsWith('_correction');

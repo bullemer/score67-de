@@ -1100,6 +1100,15 @@ def test_overdue_games_end_automatically(system):
         assert end.payload['type'] == 'game_end' and end.payload['automatic']
         end_id = end.id
     assert command(client, football, 'undo', {'event_id': end_id}).json()['phase'] == 'period_running'
+    # Reopened for corrections: it stays open until it has been quiet again.
+    from score67.db import Match
+    with app.state.sessions() as db:
+        reopened = db.scalar(select(Match).where(Match.slug == football))
+        assert reopened.touched_at >= t0                              # the undo counts as activity
+        reopened.touched_at = t0 + 190 * minute                       # as if undone 190 min after kickoff
+        db.commit()
+        assert finish_overdue_matches(db, t0 + 195 * minute) == 0
+        assert finish_overdue_matches(db, t0 + 206 * minute) == 1
 
 
 def test_private_board_hides_spectators_but_keeps_controllers_and_obs(system):

@@ -1675,6 +1675,10 @@ def create_app(db_url=None, secure_cookies=None, *, single_active_board=True):
                     updated = deepcopy(m.state)
                     updated.update(last.before)
                     m.state = updated
+                    if last.payload["type"] == "game_end":
+                        # A reopened game counts as just used: the automatic end
+                        # must not close it again a few minutes later.
+                        m.touched_at = time.time()
                 last.cancelled = True
             else:
                 target = None

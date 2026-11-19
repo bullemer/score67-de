@@ -260,6 +260,12 @@ class _Score67State extends State<Score67> {
     final language =
         url.queryParameters['lang'] ?? saved ?? web.window.navigator.language;
     lang = language.startsWith('de') ? 'de' : 'en';
+    // Reload, closed tab, phone switching apps: the queue is saved at once,
+    // so players typed a moment ago survive.
+    web.window.addEventListener(
+      'pagehide',
+      ((web.Event _) => teamFlush()).toJS,
+    );
     initialize();
   }
 
@@ -325,7 +331,10 @@ class _Score67State extends State<Score67> {
     if (mounted) setState(() => ready = true);
   }
 
+  final teamFlush = TeamEditorFlush();
+
   void navigate(String path) {
+    teamFlush(); // a full page load: queue unsaved players first
     final url = Uri.parse(path);
     web.window.location.assign(
       url
@@ -3350,6 +3359,7 @@ class _Score67State extends State<Score67> {
         : (path, method, body) => api(path, method: method, body: body),
     onApply: tennis ? null : applySavedTeam,
     onPortrait: page ? null : openTeamPage,
+    flush: teamFlush,
     onSave: (team, players, onCourt) async {
       String roster(List list) => [
         for (final p in list) '${p['id']}|${p['number']}|${p['name']}',
