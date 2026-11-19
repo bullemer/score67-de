@@ -335,6 +335,9 @@ class BallConsoleState extends State<BallConsole> {
       key: const ValueKey('ball-header'),
       duration: const Duration(milliseconds: 180),
       color: bar,
+      // The whole width, also when the content is narrower than the screen.
+      width: double.infinity,
+      alignment: Alignment.center,
       height: 56,
       padding: const EdgeInsets.symmetric(horizontal: 4),
       child: FittedBox(
@@ -524,13 +527,14 @@ class BallConsoleState extends State<BallConsole> {
     child: Column(
       children: [
         for (final (i, row) in rows.indexed)
-          if (i < 2)
-            // 2 and 3 points: taller rows, the made button wider than the miss.
+          if (i < 3)
+            // Points: the made button wider than its miss; 2 and 3 points,
+            // the most frequent, also in taller rows.
             Expanded(
-              flex: 3,
+              flex: i < 2 ? 3 : 2,
               child: Row(
                 children: [
-                  actionButton(row[0], flex: 3, size: 22),
+                  actionButton(row[0], flex: 3, size: i < 2 ? 22 : 18),
                   actionButton(row[1], flex: 2),
                 ],
               ),
@@ -898,8 +902,11 @@ class BallConsoleState extends State<BallConsole> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(8, 7, 8, 5),
+          // As tall as the tab row beside it, so both dividers line up.
+          Container(
+            height: 40,
+            alignment: Alignment.centerLeft,
+            padding: const EdgeInsets.symmetric(horizontal: 8),
             child: Text(
               t('console.flow'),
               style: const TextStyle(
@@ -934,7 +941,10 @@ class BallConsoleState extends State<BallConsole> {
               child: Row(
                 children: [
                   for (var i = 0; i < tabs.length; i++)
+                    // Width by label length: every label keeps the same type
+                    // size instead of long ones being shrunk.
                     Expanded(
+                      flex: tabs[i].$1.length + 4,
                       child: TextButton(
                         style: TextButton.styleFrom(
                           minimumSize: const Size(36, 40),

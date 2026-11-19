@@ -3572,6 +3572,18 @@ class _Score67State extends State<Score67> {
     }
   }
 
+  /// An entry keeps the player as booked. A name typed in later (many start
+  /// with numbers only) is taken from the squad as it is now.
+  dynamic named(dynamic player) {
+    if ('${player['name'] ?? ''}'.isNotEmpty) return player;
+    for (final team in ['home', 'away']) {
+      for (final p in state[team]?['squad'] as List? ?? []) {
+        if (p['id'] == player['id']) return {...player, 'name': p['name']};
+      }
+    }
+    return player;
+  }
+
   String flowLine(dynamic e) {
     final team = e['team'];
     final player = e['player'];
@@ -3579,7 +3591,7 @@ class _Score67State extends State<Score67> {
       if (team != null && e['type'] != 'possession') state[team]['short'],
       eventStamp(e),
       flowWhat(e),
-      if (player != null) playerLabel(player),
+      if (player != null) playerLabel(named(player)),
     ].where((part) => '$part'.isNotEmpty).join('  ');
   }
 

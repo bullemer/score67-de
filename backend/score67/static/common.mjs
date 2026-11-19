@@ -80,8 +80,13 @@ export function eventTime(event, state, words) {
   if (event.type?.startsWith('shootout')) return words['shootout.short'] || 'pens';
   if (event.clock_ms == null || !event.period) return periodLabel({...state, phase: null, period: event.period}, words);
   if (state.sport === 'basketball') {
-    const length = event.period_duration_ms ?? event.period_length_min * 60000;
-    return `${periodLabel({...state, period: event.period}, words)} ${mmss(Math.ceil(Math.max(0, length - event.clock_ms) / 1000) * 1000)}`.trim();
+    // The game time played so far, counting up across periods (01:34 in the first
+    // quarter, 13:23 in the second of 4 × 10), although the game clock counts down.
+    const regular = event.period_length_min * 60000;
+    const length = event.period_duration_ms ?? regular;   // the entry's own period (overtime is shorter)
+    const count = event.period_count ?? state.period_count;
+    const before = event.period > count ? count * regular + (event.period - 1 - count) * length : (event.period - 1) * regular;
+    return mmss(Math.floor((before + Math.min(Math.max(0, event.clock_ms), length)) / 1000) * 1000);
   }
   const extra = event.period > event.period_count ? (event.period_duration_ms ?? 0) / 60000 : state.overtime_length_min;
   const start = periodStartMs({period_count: event.period_count ?? state.period_count}, event.period, event.period_length_min, extra);
