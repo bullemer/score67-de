@@ -20,6 +20,9 @@ class MatchConsole extends StatefulWidget {
   final String clock, period;
   final bool running, canToggleClock, canTap, canWrite, connected;
 
+  /// Football: the clock was paused during play (interruption).
+  final bool clockPaused;
+
   /// Basketball clock at 0:00: the Play button ends the period instead.
   final bool periodOver;
 
@@ -73,6 +76,7 @@ class MatchConsole extends StatefulWidget {
     required this.clock,
     required this.period,
     required this.running,
+    this.clockPaused = false,
     this.periodOver = false,
     this.nextPeriod,
     this.endedPeriod,
@@ -225,6 +229,11 @@ class MatchConsoleState extends State<MatchConsole> {
             t('console.penalty'),
             const Color(0xfff97316),
           ),
+          ConsoleAction(
+            'own_goal',
+            t('console.own_goal'),
+            const Color(0xff22c55e),
+          ),
           ConsoleAction('foul', t('console.foul'), const Color(0xffdc2626)),
           ConsoleAction(
             'free_kick',
@@ -239,6 +248,7 @@ class MatchConsoleState extends State<MatchConsole> {
           ConsoleAction('3pt', t('console.3pt'), const Color(0xfff97316)),
           ConsoleAction('foul', t('console.foul'), const Color(0xffdc2626)),
           ConsoleAction('tech', t('console.tech'), const Color(0xffdc2626)),
+          ConsoleAction('unsp', t('console.unsp'), const Color(0xffdc2626)),
           ConsoleAction('reb', t('console.reb'), const Color(0xffa855f7)),
           ConsoleAction(
             'timeout',
@@ -312,8 +322,52 @@ class MatchConsoleState extends State<MatchConsole> {
       setState(() => freeThrows = (team, playerId));
       return;
     }
+    warnSentOff(action, team, playerId);
     widget.onAction(action, team, playerId);
     if (action == 'penalty') setState(() => penalty = (team, playerId));
+  }
+
+  /// Technical and unsportsmanlike fouls of a player that still count: two
+  /// of them (in any mix) send the player off.
+  int sendingOffFouls(String team, String playerId) =>
+      (s['events'] as List? ?? [])
+          .where(
+            (e) =>
+                e['type'] == 'technical_foul' &&
+                e['team'] == team &&
+                e['cancelled'] != true &&
+                e['corrected'] != true &&
+                e['player']?['id'] == playerId,
+          )
+          .length;
+
+  /// Tells the scorer when this entry sends the player off: second yellow,
+  /// second technical/unsportsmanlike foul, fifth foul. The entry is booked
+  /// either way; what follows is the referee's business.
+  void warnSentOff(String action, String team, String? playerId) {
+    if (playerId == null) return;
+    final player = (s[team]['squad'] as List? ?? [])
+        .where((p) => p['id'] == playerId)
+        .firstOrNull;
+    if (player == null) return;
+    final number = '${player['number'] ?? ''}';
+    final name = number.isNotEmpty ? '#$number' : '${player['name']}';
+    String? key;
+    if (football) {
+      if (action == 'yellow' &&
+          (footballStats(team)[playerId]?['yellow'] ?? 0) >= 1) {
+        key = 'console.yellow_red_hint';
+      }
+    } else if ((action == 'tech' || action == 'unsp') &&
+        sendingOffFouls(team, playerId) >= 1) {
+      key = 'console.ejected';
+    } else if ((action == 'tech' ||
+            action == 'unsp' ||
+            (action == 'foul' && s['foul_mode'] != 'team')) &&
+        (stats(team, playerId)['pf'] ?? 0) == 4) {
+      key = 'console.fifth_foul';
+    }
+    if (key != null) showHint(t(key).replaceAll('{p}', name));
   }
 
   Widget deferredBar() {
@@ -567,6 +621,8 @@ class MatchConsoleState extends State<MatchConsole> {
           e['player'] == null) {
         continue;
       }
+      // An own goal is booked for the other team; it is nobody's goal here.
+      if (e['detail'] == 'own_goal') continue;
       final key = switch (e['type']) {
         'score' => 'goals',
         'yellow_card' => 'yellow',
@@ -576,6 +632,8 @@ class MatchConsoleState extends State<MatchConsole> {
       if (key == null) continue;
       final row = result.putIfAbsent(e['player']['id'], () => {});
       row[key] = (row[key] ?? 0) + 1;
+      // Second yellow: sent off, shown like a red card.
+      if (e['second_yellow'] == true) row['red'] = (row['red'] ?? 0) + 1;
     }
     return result;
   }
@@ -673,10 +731,12 @@ class MatchConsoleState extends State<MatchConsole> {
                 padding: const EdgeInsets.symmetric(horizontal: 8),
                 child: Text(
                   widget.clock,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 36,
                     fontWeight: FontWeight.w900,
-                    fontFeatures: [FontFeature.tabularFigures()],
+                    // A paused football clock must not go unnoticed.
+                    color: widget.clockPaused ? foulTrouble : null,
+                    fontFeatures: const [FontFeature.tabularFigures()],
                   ),
                 ),
               ),
@@ -726,7 +786,7 @@ class MatchConsoleState extends State<MatchConsole> {
                 onPressed: widget.canToggleClock ? widget.onToggleClock : null,
                 child: Icon(
                   widget.running
-                      ? Icons.stop
+                      ? (football ? Icons.pause : Icons.stop)
                       : widget.periodOver
                       ? Icons.skip_next
                       : Icons.play_arrow,
@@ -818,6 +878,7 @@ class MatchConsoleState extends State<MatchConsole> {
     int fouls = 0,
     Map<String, int> football = const {},
     bool bench = false,
+    bool out = false,
     String? badge,
   }) {
     final teamColor = hexColor(s[team]['color']);
@@ -914,7 +975,7 @@ class MatchConsoleState extends State<MatchConsole> {
                           fontSize: 28,
                           fontWeight: FontWeight.w900,
                           color: foreground,
-                          decoration: fouls >= 5 || red > 0
+                          decoration: fouls >= 5 || red > 0 || out
                               ? TextDecoration.lineThrough
                               : null,
                         ),
@@ -952,6 +1013,7 @@ class MatchConsoleState extends State<MatchConsole> {
       fouls: (stats(team, p['id'])['pf'] ?? 0) as int,
       football: perPlayer[p['id']] ?? const {},
       bench: bench,
+      out: !football && sendingOffFouls(team, p['id']) >= 2,
     );
     final lineup = onCourt(team);
     return SizedBox(
@@ -1080,7 +1142,7 @@ class MatchConsoleState extends State<MatchConsole> {
           children: [
             row([actionButton(a['goal']!)]),
             row([actionButton(a['yellow']!), actionButton(a['red']!)]),
-            row([actionButton(a['penalty']!)]),
+            row([actionButton(a['penalty']!), actionButton(a['own_goal']!)]),
             row([actionButton(a['foul']!), actionButton(a['free_kick']!)]),
             row([undo]),
             row([actionButton(a['subs']!)]),
@@ -1095,7 +1157,11 @@ class MatchConsoleState extends State<MatchConsole> {
           row([actionButton(a['ft']!)]),
           row([actionButton(a['2pt']!)]),
           row([actionButton(a['3pt']!)]),
-          row([actionButton(a['foul']!), actionButton(a['tech']!)]),
+          row([
+            actionButton(a['foul']!),
+            actionButton(a['tech']!),
+            actionButton(a['unsp']!),
+          ]),
           row([actionButton(a['reb']!), actionButton(a['timeout']!)]),
           row([undo, actionButton(a['subs']!)]),
         ],

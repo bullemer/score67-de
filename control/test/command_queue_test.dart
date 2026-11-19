@@ -196,6 +196,23 @@ void main() {
     expect(running['clock']!['running'], isTrue); // server state untouched
   });
 
+  test('a squad saved without reception survives a reload and shows', () {
+    expect(queueable('squad'), isTrue);
+    final players = [
+      {'id': 'p9', 'number': '9', 'name': 'Kim'},
+    ];
+    final shown = optimisticState(server(), [
+      {
+        'command_id': 'q',
+        'match_id': 'm1',
+        'action': 'squad',
+        'data': {'team': 'away', 'players': players},
+      },
+    ]);
+    expect(shown['away']['squad'], players);
+    expect(shown['home']['squad'], isNull);
+  });
+
   group('CommandPump', () {
     late List<Map<String, dynamic>> queue;
     late List<String> sent, log;
