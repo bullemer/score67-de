@@ -5,9 +5,15 @@ This lets the existing event undo restore the entire score, including service.
 from copy import deepcopy
 
 
-def initial(category="women", best_of=3, mode="detailed", final_tiebreak=7):
+MATCH_TIEBREAK = 10
+
+
+def initial(category="women", best_of=3, mode="detailed", final_tiebreak=7, deciding="set"):
+    # deciding: "set" = the last set is played out (tie-break at 6-6 to
+    # final_tiebreak points); "match_tiebreak" = a tie-break to 10 replaces it
+    # (club matches), recorded as a 1-0 set.
     return {"category": category, "best_of": best_of, "mode": mode,
-            "final_tiebreak": final_tiebreak, "points": [0, 0], "games": [0, 0],
+            "final_tiebreak": final_tiebreak, "deciding": deciding, "points": [0, 0], "games": [0, 0],
             "sets": [0, 0], "set_scores": [], "server": 0, "tiebreak": False,
             "tiebreak_first": 0, "winner": None}
 
@@ -23,8 +29,20 @@ def point_labels(t):
     return [str((0, 15, 30, 40)[min(p, 3)]) for p in points]
 
 
+def decider(t):
+    """The next set is the last possible one."""
+    return sum(t["sets"]) == t["best_of"] - 1
+
+
+def match_tiebreak(t):
+    """The deciding set is replaced by a match tie-break."""
+    return t.get("deciding") == "match_tiebreak" and decider(t)
+
+
 def target(t):
-    return t["final_tiebreak"] if sum(t["sets"]) == t["best_of"] - 1 else 7
+    if match_tiebreak(t):
+        return MATCH_TIEBREAK
+    return t["final_tiebreak"] if decider(t) else 7
 
 
 def finish_set(s, winner, tiebreak=None):
@@ -40,6 +58,9 @@ def finish_set(s, winner, tiebreak=None):
         s["phase"] = "finished"
     else:
         s["period"] = len(t["set_scores"]) + 1
+        if match_tiebreak(t):
+            # Straight into the tie-break; the next server in turn serves first.
+            t.update(tiebreak=True, tiebreak_first=t["server"])
 
 
 def game(s, winner):
@@ -65,7 +86,15 @@ def apply(s, action, data, error):
         if s["phase"] == "finished":
             raise error("invalid_transition")
         s["phase"] = "finished"
-        return {}
+        # Ended by hand: retirement or walkover names the winner, an
+        # abandoned match has none.
+        winner = data.get("winner")
+        if winner is None:
+            return {}
+        if winner not in ("home", "away"):
+            raise error("invalid_value")
+        t["winner"] = 0 if winner == "home" else 1
+        return {"team": winner, "retired": True}
     if action == "tennis_server":
         if s["phase"] != "pre_game" or data.get("team") not in ("home", "away"):
             raise error("invalid_transition")
@@ -76,18 +105,22 @@ def apply(s, action, data, error):
     if s["phase"] != "period_running":
         raise error("invalid_transition")
     if action == "tennis_set":
-        if t["mode"] != "simple" or t["games"] != [0, 0]:
+        if t["mode"] != "simple" or t["games"] != [0, 0] or t["points"] != [0, 0]:
             raise error("invalid_transition")
         scores = data.get("games")
         if not isinstance(scores, list) or len(scores) != 2 or any(type(v) is not int or not 0 <= v <= 7 for v in scores):
             raise error("invalid_value")
         high, low = max(scores), min(scores)
-        if not ((high == 6 and low <= 4) or (high == 7 and low in (5, 6))):
+        tb = data.get("tiebreak")
+        if match_tiebreak(t):
+            # Entered as 1-0 with its points, e.g. [10, 8].
+            if (high, low) != (1, 0) or tb is None:
+                raise error("invalid_value")
+        elif not ((high == 6 and low <= 4) or (high == 7 and low in (5, 6))):
             raise error("invalid_value")
         winner = 0 if scores[0] > scores[1] else 1
-        tb = data.get("tiebreak")
         if tb is not None:
-            if low != 6 or not isinstance(tb, list) or len(tb) != 2 or any(type(v) is not int or v < 0 for v in tb):
+            if (low != 6 and not match_tiebreak(t)) or not isinstance(tb, list) or len(tb) != 2 or any(type(v) is not int or v < 0 for v in tb):
                 raise error("invalid_value")
             if tb[winner] < target(t) or tb[winner] - tb[1 - winner] < 2 or (tb[winner] > target(t) and tb[winner] - tb[1 - winner] != 2):
                 raise error("invalid_value")

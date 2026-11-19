@@ -41,7 +41,8 @@ def fill(page, language, title=None):
     page = TEXT.sub(replace, page)
     page = re.sub(r"<html lang=\"[a-z]{2}\"", f'<html lang="{language}" data-server-lang="{language}"', page, count=1)
     if title:
-        page = re.sub(r"<title>.*?</title>", f"<title>{html.escape(title, quote=False)}</title>", page, count=1, flags=re.S)
+        # A function, not a template: titles are user text and may hold backslashes.
+        page = re.sub(r"<title>.*?</title>", lambda _: f"<title>{html.escape(title, quote=False)}</title>", page, count=1, flags=re.S)
     return page
 
 

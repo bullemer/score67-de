@@ -20,7 +20,7 @@ class TennisFormat extends StatelessWidget {
     String Function(dynamic) label,
   ) => DropdownButtonFormField<dynamic>(
     key: ValueKey('$key:${value[key]}'),
-    initialValue: value[key],
+    initialValue: value[key] ?? options.first,
     isExpanded: true,
     decoration: InputDecoration(labelText: t('tennis.$key')),
     items: [
@@ -42,6 +42,10 @@ class TennisFormat extends StatelessWidget {
         child: Text(t('tennis.${value['mode']}_hint')),
       ),
       choice('final_tiebreak', [7, 10], (v) => '$v ${t('tennis.points')}'),
+      choice('deciding', [
+        'set',
+        'match_tiebreak',
+      ], (v) => t('tennis.deciding_$v')),
       Padding(
         padding: const EdgeInsets.symmetric(vertical: 8),
         child: Text(t('tennis.format_hint')),
@@ -67,7 +71,17 @@ class TennisScorePanel extends StatelessWidget {
     this.onEditAway,
   });
 
+  /// The deciding set is being played as a match tie-break (to 10).
+  bool get matchTiebreak {
+    final tennis = state['tennis'] as Map;
+    final sets = tennis['sets'] as List;
+    return tennis['deciding'] == 'match_tiebreak' &&
+        tennis['tiebreak'] == true &&
+        (sets[0] as int) + (sets[1] as int) == (tennis['best_of'] as int) - 1;
+  }
+
   Future<void> enterSet(BuildContext context) async {
+    final decider = matchTiebreak;
     int home = 6, away = 0;
     final tbHome = TextEditingController(), tbAway = TextEditingController();
     String error = '';
@@ -76,12 +90,14 @@ class TennisScorePanel extends StatelessWidget {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, update) => AlertDialog(
-          title: Text(t('tennis.enter_set')),
+          title: Text(
+            t(decider ? 'tennis.match_tiebreak_result' : 'tennis.enter_set'),
+          ),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                for (final i in [0, 1])
+                for (final i in decider ? <int>[] : [0, 1])
                   DropdownButtonFormField<int>(
                     initialValue: i == 0 ? home : away,
                     decoration: InputDecoration(
@@ -101,8 +117,10 @@ class TennisScorePanel extends StatelessWidget {
                             }
                           }),
                   ),
-                if ((home == 7 && away == 6) || (home == 6 && away == 7)) ...[
-                  Text(t('tennis.tiebreak_optional')),
+                if (decider ||
+                    (home == 7 && away == 6) ||
+                    (home == 6 && away == 7)) ...[
+                  if (!decider) Text(t('tennis.tiebreak_optional')),
                   for (final i in [0, 1])
                     TextField(
                       controller: i == 0 ? tbHome : tbAway,
@@ -132,7 +150,15 @@ class TennisScorePanel extends StatelessWidget {
                       final tie = high == 7 && low == 6;
                       final a = int.tryParse(tbHome.text),
                           b = int.tryParse(tbAway.text);
-                      if (!((high == 6 && low <= 4) ||
+                      if (decider) {
+                        // Recorded as a 1-0 set with its points.
+                        if (a == null || b == null || a == b) {
+                          update(() => error = t('error.invalid_value'));
+                          return;
+                        }
+                        home = a > b ? 1 : 0;
+                        away = 1 - home;
+                      } else if (!((high == 6 && low <= 4) ||
                               (high == 7 && (low == 5 || low == 6))) ||
                           (tie &&
                               (tbHome.text.isNotEmpty ||
@@ -144,7 +170,8 @@ class TennisScorePanel extends StatelessWidget {
                       update(() => saving = true);
                       final ok = await command('tennis_set', {
                         'games': [home, away],
-                        if (tie && a != null && b != null) 'tiebreak': [a, b],
+                        if ((tie || decider) && a != null && b != null)
+                          'tiebreak': [a, b],
                       });
                       if (!context.mounted) return;
                       if (ok) {
@@ -204,7 +231,10 @@ class TennisScorePanel extends StatelessWidget {
             style: const TextStyle(fontSize: 22),
           ),
         if (tennis['tiebreak'] == true)
-          Text(t('tennis.tiebreak'), textAlign: TextAlign.center),
+          Text(
+            t(matchTiebreak ? 'tennis.match_tiebreak' : 'tennis.tiebreak'),
+            textAlign: TextAlign.center,
+          ),
         const SizedBox(height: 12),
         for (final i in [0, 1])
           Card(
@@ -276,10 +306,17 @@ class TennisScorePanel extends StatelessWidget {
         ],
         if (tennis['mode'] == 'simple' &&
             active &&
-            (tennis['games'] as List).every((v) => v == 0))
+            (tennis['games'] as List).every((v) => v == 0) &&
+            (tennis['points'] as List? ?? [0, 0]).every((v) => v == 0))
           OutlinedButton(
             onPressed: enabled ? () => enterSet(context) : null,
-            child: Text(t('tennis.enter_set')),
+            child: Text(
+              t(
+                matchTiebreak
+                    ? 'tennis.match_tiebreak_result'
+                    : 'tennis.enter_set',
+              ),
+            ),
           ),
         OutlinedButton.icon(
           onPressed: onUndo,
@@ -292,12 +329,14 @@ class TennisScorePanel extends StatelessWidget {
           for (final (i, set) in (tennis['set_scores'] as List).indexed)
             ListTile(
               title: Text(
-                '${t('tennis.set')} ${i + 1}: ${set['games'][0]} – ${set['games'][1]}',
+                (set['games'][0] as int) + (set['games'][1] as int) == 1
+                    ? t('tennis.match_tiebreak')
+                    : '${t('tennis.set')} ${i + 1}: ${set['games'][0]} – ${set['games'][1]}',
               ),
               subtitle: set['tiebreak'] == null
                   ? null
                   : Text(
-                      '${t('tennis.tiebreak')}: ${set['tiebreak'][0]} – ${set['tiebreak'][1]}',
+                      '${(set['games'][0] as int) + (set['games'][1] as int) == 1 ? '' : '${t('tennis.tiebreak')}: '}${set['tiebreak'][0]} – ${set['tiebreak'][1]}',
                     ),
             ),
         ],

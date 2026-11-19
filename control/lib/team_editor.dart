@@ -24,6 +24,9 @@ class TeamEditor extends StatefulWidget {
 
   /// Opens the upright full-page editor (from the landscape console).
   final VoidCallback? onPortrait;
+
+  /// Lets the app save what was typed before the page itself goes away.
+  final TeamEditorFlush? flush;
   const TeamEditor({
     super.key,
     required this.state,
@@ -33,10 +36,22 @@ class TeamEditor extends StatefulWidget {
     this.api,
     this.onApply,
     this.onPortrait,
+    this.flush,
   });
 
   @override
   State<TeamEditor> createState() => _TeamEditorState();
+}
+
+/// Open editors register here; leaving the page (a link, a reload, the phone
+/// closing the tab) hands their unsaved players to the app first.
+class TeamEditorFlush {
+  final _editors = <VoidCallback>{};
+  void call() {
+    for (final editor in _editors.toList()) {
+      editor();
+    }
+  }
 }
 
 class _Row {
@@ -95,7 +110,8 @@ class _TeamEditorState extends State<TeamEditor> {
   String team = 'home';
   bool saving = false, pasteOpen = false;
   final drafts = <String, _Draft>{};
-  Timer? autosave;
+  // One timer per team: both squads can be waiting to be saved.
+  final autosaves = <String, Timer>{};
   List<Timer> revealTimers = [];
   int editClock = 0;
   final paste = TextEditingController();
@@ -157,13 +173,14 @@ class _TeamEditorState extends State<TeamEditor> {
   }
 
   @override
-  void dispose() {
-    autosave?.cancel();
-    for (final timer in revealTimers) {
-      timer.cancel();
-    }
+  void initState() {
+    super.initState();
+    widget.flush?._editors.add(flushDrafts);
+  }
+
+  /// Leaving must not lose what was entered: hand every unsaved team over.
+  void flushDrafts() {
     for (final d in drafts.values) {
-      // Leaving the tab must not lose what was entered.
       if (d.dirty) {
         revertDuplicates(d);
         final players = <Map<String, dynamic>>[];
@@ -172,6 +189,20 @@ class _TeamEditorState extends State<TeamEditor> {
           unawaited(widget.onSave(d.team, players, onCourt));
         }
       }
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.flush?._editors.remove(flushDrafts);
+    for (final timer in autosaves.values) {
+      timer.cancel();
+    }
+    for (final timer in revealTimers) {
+      timer.cancel();
+    }
+    flushDrafts();
+    for (final d in drafts.values) {
       for (final row in d.rows) {
         row.dispose();
       }
@@ -221,8 +252,8 @@ class _TeamEditorState extends State<TeamEditor> {
   }
 
   void schedule(_Draft d) {
-    autosave?.cancel();
-    autosave = Timer(const Duration(milliseconds: 900), () {
+    autosaves[d.team]?.cancel();
+    autosaves[d.team] = Timer(const Duration(milliseconds: 900), () {
       if (mounted) save(d, auto: true);
     });
   }
@@ -341,9 +372,11 @@ class _TeamEditorState extends State<TeamEditor> {
 
   Future<void> applyTeam(_Draft d, Map<String, dynamic> saved) async {
     FocusManager.instance.primaryFocus?.unfocus();
-    autosave?.cancel();
+    autosaves[d.team]?.cancel();
+    final typed = d.dirty;
     d.dirty = false; // the saved team replaces whatever was typed here
     final ok = await widget.onApply!(d.team, saved);
+    if (!ok) d.dirty = typed; // refused (offline): keep what was typed
     if (mounted && ok) setState(() => teamsMode = '');
   }
 
@@ -494,8 +527,12 @@ class _TeamEditorState extends State<TeamEditor> {
   }
 
   Future<void> save(_Draft d, {bool auto = false}) async {
-    autosave?.cancel();
-    if (!d.dirty || saving || !widget.enabled) return;
+    autosaves[d.team]?.cancel();
+    if (!d.dirty || !widget.enabled) return;
+    if (saving) {
+      schedule(d); // the other team is on its way: this one follows
+      return;
+    }
     if (duplicates(d).isNotEmpty) {
       if (!auto) setState(() => d.error = t('error.duplicate_player'));
       return;

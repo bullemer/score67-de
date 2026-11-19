@@ -91,13 +91,28 @@ class _DashboardState extends State<Dashboard> {
 
   /// A connect link opened this page: join that list, then show it.
   Future<void> joinFromLink(String code) async {
-    try {
-      final result = await widget.api('/api/device/join', 'POST', {
-        'code': code,
-      });
-      joined(result['boards'] as int);
-    } catch (_) {
-      if (mounted) setState(() => error = 'link_invalid');
+    for (var attempt = 0; mounted; attempt++) {
+      try {
+        final result = await widget.api('/api/device/join', 'POST', {
+          'code': code,
+        });
+        joined(result['boards'] as int);
+        return;
+      } catch (e) {
+        if (!mounted) return;
+        if (e.toString().startsWith('ApiError:')) {
+          setState(() => error = 'link_invalid');
+          unawaited(refresh());
+          return;
+        }
+        // No connection (hall Wi-Fi): the link is still good, keep trying.
+        // It is no longer in the address bar, so a reload could not.
+        setState(() {
+          error = 'network';
+          loading = false;
+        });
+        await Future<void>.delayed(Duration(seconds: attempt < 5 ? 2 : 5));
+      }
     }
   }
 
@@ -305,6 +320,7 @@ class _DashboardState extends State<Dashboard> {
       'best_of': previous?['tennis']?['best_of'] ?? 3,
       'mode': previous?['tennis']?['mode'] ?? 'detailed',
       'final_tiebreak': previous?['tennis']?['final_tiebreak'] ?? 7,
+      'deciding': previous?['tennis']?['deciding'] ?? 'set',
     };
     int periods = previous?['period_count'] ?? widget.periods;
     int minutes = previous?['period_length_min'] ?? widget.minutes;

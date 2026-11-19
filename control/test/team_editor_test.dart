@@ -163,6 +163,74 @@ void main() {
     expect(players.single['number'], '23');
   });
 
+  testWidgets('both teams typed without reception are saved afterwards', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(600, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final saved = <String>[];
+    Widget editor(bool enabled) => MaterialApp(
+      home: Scaffold(
+        body: TeamEditor(
+          state: board('basketball', []),
+          t: (key) => key,
+          enabled: enabled,
+          onSave: (team, players, onCourt) async {
+            saved.add('$team ${(players.single as Map)['number']}');
+            return true;
+          },
+        ),
+      ),
+    );
+    await tester.pumpWidget(editor(false));
+    await tester.enterText(find.byType(TextField).at(0), '7');
+    await tester.pump();
+    await tester.tap(find.text('BCA'));
+    await tester.pump();
+    await tester.enterText(find.byType(TextField).at(0), '9');
+    await tester.pump(const Duration(seconds: 2));
+    expect(saved, isEmpty);
+    await tester.pumpWidget(editor(true));
+    await tester.pump(const Duration(seconds: 3));
+    expect(saved.toSet(), {'home 7', 'away 9'});
+  });
+
+  testWidgets('the app can collect unsaved players before the page goes', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(600, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final flush = TeamEditorFlush();
+    final saved = <String>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: TeamEditor(
+            state: board('basketball', []),
+            t: (key) => key,
+            enabled: true,
+            flush: flush,
+            onSave: (team, players, onCourt) async {
+              saved.add('${(players.single as Map)['number']}');
+              return true;
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.enterText(find.byType(TextField).at(0), '23');
+    await tester.pump(const Duration(milliseconds: 100)); // before the autosave
+    flush();
+    expect(saved, ['23']);
+    await tester.pumpWidget(const SizedBox());
+    flush(); // the editor is gone: nothing left to ask
+    await tester.pump(const Duration(seconds: 2));
+  });
+
   testWidgets('next on the keyboard goes to the empty row', (tester) async {
     await mount(tester, [
       {'id': 'a', 'number': '4', 'name': ''},
