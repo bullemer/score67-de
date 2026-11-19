@@ -267,6 +267,8 @@ class SavedPlayer(StrictModel):
 
 
 class SavedTeamBody(StrictModel):
+    # With an id the team is edited in place (the Team Editor), also renamed.
+    id: str | None = Field(default=None, max_length=36)
     sport: Literal["football", "basketball"]
     name: str = Field(min_length=1, max_length=60)
     short: str = Field(min_length=1, max_length=SHORT_MAX)
@@ -1452,7 +1454,16 @@ def create_app(db_url=None, secure_cookies=None, *, single_active_board=True):
             device_id = ensure_device(db, request, response)
             account = current_account(db, request.cookies)
             mine = my_saved_teams(db, request)
-            team = next((t for t in mine if t.sport == body.sport and t.name.lower() == name.lower()), None)
+            same_name = next((t for t in mine if t.sport == body.sport and t.name.lower() == name.lower()), None)
+            if body.id:
+                team = next((t for t in mine if t.id == body.id), None)
+                if not team:
+                    raise HTTPException(404, "not_found")
+                if same_name and same_name.id != team.id:
+                    raise HTTPException(409, "duplicate_team")
+                team.sport = body.sport
+            else:
+                team = same_name
             if not team:
                 if len(mine) >= 100:
                     raise HTTPException(409, "teams_limit")

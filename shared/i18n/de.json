@@ -857,5 +857,12 @@
   "ball.view_classic": "Klassische Ansicht",
   "ball.view_new": "Neue Ansicht (Ballbesitz)",
   "two_missed": "2er daneben",
-  "three_missed": "3er daneben"
+  "three_missed": "3er daneben",
+  "teams.editor": "Team-Editor",
+  "teams.new": "Neues Team",
+  "teams.short": "Kürzel",
+  "teams.delete_confirm": "Wirklich löschen?",
+  "teams.deleted": "Team gelöscht.",
+  "teams.pick": "Links ein Team wählen oder ein neues anlegen. Gespeicherte Teams lädst du im Tab „Team“ ins Spiel.",
+  "error.duplicate_team": "Ein Team mit diesem Namen gibt es schon."
 }

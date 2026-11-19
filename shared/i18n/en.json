@@ -857,5 +857,12 @@
   "ball.view_classic": "Classic view",
   "ball.view_new": "New view (ball possession)",
   "two_missed": "2-pointer missed",
-  "three_missed": "3-pointer missed"
+  "three_missed": "3-pointer missed",
+  "teams.editor": "Team editor",
+  "teams.new": "New team",
+  "teams.short": "Short",
+  "teams.delete_confirm": "Really delete?",
+  "teams.deleted": "Team deleted.",
+  "teams.pick": "Pick a team on the left or create a new one. Saved teams are loaded into a game on the Team tab.",
+  "error.duplicate_team": "A team with this name already exists."
 }

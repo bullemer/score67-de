@@ -656,6 +656,9 @@ class _TeamEditorState extends State<TeamEditor> {
           child: ListView(
             padding: const EdgeInsets.symmetric(horizontal: 8),
             children: [
+              // Load / save a team first: reachable without scrolling past
+              // the whole squad.
+              if (widget.api != null) ...teamsPanel(d),
               for (final row in d.rows)
                 Padding(
                   key: row.key,
@@ -735,7 +738,6 @@ class _TeamEditorState extends State<TeamEditor> {
                     ),
                   ),
                 ),
-              if (widget.api != null) ...teamsPanel(d),
               TextButton(
                 onPressed: () => setState(() => pasteOpen = !pasteOpen),
                 child: Text(t('squad.paste')),

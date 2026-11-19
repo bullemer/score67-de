@@ -48,6 +48,7 @@ void main() {
               return true;
             },
             onAdjustClock: (seconds) => log.add('adjust $seconds'),
+            onAdjustScore: (team, delta) => log.add('score $team $delta'),
             log: const Text('BSV  Q2 08:45  2 PTS  #11'),
             base: MatchConsole(
               state: state,
@@ -251,6 +252,36 @@ void main() {
     }
     await tester.pump();
     expect(preview(), '10:00');
+    await tester.tap(find.text('cancel'));
+    await tester.pump();
+    expect(log.length, 1);
+  });
+
+  testWidgets('a wrong score is corrected on screen, without a dialog', (
+    tester,
+  ) async {
+    await mount(tester, game(ball: 'home'));
+    String preview() =>
+        tester.widget<Text>(find.byKey(const ValueKey('score-preview'))).data!;
+    await tester.tap(find.text('08').first); // BSV's score
+    await tester.pump();
+    expect(preview(), '8');
+    await tester.tap(find.byKey(const ValueKey('score-step-3')));
+    await tester.tap(find.byKey(const ValueKey('score-step--1')));
+    await tester.pump();
+    expect(preview(), '10');
+    await tester.tap(find.text('save'));
+    await tester.pump();
+    expect(log, ['score home 2']);
+    expect(find.byKey(const ValueKey('score-preview')), findsNothing);
+    // Never below zero; nothing to save without a change.
+    await tester.tap(find.text('08').last); // TOW
+    await tester.pump();
+    for (var i = 0; i < 4; i++) {
+      await tester.tap(find.byKey(const ValueKey('score-step--3')));
+    }
+    await tester.pump();
+    expect(preview(), '0');
     await tester.tap(find.text('cancel'));
     await tester.pump();
     expect(log.length, 1);
