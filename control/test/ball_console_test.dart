@@ -151,6 +151,40 @@ void main() {
     expect(log.sublist(1), ['reb away away12', 'ball away']);
   });
 
+  testWidgets(
+    'bar and action buttons wear the colour of the team with the ball',
+    (tester) async {
+      Color bar() =>
+          (tester
+                      .widget<AnimatedContainer>(
+                        find.byKey(const ValueKey('ball-header')),
+                      )
+                      .decoration!
+                  as BoxDecoration)
+              .color!;
+      Color button(String id) => tester
+          .widget<Material>(find.byKey(ValueKey('ball-action-$id')))
+          .color!;
+      await mount(tester, game(ball: 'away'));
+      expect(bar(), const Color(0xff1d4ed8));
+      expect(button('2pt'), const Color(0xff1d4ed8));
+      await tester.tap(find.text('ball.made2'));
+      await tester.pump();
+      expect(button('2pt'), Colors.white); // armed
+      expect(button('3pt'), const Color(0xff1d4ed8));
+      await tester.tap(find.text('ball.made2')); // disarm
+      await tester.pump();
+      await mount(tester, game(ball: 'home'));
+      await tester.pumpAndSettle();
+      expect(bar(), const Color(0xffc8102e));
+      // Not started or in a break: neutral.
+      await mount(tester, {...game(ball: 'home'), 'phase': 'break'});
+      await tester.pumpAndSettle();
+      expect(bar(), const Color(0xff111827));
+      expect(button('2pt'), const Color(0xff1f2937));
+    },
+  );
+
   testWidgets('team card, add player and long press on court', (tester) async {
     await mount(tester, game(ball: 'home'));
     await tester.tap(find.text('console.timeout'));

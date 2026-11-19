@@ -68,6 +68,17 @@ class BallConsoleState extends State<BallConsole> {
       grey = Color(0xff94a3b8),
       red = Color(0xffdc2626);
 
+  static const neutral = Color(0xff1f2937), neutralHeader = Color(0xff111827);
+
+  /// The colour of the team with the ball while a period is being played.
+  /// Before the game, in breaks and afterwards the console stays neutral.
+  Color? get ballColor {
+    final holder = ball;
+    return s['phase'] == 'period_running' && holder != null
+        ? hexColor(s[holder]['color'])
+        : null;
+  }
+
   void showTab(int index) => setState(() => tab = index);
 
   @override
@@ -252,6 +263,7 @@ class BallConsoleState extends State<BallConsole> {
   Widget teamHead(String team) {
     final has = ball == team;
     final color = hexColor(s[team]['color']);
+    final ink = readableOn(ballColor ?? neutralHeader);
     final counters = s[team]['counters'] ?? {};
     final (used, allowed) = timeoutWindow(s, team);
     final fouls = (counters['team_fouls'] ?? 0) as int;
@@ -267,14 +279,15 @@ class BallConsoleState extends State<BallConsole> {
               style: TextStyle(
                 fontSize: has ? 26 : 20,
                 fontWeight: has ? FontWeight.w900 : FontWeight.w500,
-                color: has ? Colors.white : Colors.white60,
+                color: has ? ink : ink.withValues(alpha: .6),
               ),
             ),
             Text(
               'F$fouls · TO $used${allowed == null ? '' : '/$allowed'}',
               style: TextStyle(
                 fontSize: 11,
-                color: fouls >= 5 ? fouledOut : Colors.white60,
+                fontWeight: fouls >= 5 ? FontWeight.w900 : null,
+                color: ink.withValues(alpha: fouls >= 5 ? 1 : .7),
               ),
             ),
           ],
@@ -290,6 +303,8 @@ class BallConsoleState extends State<BallConsole> {
         decoration: BoxDecoration(
           color: color,
           borderRadius: BorderRadius.circular(8),
+          // Outlined: on a bar in the same team colour the box would vanish.
+          border: Border.all(color: ink.withValues(alpha: .8), width: 2),
         ),
         child: Text(
           '${s[team]['score']}'.padLeft(2, '0'),
@@ -312,8 +327,12 @@ class BallConsoleState extends State<BallConsole> {
         s['clock']?['enabled'] == true &&
         !c.running &&
         !c.periodOver;
-    return Container(
-      color: headerBackground,
+    final bar = ballColor ?? neutralHeader;
+    final ink = readableOn(bar);
+    return AnimatedContainer(
+      key: const ValueKey('ball-header'),
+      duration: const Duration(milliseconds: 180),
+      color: bar,
       height: 56,
       padding: const EdgeInsets.symmetric(horizontal: 4),
       child: FittedBox(
@@ -323,7 +342,7 @@ class BallConsoleState extends State<BallConsole> {
             Builder(
               builder: (context) => IconButton(
                 onPressed: () => c.onMenu(context),
-                icon: const Icon(Icons.menu),
+                icon: Icon(Icons.menu, color: ink),
               ),
             ),
             teamHead('home'),
@@ -358,23 +377,29 @@ class BallConsoleState extends State<BallConsole> {
             const SizedBox(width: 10),
             Text(
               c.period,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w800,
-                color: Color(0xffffb020),
+                color: ink,
               ),
             ),
             GestureDetector(
               onTap: c.onClockTap,
-              child: Padding(
+              // On its own dark plate: readable on every team colour.
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 8),
                 padding: const EdgeInsets.symmetric(horizontal: 8),
+                decoration: BoxDecoration(
+                  color: consoleBackground,
+                  borderRadius: BorderRadius.circular(8),
+                ),
                 child: Text(
                   c.clock,
                   style: TextStyle(
                     fontSize: 34,
                     fontWeight: FontWeight.w900,
                     // A clock standing still during play must be noticed.
-                    color: stopped ? foulTrouble : null,
+                    color: stopped ? foulTrouble : Colors.white,
                     fontFeatures: const [FontFeature.tabularFigures()],
                   ),
                 ),
@@ -445,11 +470,16 @@ class BallConsoleState extends State<BallConsole> {
   Widget actionButton(BallAction a) {
     final selected = armed == a.id;
     final active = enabled(a.id);
+    // The buttons wear the colour of the team with the ball; the armed one
+    // turns white so it stands out on any colour.
+    final base = selected ? Colors.white : ballColor ?? neutral;
+    final ink = readableOn(base);
     return Expanded(
       child: Padding(
         padding: const EdgeInsets.all(3),
         child: Material(
-          color: selected ? a.accent : const Color(0xff1f2937),
+          key: ValueKey('ball-action-${a.id}'),
+          color: base,
           borderRadius: BorderRadius.circular(6),
           child: InkWell(
             borderRadius: BorderRadius.circular(6),
@@ -469,11 +499,7 @@ class BallConsoleState extends State<BallConsole> {
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w800,
-                      color: !active
-                          ? Colors.white30
-                          : selected
-                          ? readableOn(a.accent)
-                          : Colors.white,
+                      color: active ? ink : ink.withValues(alpha: .35),
                     ),
                   ),
                 ),
