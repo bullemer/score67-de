@@ -182,6 +182,7 @@ class CreateBoard(StrictModel):
     tennis_best_of: Literal[3, 5] = 3
     tennis_mode: Literal["simple", "detailed"] = "detailed"
     tennis_final_tiebreak: Literal[7, 10] = 7
+    tennis_deciding: Literal["set", "match_tiebreak"] = "set"
     language: Literal["de", "en"] = "de"
     description: str | None = Field(default=None, max_length=300)
     creator: str | None = Field(default=None, max_length=40)
@@ -237,6 +238,7 @@ class CreateMatch(StrictModel):
     tennis_best_of: Literal[3, 5] = 3
     tennis_mode: Literal["simple", "detailed"] = "detailed"
     tennis_final_tiebreak: Literal[7, 10] = 7
+    tennis_deciding: Literal["set", "match_tiebreak"] = "set"
     command_id: UUID
     home: str = Field(default="Home", min_length=1, max_length=60)
     away: str = Field(default="Guest", min_length=1, max_length=60)
@@ -739,6 +741,9 @@ def create_app(db_url=None, secure_cookies=None, *, single_active_board=True):
                 and e.payload["type"] in (f"{color}_card", f"{color}_card_correction")) for color in ("red", "yellow")}
         available = available_events(events)
         for team in ("home", "away"):
+            # A second yellow sends the player off: it shows as a red card too.
+            s[team]["counters"]["red_cards"] += sum(1 for e in available if e.payload["type"] == "yellow_card"
+                                                    and e.payload.get("second_yellow") and e.payload.get("team") == team)
             s[team]["counters"].update(
                 team_fouls=sum(1 for e in available if (e.payload["type"] == "team_foul" or (e.payload["type"] in ("personal_foul", "technical_foul") and e.payload.get("counts_team"))) and e.payload.get("team") == team
                                and min(e.payload["period"], s["period_count"]) == min(s["period"], s["period_count"])),
@@ -852,7 +857,7 @@ def create_app(db_url=None, secure_cookies=None, *, single_active_board=True):
             b.owner_id = account.id if account else None
             db.add(b)
             db.flush()
-            s = initial_state(body.period_count, body.period_length_min, body.sport, body.lineup_size, body.tennis_category, body.tennis_best_of, body.tennis_mode, body.tennis_final_tiebreak)
+            s = initial_state(body.period_count, body.period_length_min, body.sport, body.lineup_size, body.tennis_category, body.tennis_best_of, body.tennis_mode, body.tennis_final_tiebreak, body.tennis_deciding)
             name_teams(s, body)
             add_logos(db, slug, s, logos)
             db.add(Match(id=match_id, slug=slug, state=s, fixture=fixtures.stored(body.fixture),
@@ -1559,7 +1564,7 @@ def create_app(db_url=None, secure_cookies=None, *, single_active_board=True):
                 raise HTTPException(422, "schedule_future")
             if not body.home.strip() or not body.away.strip():
                 raise HTTPException(422, "invalid_value")
-            s = initial_state(body.period_count, body.period_length_min, body.sport, body.lineup_size, body.tennis_category, body.tennis_best_of, body.tennis_mode, body.tennis_final_tiebreak)
+            s = initial_state(body.period_count, body.period_length_min, body.sport, body.lineup_size, body.tennis_category, body.tennis_best_of, body.tennis_mode, body.tennis_final_tiebreak, body.tennis_deciding)
             name_teams(s, body)
             add_logos(db, slug, s, logos)
             m = Match(id=str(uuid4()), slug=slug, state=s, fixture=fixtures.stored(body.fixture),
@@ -1648,7 +1653,7 @@ def create_app(db_url=None, secure_cookies=None, *, single_active_board=True):
                 if m.state["sport"] == "tennis":
                     from .tennis import initial
                     t = m.state["tennis"]
-                    new.state["tennis"] = initial(t["category"], t["best_of"], t["mode"], t["final_tiebreak"])
+                    new.state["tennis"] = initial(t["category"], t["best_of"], t["mode"], t["final_tiebreak"], t.get("deciding", "set"))
                     new.state["period_count"] = t["best_of"]
                 new.state["team_fouls_enabled"] = m.state.get("team_fouls_enabled", False)
                 new.state["foul_mode"] = foul_mode(m.state)
@@ -1710,6 +1715,13 @@ def create_app(db_url=None, secure_cookies=None, *, single_active_board=True):
                     if current["home"]["score"] != current["away"]["score"]:
                         raise HTTPException(422, "invalid_transition")
                 data = dict(body.data)
+                if body.action == "yellow_card":
+                    # Second yellow for the same player = yellow-red. Decided here,
+                    # from the entries that still count, never by the client.
+                    shown = [e for e in available_events(db.scalars(select(MatchEvent).where(MatchEvent.match_id == m.id).order_by(MatchEvent.id)).all())
+                             if e.payload["type"] == "yellow_card" and e.payload.get("team") == data.get("team")]
+                    data["second"] = data.get("player_id") is not None and any(
+                        (e.payload.get("player") or {}).get("id") == data["player_id"] for e in shown)
                 if body.action == "period_set":
                     # Back into a period: its clock continues where that period stopped.
                     data = {"period": body.data.get("period"), "resume_ms": 0}

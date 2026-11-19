@@ -159,7 +159,7 @@ Map<String, dynamic> optimisticState(
         final countsTeam = correcting
             ? target!['counts_team'] == true
             : kind == 'technical_foul'
-            ? playerId != null &&
+            ? (playerId != null || data['kind'] != null) &&
                   (s['foul_mode'] == 'team' || s['foul_mode'] == 'both')
             : s['foul_mode'] == 'both';
         if (countsTeam) {

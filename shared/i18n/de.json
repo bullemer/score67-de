@@ -821,5 +821,21 @@
   "features.gallery.boxscore": "Spielerstatistik",
   "features.gallery.menu": "Controller-Menü und App-Updates",
   "features.gallery.football": "Fußball-Controller",
-  "features.gallery.tennis": "Tennis-Controller"
+  "features.gallery.tennis": "Tennis-Controller",
+  "console.own_goal": "EIGENTOR",
+  "console.own_goal_short": "Eigentor",
+  "console.yellow_red_short": "Gelb-Rote Karte",
+  "console.yellow_red_hint": "{p}: zweite Gelbe – Gelb-Rot, muss vom Platz.",
+  "console.unsp": "U-FOUL",
+  "console.unsp_short": "Unsportliches Foul",
+  "console.ejected": "{p}: zweites technisches/unsportliches Foul – Spielausschluss.",
+  "console.fifth_foul": "{p}: 5. Foul – muss auf die Bank.",
+  "tennis.deciding": "Entscheidungssatz",
+  "tennis.deciding_set": "Voller Satz",
+  "tennis.deciding_match_tiebreak": "Match-Tie-Break bis 10 statt Satz",
+  "tennis.match_tiebreak": "Match-Tie-Break",
+  "tennis.match_tiebreak_result": "Match-Tie-Break-Ergebnis eintragen",
+  "tennis.retire_question": "Match beenden – wer gewinnt?",
+  "tennis.no_winner": "Ohne Sieger beenden (Abbruch)",
+  "tennis.retired": "Aufgabe"
 }

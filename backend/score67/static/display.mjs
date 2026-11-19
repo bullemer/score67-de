@@ -66,7 +66,7 @@ function renderDetails() {
         ? `${words.score_adjust} ${e.points > 0 ? '+' : ''}${e.points}`
         : playerLabel(e.player) || words['ticker.team_goal'];
       row.append(node('span', eventTime(e, state, words), 'scorer-minute'),
-        node('span', `${who}${e.detail === 'penalty' ? ` (${words['console.penalty_short']})` : ''}`, 'scorer-name'),
+        node('span', `${who}${e.detail === 'penalty' ? ` (${words['console.penalty_short']})` : e.detail === 'own_goal' ? ` (${words['console.own_goal_short']})` : ''}`, 'scorer-name'),
         node('span', state[e.team].short, 'scorer-team'),
         node('strong', `${running.home}:${running.away}`, 'scorer-score'));
       return row;
@@ -259,6 +259,8 @@ function render() {
       const signed = `${event.points > 0 ? '+' : ''}${event.points}`;
       const label = event.type === 'shootout_kick' ? words[event.scored ? 'shootout.kick_scored' : 'shootout.kick_missed']
         : event.type === 'score_adjust' ? `${words.score_adjust} ${signed}`
+        : event.second_yellow ? words['console.yellow_red_short']
+        : event.detail === 'own_goal' ? `${words[event.type]} (${words['console.own_goal_short']})`
         : state.sport === 'basketball' && event.type.startsWith('score') ? signed : (words[event.type] || words[`tennis.${event.type.replace('tennis_', 'add_')}`] || event.type);
       row.textContent = [minute, label, state[event.team].name, who, event.cancelled ? words.cancelled : event.corrected ? words['event.corrected'] : ''].filter(Boolean).join(' · ');
       if (event.cancelled || event.corrected) row.className = 'cancelled';

@@ -320,6 +320,7 @@ class _DashboardState extends State<Dashboard> {
       'best_of': previous?['tennis']?['best_of'] ?? 3,
       'mode': previous?['tennis']?['mode'] ?? 'detailed',
       'final_tiebreak': previous?['tennis']?['final_tiebreak'] ?? 7,
+      'deciding': previous?['tennis']?['deciding'] ?? 'set',
     };
     int periods = previous?['period_count'] ?? widget.periods;
     int minutes = previous?['period_length_min'] ?? widget.minutes;
