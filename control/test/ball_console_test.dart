@@ -8,6 +8,7 @@ Map<String, dynamic> game({String? ball, bool clock = true}) => {
   'phase': 'period_running',
   'period': 2,
   'period_count': 8,
+  'period_length_min': 10,
   'foul_mode': 'both',
   'possession': ball,
   'clock': {'enabled': true, 'running': clock},
@@ -43,6 +44,7 @@ void main() {
         home: Scaffold(
           body: BallConsole(
             onAddPlayer: (team) => log.add('add $team'),
+            onAdjustClock: (seconds) => log.add('adjust $seconds'),
             log: const Text('BSV  Q2 08:45  2 PTS  #11'),
             base: MatchConsole(
               state: state,
@@ -213,6 +215,37 @@ void main() {
       tester.getSize(find.byKey(const ValueKey('ball-header'))).width,
       844,
     );
+  });
+
+  testWidgets('the clock is corrected on screen, without a dialog', (
+    tester,
+  ) async {
+    await mount(tester, game(ball: 'home'));
+    String preview() =>
+        tester.widget<Text>(find.byKey(const ValueKey('clock-preview'))).data!;
+    await tester.tap(find.text('08:45'));
+    await tester.pump();
+    expect(preview(), '08:45');
+    await tester.tap(find.byKey(const ValueKey('clock-step-10')));
+    await tester.tap(find.byKey(const ValueKey('clock-step-10')));
+    await tester.tap(find.byKey(const ValueKey('clock-step--1')));
+    await tester.pump();
+    expect(preview(), '09:04');
+    await tester.tap(find.text('save'));
+    await tester.pump();
+    expect(log, ['adjust 19']);
+    expect(find.byKey(const ValueKey('clock-preview')), findsNothing);
+    // Never beyond the period (here 10 minutes) and never below zero.
+    await tester.tap(find.text('08:45'));
+    await tester.pump();
+    for (var i = 0; i < 3; i++) {
+      await tester.tap(find.byKey(const ValueKey('clock-step-60')));
+    }
+    await tester.pump();
+    expect(preview(), '10:00');
+    await tester.tap(find.text('cancel'));
+    await tester.pump();
+    expect(log.length, 1);
   });
 
   testWidgets('team card, add player and long press on court', (tester) async {

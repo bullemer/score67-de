@@ -2867,6 +2867,7 @@ class _Score67State extends State<Score67> {
       key: ballKey,
       base: console,
       onAddPlayer: (team) => editPlayer(team, ''),
+      onAdjustClock: (seconds) => command('clock_adjust', {'seconds': seconds}),
       log: gameFlow(compact: true),
     );
   }
