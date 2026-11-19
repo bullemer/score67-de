@@ -28,12 +28,16 @@ class BallConsole extends StatefulWidget {
 
   /// Moves the game clock by [seconds] (positive = more time left).
   final void Function(int seconds) onAdjustClock;
+
+  /// Corrects [team]'s score by [delta] points (logged as its own entry).
+  final void Function(String team, int delta) onAdjustScore;
   const BallConsole({
     super.key,
     required this.base,
     required this.onAddPlayer,
     required this.log,
     required this.onAdjustClock,
+    required this.onAdjustScore,
   });
 
   @override
@@ -65,6 +69,9 @@ class BallConsoleState extends State<BallConsole> {
 
   /// Clock correction being prepared on screen, in seconds (null = closed).
   int? clockDelta;
+
+  /// Score correction being prepared on screen: team and points.
+  (String, int)? scoreEdit;
 
   /// Entry held back while its period (or clock) has not started.
   (String, String, String?)? deferred;
@@ -316,7 +323,13 @@ class BallConsoleState extends State<BallConsole> {
       ),
     );
     final score = InkWell(
-      onTap: c.canWrite ? () => c.onScoreTap(team) : null,
+      // Corrected on screen with large buttons: no dialog, no keyboard.
+      onTap: c.canWrite
+          ? () => setState(() {
+              clockDelta = null;
+              scoreEdit = scoreEdit?.$1 == team ? null : (team, 0);
+            })
+          : null,
       child: Container(
         width: 62,
         height: 44,
@@ -413,7 +426,10 @@ class BallConsoleState extends State<BallConsole> {
                 if (c.canWrite &&
                     s['phase'] == 'period_running' &&
                     s['clock']?['enabled'] == true) {
-                  setState(() => clockDelta = clockDelta == null ? 0 : null);
+                  setState(() {
+                    scoreEdit = null;
+                    clockDelta = clockDelta == null ? 0 : null;
+                  });
                 }
               },
               // On its own dark plate: readable on every team colour.
@@ -1170,6 +1186,112 @@ class BallConsoleState extends State<BallConsole> {
     );
   }
 
+  /// Covers the tab content while a wrong score is being corrected.
+  Widget scoreEditor() {
+    final (team, delta) = scoreEdit!;
+    final current = (s[team]['score'] as num).toInt();
+    final next = (current + delta).clamp(0, 999);
+    Widget step(int points) => Expanded(
+      child: Padding(
+        padding: const EdgeInsets.all(3),
+        child: FilledButton(
+          key: ValueKey('score-step-$points'),
+          style: FilledButton.styleFrom(
+            backgroundColor: neutral,
+            foregroundColor: Colors.white,
+            padding: EdgeInsets.zero,
+            minimumSize: const Size(40, 48),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+          // The value at tap time: two quick taps both count.
+          onPressed: () => setState(
+            () => scoreEdit = (
+              team,
+              (current + scoreEdit!.$2 + points).clamp(0, 999) - current,
+            ),
+          ),
+          child: Text(
+            '${points < 0 ? '−' : '+'}${points.abs()}',
+            style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
+          ),
+        ),
+      ),
+    );
+    return ColoredBox(
+      color: const Color(0xff151e2a),
+      child: Padding(
+        padding: const EdgeInsets.all(6),
+        child: Column(
+          children: [
+            Expanded(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Row(
+                  children: [
+                    Text(
+                      '${t('score.adjust')} · ${s[team]['short']}   $current → ',
+                      style: const TextStyle(color: Colors.white70),
+                    ),
+                    Text(
+                      '$next',
+                      key: const ValueKey('score-preview'),
+                      style: const TextStyle(
+                        fontSize: 44,
+                        fontWeight: FontWeight.w900,
+                        color: foulTrouble,
+                        fontFeatures: [FontFeature.tabularFigures()],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Row(children: [step(-3), step(-2), step(-1)]),
+            Row(children: [step(3), step(2), step(1)]),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.all(3),
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size(40, 44),
+                      ),
+                      onPressed: () => setState(() => scoreEdit = null),
+                      child: Text(t('cancel')),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.all(3),
+                    child: FilledButton(
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size(40, 44),
+                        backgroundColor: green,
+                        foregroundColor: Colors.black,
+                      ),
+                      onPressed: next == current || !c.canWrite
+                          ? null
+                          : () {
+                              widget.onAdjustScore(team, next - current);
+                              setState(() => scoreEdit = null);
+                            },
+                      child: Text(t('save')),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget middlePanel() {
     // The first classic tab is the game flow: here it has its own column.
     final tabs = [(t('ball.scoring'), scoringTab()), ...c.tabs.skip(1)];
@@ -1241,6 +1363,7 @@ class BallConsoleState extends State<BallConsole> {
                   children: [for (final entry in tabs) entry.$2],
                 ),
                 if (clockDelta != null) Positioned.fill(child: clockEditor()),
+                if (scoreEdit != null) Positioned.fill(child: scoreEditor()),
               ],
             ),
           ),

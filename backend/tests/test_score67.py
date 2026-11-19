@@ -2576,3 +2576,20 @@ def test_missed_shots_and_possession_are_recorded_for_the_box_score(system):
     assert [e['type'] for e in public if e['type'] in ('two_missed', 'three_missed', 'assist')] == ['two_missed', 'two_missed', 'three_missed', 'assist']
     assert sum(1 for e in public if e['type'] == 'two_missed' and e['corrected']) == 1
     assert command(client, slug, 'three_missed', {'team': 'nobody'}).status_code == 422
+
+
+def test_saved_team_is_edited_and_renamed_by_id(system):
+    _, client = system
+    body = {"sport": "basketball", "name": "BSV U14", "short": "BSV", "color": "#c8102e", "players": [{"number": "11", "name": "Luke"}]}
+    first = client.post("/api/teams", json=body).json()
+    other = client.post("/api/teams", json={**body, "name": "TOW"}).json()
+    renamed = client.post("/api/teams", json={**body, "id": first["id"], "name": "BSV U16", "players": [{"number": "11", "name": "Luke"}, {"number": "7", "name": ""}]})
+    assert renamed.status_code == 200 and renamed.json()["id"] == first["id"] and renamed.json()["name"] == "BSV U16"
+    teams = client.get("/api/teams").json()["teams"]
+    assert sorted(t["name"] for t in teams) == ["BSV U16", "TOW"] and len(next(t for t in teams if t["id"] == first["id"])["players"]) == 2
+    # Another team's name cannot be taken; a foreign or unknown id is not found.
+    clash = client.post("/api/teams", json={**body, "id": first["id"], "name": "tow"})
+    assert clash.status_code == 409 and clash.json() == {"error": "duplicate_team"}
+    assert client.post("/api/teams", json={**body, "id": "nope"}).status_code == 404
+    stranger = TestClient(client.app)
+    assert stranger.post("/api/teams", json={**body, "id": other["id"], "name": "Mine now"}).status_code == 404

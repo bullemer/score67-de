@@ -10,6 +10,7 @@ import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'account.dart';
+import 'saved_teams.dart';
 import 'ball_console.dart';
 import 'app_settings.dart';
 import 'dashboard.dart';
@@ -154,6 +155,9 @@ class _Score67State extends State<Score67> {
 
   /// Settings open as a full page from the ☰ menu (portrait allowed there).
   bool settingsOpen = false;
+
+  /// Team Editor from the ☰ menu: saved teams, edited in landscape.
+  bool teamsOpen = false;
   // Bluetooth LED displays driven directly by this phone (Android Chrome).
   List<LedConfig> ledConfigs = loadLedConfigs();
   final ledSent = <int, String>{};
@@ -2875,6 +2879,8 @@ class _Score67State extends State<Score67> {
         ],
       }),
       onAdjustClock: (seconds) => command('clock_adjust', {'seconds': seconds}),
+      onAdjustScore: (team, delta) =>
+          command('score_adjust', {'team': team, 'delta': delta}),
       log: gameFlow(compact: true),
     );
   }
@@ -4625,6 +4631,8 @@ class _Score67State extends State<Score67> {
               Icons.swap_horiz,
               t(classicConsole ? 'ball.view_new' : 'ball.view_classic'),
             ),
+          if (admin && !tennis)
+            ('teams', Icons.groups_outlined, t('teams.editor')),
           ('settings', Icons.tune, t('console.settings')),
           ('app', Icons.settings_outlined, t('app.settings')),
           ('start', Icons.home_outlined, t('menu.start')),
@@ -4650,6 +4658,8 @@ class _Score67State extends State<Score67> {
     switch (kind) {
       case 'view':
         setClassicConsole(!classicConsole);
+      case 'teams':
+        setState(() => teamsOpen = true);
       case 'update':
         updateApp();
       case 'settings':
@@ -4932,7 +4942,7 @@ class _Score67State extends State<Score67> {
                 ),
           appBar:
               console(context) ||
-                  ((settingsOpen || teamPageOpen) && liveConsole)
+                  ((settingsOpen || teamPageOpen || teamsOpen) && liveConsole)
               ? null
               : AppBar(
                   leading: IconButton(
@@ -4968,7 +4978,17 @@ class _Score67State extends State<Score67> {
                           const SizedBox(width: 12),
                         ],
                 ),
-          body: teamPageOpen && liveConsole
+          body: teamsOpen && liveConsole
+              ? SafeArea(
+                  child: SavedTeamsPage(
+                    t: t,
+                    api: (path, method, body) =>
+                        api(path, method: method, body: body),
+                    sport: basketball ? 'basketball' : 'football',
+                    onClose: () => setState(() => teamsOpen = false),
+                  ),
+                )
+              : teamPageOpen && liveConsole
               ? SafeArea(child: teamPage())
               : settingsOpen && liveConsole
               ? SafeArea(child: settingsPage(context))
