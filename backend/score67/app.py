@@ -325,6 +325,8 @@ class Command(StrictModel):
 
 COUNTED_EVENTS = ("score", "red_card", "yellow_card", "team_foul", "timeout", "personal_foul", "technical_foul") + BASKETBALL_STATS + FOOTBALL_EVENTS
 PRIVATE_EVENTS = ("personal_foul", "technical_foul", "assign_foul_player", "lineup") + FOOTBALL_EVENTS
+# Shown to spectators in the extended ticker; steals, blocks and turnovers stay with the controllers.
+PUBLIC_STATS = ("rebound", "assist", "free_throw_missed", "two_missed", "three_missed")
 CORRECTION_EVENTS = tuple(f"{kind}_correction" for kind in COUNTED_EVENTS)
 
 
@@ -811,7 +813,8 @@ def create_app(db_url=None, secure_cookies=None, *, single_active_board=True):
             for team in ("home", "away"):
                 s[team].pop("foul_players", None)
             s["events"] = [e for e in s["events"] if e["type"].removesuffix("_correction") not in PRIVATE_EVENTS
-                           and e["type"].removesuffix("_correction") not in BASKETBALL_STATS]
+                           and (e["type"].removesuffix("_correction") not in BASKETBALL_STATS
+                                or e["type"].removesuffix("_correction") in PUBLIC_STATS)]
             for team in ("home", "away"):
                 s[team].pop("on_court", None)
         return s
