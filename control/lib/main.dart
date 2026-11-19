@@ -2863,14 +2863,11 @@ class _Score67State extends State<Score67> {
       ],
     );
     if (!ballView) return console;
-    final shown = events.reversed
-        .where((e) => visibleInFlow(e) && e['cancelled'] != true)
-        .firstOrNull;
     return BallConsole(
       key: ballKey,
       base: console,
       onAddPlayer: (team) => editPlayer(team, ''),
-      lastEntry: shown == null ? null : flowLine(shown),
+      log: gameFlow(compact: true),
     );
   }
 
@@ -3584,7 +3581,8 @@ class _Score67State extends State<Score67> {
     ].where((part) => '$part'.isNotEmpty).join('  ');
   }
 
-  Widget gameFlow() {
+  /// [compact]: the narrow log column of the ball-possession console.
+  Widget gameFlow({bool compact = false}) {
     final list = events.reversed.where(visibleInFlow).toList();
     if (list.isEmpty) {
       return Center(child: Text(t('log.empty')));
@@ -3598,11 +3596,13 @@ class _Score67State extends State<Score67> {
         return InkWell(
           onTap: inactive ? null : () => eventMenu(e),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            padding: compact
+                ? const EdgeInsets.symmetric(horizontal: 8, vertical: 5)
+                : const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: Text(
               line,
               style: TextStyle(
-                fontSize: 17,
+                fontSize: compact ? 13 : 17,
                 color: inactive ? Colors.grey : null,
                 decoration: inactive ? TextDecoration.lineThrough : null,
               ),
