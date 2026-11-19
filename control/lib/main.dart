@@ -103,6 +103,7 @@ class _Score67State extends State<Score67> {
     'best_of': 3,
     'mode': 'detailed',
     'final_tiebreak': 7,
+    'deciding': 'set',
   };
   final periodsInput = TextEditingController(text: '2');
   final minutesInput = TextEditingController(text: '45');
@@ -2519,16 +2520,7 @@ class _Score67State extends State<Score67> {
       settingsCard(t('settings.led_connection'), [boardDisplaysPanel()]),
       settingsCard(t('settings.access'), [accessSettings()]),
       if (state['phase'] != 'finished')
-        action(
-          t('game_end'),
-          canWrite
-              ? () async {
-                  if (await confirm(t('tennis.end_confirm'))) {
-                    await command('game_end');
-                  }
-                }
-              : null,
-        ),
+        action(t('game_end'), canWrite ? endTennis : null),
       if (state['phase'] != 'finished') cancelGameButton(),
       if (state['phase'] == 'finished')
         action(
@@ -2612,12 +2604,53 @@ class _Score67State extends State<Score67> {
     ),
   );
 
+  /// Ending a tennis match by hand: a retirement or walkover has a winner,
+  /// an abandoned match has none.
+  Future<void> endTennis() async {
+    final choice = await showDialog<String>(
+      context: navigator.currentContext!,
+      builder: (context) => SimpleDialog(
+        title: Text(t('tennis.retire_question')),
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+            child: Text(t('tennis.end_confirm')),
+          ),
+          for (final side in ['home', 'away'])
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, side),
+              child: Text(
+                '${state[side]['name']} · ${t('tennis.winner')}',
+                style: const TextStyle(fontSize: 18),
+              ),
+            ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(context, 'none'),
+            child: Text(t('tennis.no_winner')),
+          ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(context),
+            child: Text(t('cancel')),
+          ),
+        ],
+      ),
+    );
+    if (choice == null) return;
+    await command('game_end', choice == 'none' ? {} : {'winner': choice});
+  }
+
   Widget basketballConsole() {
     if (tennis) return tennisConsole();
     final phase = state['phase'];
     final last = events.where((e) => e['cancelled'] == false).lastOrNull;
     final running = basketball && basketballClockRunning;
-    // Football: the clock runs continuously; Play starts the next half.
+    // Football: the clock runs continuously; Play starts the next half. It
+    // can be paused for an interruption (injury, thunderstorm).
+    final footballClock =
+        !basketball &&
+        phase == 'period_running' &&
+        state['clock']['enabled'] == true;
+    final footballRuns = footballClock && state['clock']['running'] == true;
     final finalBreak =
         phase == 'break' && state['period'] >= state['period_count'];
     final String? nextPeriod =
@@ -2727,13 +2760,15 @@ class _Score67State extends State<Score67> {
       skipEndsGame: basketball ? lastPeriod && !tied : footballEnds,
       onToggleActive: toggleActive,
       lineupMax: lineupSize,
-      running: running,
+      running: running || footballRuns,
+      clockPaused: footballClock && !footballRuns,
       // Start/Stop also works behind taps that are still on their way.
       canToggleClock: basketball
           ? (canWrite || (canTap && phase == 'period_running')) &&
                 state['clock']['enabled'] == true &&
                 (phase == 'period_running' || nextPeriod != null)
-          : canWrite && (kickOff || extraTimeBreak || drawBreak),
+          : (canWrite && (kickOff || extraTimeBreak || drawBreak)) ||
+                (canTap && footballClock),
       canTap: canTap,
       canWrite: canWrite,
       connected: connected,
@@ -2752,6 +2787,8 @@ class _Score67State extends State<Score67> {
               }
               await command(running ? 'clock_stop' : 'clock_start');
             }
+          : footballClock
+          ? () => command(footballRuns ? 'clock_stop' : 'clock_start')
           : drawBreak
           ? () => drawChoice(running: false)
           : () => command(opening!),
@@ -2981,6 +3018,15 @@ class _Score67State extends State<Score67> {
     switch (action) {
       case 'goal':
         command('score', {'team': team, 'points': 1, ...player});
+      case 'own_goal':
+        // Tapped on the player who put it into the own net: the goal counts
+        // for the other team.
+        command('score', {
+          'team': team == 'home' ? 'away' : 'home',
+          'points': 1,
+          'detail': 'own_goal',
+          ...player,
+        });
       case 'penalty_goal':
         command('score', {
           'team': team,
@@ -3005,6 +3051,12 @@ class _Score67State extends State<Score67> {
         }
       case 'tech':
         command('technical_foul', {'team': team, ...player});
+      case 'unsp':
+        command('technical_foul', {
+          'team': team,
+          'kind': 'unsportsmanlike',
+          ...player,
+        });
       case 'reb':
         command('rebound', {'team': team, ...player});
       case 'ft_hit':
@@ -3060,7 +3112,15 @@ class _Score67State extends State<Score67> {
       case 'tennis_server':
         return t('tennis.serving');
       case 'score' when !basketball:
-        return '${t('console.goal_short')}${e['detail'] == 'penalty' ? ' (${t('console.penalty_short')})' : ''}';
+        return '${t('console.goal_short')}${e['detail'] == 'penalty'
+            ? ' (${t('console.penalty_short')})'
+            : e['detail'] == 'own_goal'
+            ? ' (${t('console.own_goal_short')})'
+            : ''}';
+      case 'yellow_card' when e['second_yellow'] == true:
+        return t('console.yellow_red_short');
+      case 'game_end' when e['retired'] == true:
+        return '${t('game_end')} · ${t('tennis.retired')}';
       case 'score_correction' when !basketball:
         return t('score_correction');
       case 'foul':
@@ -3082,7 +3142,11 @@ class _Score67State extends State<Score67> {
       case 'personal_foul':
         return t('console.foul_short');
       case 'technical_foul':
-        return t('console.tech_short');
+        return t(
+          e['kind'] == 'unsportsmanlike'
+              ? 'console.unsp_short'
+              : 'console.tech_short',
+        );
       case 'team_foul':
         return t('console.team_foul_short');
       case 'timeout':

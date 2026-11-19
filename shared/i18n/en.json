@@ -821,5 +821,21 @@
   "features.gallery.boxscore": "Player box score",
   "features.gallery.menu": "Controller menu and app updates",
   "features.gallery.football": "Football controller",
-  "features.gallery.tennis": "Tennis controller"
+  "features.gallery.tennis": "Tennis controller",
+  "console.own_goal": "OWN GOAL",
+  "console.own_goal_short": "Own goal",
+  "console.yellow_red_short": "Second yellow (red)",
+  "console.yellow_red_hint": "{p}: second yellow – sent off.",
+  "console.unsp": "U-FOUL",
+  "console.unsp_short": "Unsportsmanlike foul",
+  "console.ejected": "{p}: second technical/unsportsmanlike foul – ejected.",
+  "console.fifth_foul": "{p}: 5th foul – fouled out.",
+  "tennis.deciding": "Deciding set",
+  "tennis.deciding_set": "Full set",
+  "tennis.deciding_match_tiebreak": "Match tie-break to 10 instead of a set",
+  "tennis.match_tiebreak": "Match tie-break",
+  "tennis.match_tiebreak_result": "Enter match tie-break result",
+  "tennis.retire_question": "End match – who wins?",
+  "tennis.no_winner": "End without a winner (abandoned)",
+  "tennis.retired": "Retired"
 }
