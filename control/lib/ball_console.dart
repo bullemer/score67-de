@@ -98,11 +98,8 @@ class BallConsoleState extends State<BallConsole> {
     );
   }
 
+  /// Most frequent first: the two top rows (2 and 3 points) are larger.
   List<List<BallAction>> get rows => [
-    [
-      BallAction('ft_hit', t('ball.made1'), green),
-      BallAction('ft_miss', t('ball.miss1'), grey),
-    ],
     [
       BallAction('2pt', t('ball.made2'), const Color(0xff2563eb)),
       BallAction('miss2', t('ball.miss2'), grey),
@@ -110,6 +107,10 @@ class BallConsoleState extends State<BallConsole> {
     [
       BallAction('3pt', t('ball.made3'), const Color(0xfff97316)),
       BallAction('miss3', t('ball.miss3'), grey),
+    ],
+    [
+      BallAction('ft_hit', t('ball.made1'), green),
+      BallAction('ft_miss', t('ball.miss1'), grey),
     ],
     [
       BallAction('foul', t('console.foul'), red),
@@ -473,7 +474,7 @@ class BallConsoleState extends State<BallConsole> {
     );
   }
 
-  Widget actionButton(BallAction a) {
+  Widget actionButton(BallAction a, {int flex = 1, double size = 16}) {
     final selected = armed == a.id;
     final active = enabled(a.id);
     // The buttons wear the colour of the team with the ball; the armed one
@@ -481,6 +482,7 @@ class BallConsoleState extends State<BallConsole> {
     final base = selected ? Colors.white : ballColor ?? neutral;
     final ink = readableOn(base);
     return Expanded(
+      flex: flex,
       child: Padding(
         padding: const EdgeInsets.all(3),
         child: Material(
@@ -503,7 +505,7 @@ class BallConsoleState extends State<BallConsole> {
                   child: Text(
                     a.label,
                     style: TextStyle(
-                      fontSize: 16,
+                      fontSize: size,
                       fontWeight: FontWeight.w800,
                       color: active ? ink : ink.withValues(alpha: .35),
                     ),
@@ -521,11 +523,25 @@ class BallConsoleState extends State<BallConsole> {
     width: 206,
     child: Column(
       children: [
-        for (final row in rows)
-          Expanded(
-            child: Row(children: [for (final a in row) actionButton(a)]),
-          ),
+        for (final (i, row) in rows.indexed)
+          if (i < 2)
+            // 2 and 3 points: taller rows, the made button wider than the miss.
+            Expanded(
+              flex: 3,
+              child: Row(
+                children: [
+                  actionButton(row[0], flex: 3, size: 22),
+                  actionButton(row[1], flex: 2),
+                ],
+              ),
+            )
+          else
+            Expanded(
+              flex: 2,
+              child: Row(children: [for (final a in row) actionButton(a)]),
+            ),
         Expanded(
+          flex: 2,
           child: Padding(
             padding: const EdgeInsets.all(3),
             child: Material(
