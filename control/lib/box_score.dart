@@ -6,6 +6,9 @@ class BoxRow {
   final String? id;
   final String label;
   int ms = 0, pts = 0, ftm = 0, fta = 0, two = 0, three = 0;
+
+  /// Field-goal attempts (made + missed), counted once misses are entered.
+  int twoAttempts = 0, threeAttempts = 0, ast = 0;
   int pf = 0, reb = 0, goals = 0, yellow = 0, red = 0;
   BoxRow(this.id, this.label);
 
@@ -16,6 +19,9 @@ class BoxRow {
     fta += o.fta;
     two += o.two;
     three += o.three;
+    twoAttempts += o.twoAttempts;
+    threeAttempts += o.threeAttempts;
+    ast += o.ast;
     pf += o.pf;
     reb += o.reb;
     goals += o.goals;
@@ -140,8 +146,10 @@ String playerLabelOf(Map p) {
           r.fta++;
         } else if (points == 2) {
           r.two++;
+          r.twoAttempts++;
         } else if (points == 3) {
           r.three++;
+          r.threeAttempts++;
         }
       case 'score_adjust':
         // Admin score corrections belong to the team, so totals match the score.
@@ -149,6 +157,12 @@ String playerLabelOf(Map p) {
         if (!basketball) teamRow.goals += (e['points'] as num).toInt();
       case 'free_throw_missed':
         r.fta++;
+      case 'two_missed':
+        r.twoAttempts++;
+      case 'three_missed':
+        r.threeAttempts++;
+      case 'assist':
+        r.ast++;
       case 'personal_foul':
         r.pf++;
       case 'technical_foul' when player != null:
@@ -213,7 +227,7 @@ class _BoxScorePanelState extends State<BoxScorePanel> {
       s['phase'] == 'period_running' ? widget.elapsed() : 0,
     );
     final columns = basketball
-        ? ['MIN', 'PTS', 'FT', 'FT%', '2P', '3P', 'PF', 'RB']
+        ? ['MIN', 'PTS', 'FT', 'FT%', '2P', '3P', 'FG%', 'PF', 'RB', 'AS']
         : ['MIN', t('box.goals'), 'YC', 'RC'];
     List<String> cells(BoxRow r, {bool teamRow = false}) {
       final minutes = teamRow || !box.minutes ? '–' : minutesText(r.ms);
@@ -223,10 +237,17 @@ class _BoxScorePanelState extends State<BoxScorePanel> {
               '${r.pts}',
               '${r.ftm}/${r.fta}',
               r.fta == 0 ? '–' : '${(100 * r.ftm / r.fta).round()}%',
-              '${r.two}',
-              '${r.three}',
+              // Made/attempted once a miss was entered, else made only.
+              r.twoAttempts > r.two ? '${r.two}/${r.twoAttempts}' : '${r.two}',
+              r.threeAttempts > r.three
+                  ? '${r.three}/${r.threeAttempts}'
+                  : '${r.three}',
+              r.twoAttempts + r.threeAttempts > r.two + r.three
+                  ? '${(100 * (r.two + r.three) / (r.twoAttempts + r.threeAttempts)).round()}%'
+                  : '–',
               '${r.pf}',
               '${r.reb}',
+              '${r.ast}',
             ]
           : [minutes, '${r.goals}', '${r.yellow}', '${r.red}'];
     }

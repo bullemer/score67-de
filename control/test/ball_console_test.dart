@@ -1,0 +1,166 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:score67_control/ball_console.dart';
+import 'package:score67_control/match_console.dart';
+
+Map<String, dynamic> game({String? ball, bool clock = true}) => {
+  'sport': 'basketball',
+  'phase': 'period_running',
+  'period': 2,
+  'period_count': 8,
+  'foul_mode': 'both',
+  'possession': ball,
+  'clock': {'enabled': true, 'running': clock},
+  'events': <dynamic>[],
+  for (final (side, short, numbers) in [
+    ('home', 'BSV', ['11', '33']),
+    ('away', 'TOW', ['5', '12']),
+  ])
+    side: {
+      'short': short,
+      'color': side == 'home' ? '#c8102e' : '#1d4ed8',
+      'score': 8,
+      'counters': {'team_fouls': 0},
+      'on_court': <String>[],
+      'squad': [
+        for (final n in numbers) {'id': '$side$n', 'number': n, 'name': ''},
+      ],
+    },
+};
+
+void main() {
+  late List<String> log;
+
+  Future<void> mount(WidgetTester tester, Map<String, dynamic> state) async {
+    tester.view.physicalSize = const Size(844, 390);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final running = state['clock']['running'] == true;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData.dark(),
+        home: Scaffold(
+          body: BallConsole(
+            onAddPlayer: (team) => log.add('add $team'),
+            lastEntry: 'BSV  Q2 08:45  2 PTS  #11',
+            base: MatchConsole(
+              state: state,
+              t: (key) => key,
+              clock: '08:45',
+              period: 'P2/8',
+              running: running,
+              onStartNext: () async => true,
+              onStartClock: () async {
+                log.add('clock_start');
+                return true;
+              },
+              onToggleActive: (team, id) => log.add('court $team $id'),
+              lineupMax: 5,
+              canToggleClock: true,
+              canTap: true,
+              canWrite: true,
+              connected: true,
+              sync: const SizedBox(),
+              onMenu: (_) {},
+              onToggleClock: () => log.add('toggle'),
+              onClockTap: () {},
+              onUndo: () => log.add('undo'),
+              onSubstitutions: (_) {},
+              onAction: (action, team, player) =>
+                  log.add('$action $team $player'),
+              onPossession: (team) => log.add('ball $team'),
+              onEditTeam: (_) {},
+              onEditPlayer: (_, _) {},
+              onScoreTap: (_) {},
+              tabs: const [('Feed', SizedBox()), ('Teams', SizedBox())],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  setUp(() => log = []);
+
+  testWidgets('shows the players of the team with the ball', (tester) async {
+    await mount(tester, game(ball: 'away'));
+    expect(find.text('5'), findsOneWidget);
+    expect(find.text('12'), findsOneWidget);
+    expect(find.text('11'), findsNothing);
+    expect(find.textContaining('2 PTS'), findsOneWidget);
+  });
+
+  testWidgets('action then player, or player then action', (tester) async {
+    await mount(tester, game(ball: 'home'));
+    await tester.tap(find.text('ball.made2'));
+    await tester.pump();
+    await tester.tap(find.text('11'));
+    await tester.pump();
+    await tester.tap(find.text('33'));
+    await tester.pump();
+    await tester.tap(find.text('ball.miss3'));
+    await tester.pump();
+    expect(log, ['2pt home home11', 'miss3 home home33']);
+    // Nothing stays armed: a further player tap only selects.
+    await tester.tap(find.text('11'));
+    await tester.pump();
+    expect(log.length, 2);
+  });
+
+  testWidgets('giving the ball starts a stopped clock, also to the same team', (
+    tester,
+  ) async {
+    await mount(tester, game(ball: 'home', clock: false));
+    await tester.tap(find.bySemanticsLabel('possession'));
+    await tester.pump();
+    expect(log, ['ball away', 'clock_start']);
+    log.clear();
+    await tester.tap(find.text('BSV').first); // inbound by the same team
+    await tester.pump();
+    expect(log, ['clock_start']);
+  });
+
+  testWidgets('a running clock is left alone when the ball changes', (
+    tester,
+  ) async {
+    await mount(tester, game(ball: 'home'));
+    await tester.tap(find.bySemanticsLabel('possession'));
+    await tester.pump();
+    expect(log, ['ball away']);
+    await tester.tap(find.text('basketball.stop'));
+    expect(log.last, 'toggle');
+  });
+
+  testWidgets('fouls and rebounds offer the defending team first', (
+    tester,
+  ) async {
+    await mount(tester, game(ball: 'home'));
+    await tester.tap(find.text('console.foul'));
+    await tester.pump();
+    expect(find.text('5'), findsOneWidget); // TOW defends
+    await tester.tap(find.text('5'));
+    await tester.pump();
+    expect(log, ['foul away away5']);
+    expect(find.text('11'), findsOneWidget); // back to the team with the ball
+    // A defensive rebound hands the ball over; an offensive one does not.
+    await tester.tap(find.text('console.reb'));
+    await tester.pump();
+    await tester.tap(find.text('12'));
+    await tester.pump();
+    expect(log.sublist(1), ['reb away away12', 'ball away']);
+  });
+
+  testWidgets('team card, add player and long press on court', (tester) async {
+    await mount(tester, game(ball: 'home'));
+    await tester.tap(find.text('console.timeout'));
+    await tester.pump();
+    await tester.tap(find.text('ball.team'));
+    await tester.pump();
+    await tester.longPress(find.text('33'));
+    await tester.pump();
+    await tester.tap(find.text('ball.add_player'));
+    await tester.tap(find.text('ball.undo'));
+    expect(log, ['timeout home null', 'court home home33', 'add home', 'undo']);
+  });
+}

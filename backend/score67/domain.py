@@ -16,7 +16,8 @@ BASKETBALL = json.loads((Path(__file__).parent / "profiles/basketball.json").rea
 TENNIS = json.loads((Path(__file__).parent / "profiles/tennis.json").read_text())
 
 
-BASKETBALL_STATS = ("rebound", "assist", "steal", "block", "turnover", "free_throw_missed")
+# two_missed / three_missed: field-goal attempts that did not go in (shooting percentages).
+BASKETBALL_STATS = ("rebound", "assist", "steal", "block", "turnover", "free_throw_missed", "two_missed", "three_missed")
 FOOTBALL_EVENTS = ("foul", "free_kick", "penalty")
 LINEUP_MAX = {"basketball": 5, "football": 11, "tennis": 2}
 
@@ -27,9 +28,10 @@ def lineup_size(state):
     return state.get("lineup_size") or LINEUP_MAX[state["sport"]]
 STAT_COLUMNS = {"score": "pts", "rebound": "reb", "assist": "ast",
                 "steal": "stl", "block": "blk", "turnover": "to", "personal_foul": "pf", "technical_foul": "pf",
-                "free_throw_missed": "ftx"}
-# ftm = free throws made (scores marked free_throw), ftx = free throws missed.
-COLUMNS = tuple(dict.fromkeys([*STAT_COLUMNS.values(), "ftm"]))
+                "free_throw_missed": "ftx", "two_missed": "fgx2", "three_missed": "fgx3"}
+# ftm = free throws made (scores marked free_throw), ftx = free throws missed;
+# fgm2/fgm3 = two- and three-pointers made, fgx2/fgx3 = missed.
+COLUMNS = tuple(dict.fromkeys([*STAT_COLUMNS.values(), "ftm", "fgm2", "fgm3"]))
 SHORT_MAX = 3
 
 
@@ -55,6 +57,8 @@ def player_statistics(team_state, events):
         stats[column] += event.get("points", 0) if column == "pts" else 1
         if event.get("detail") == "free_throw":
             stats["ftm"] += 1
+        elif event["type"] == "score" and event.get("points") in (2, 3):
+            stats[f"fgm{event['points']}"] += 1
     active_ids = {p["id"] for p in team_state.get("squad", [])}
     foul_ids = {p["id"] for p in team_state.get("foul_players", [])}
     for identifier, stats in rows.items():

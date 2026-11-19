@@ -875,12 +875,13 @@ def test_live_basketball_player_statistics_corrections_and_history(system):
     command(client, slug, 'squad', {'team': 'home', 'players': []})
     assert row(player['id'])['ast'] == 1
     match_id = control_state(client, slug)['match_id']
-    # All seven columns, including PF, stay private.
+    # The statistics table stays private. Rebounds and assists appear as entries in
+    # the extended ticker; steals, blocks and turnovers do not.
     public = TestClient(app)
     for endpoint in (f'/api/s/{slug}/state', f'/api/s/{slug}/matches/{match_id}/state'):
         result = public.get(endpoint).json()
         assert 'statistics' not in result['home']
-        assert not any(e['type'] in kinds for e in result['events'])
+        assert not any(e['type'] in kinds and e['type'] not in ('rebound', 'assist') for e in result['events'])
     with public.websocket_connect(f'/ws/s/{slug}') as ws:
         assert 'statistics' not in ws.receive_json()['home']
     command(client, slug, 'game_end')
@@ -1161,7 +1162,7 @@ def test_basketball_free_throws_made_and_missed(system):
     assert s['home']['score'] == 2 and s['home']['statistics']['totals']['ftm'] == 2
     assert command(client, slug, 'score', {'team': 'home', 'points': 2, 'detail': 'free_throw'}).status_code == 422
     assert command(client, slug, 'score', {'team': 'home', 'points': 1, 'detail': 'penalty'}).status_code == 422
-    assert not any(e['type'] == 'free_throw_missed' for e in state(client, slug)['events'])
+    assert any(e['type'] == 'free_throw_missed' for e in state(client, slug)['events'])   # shown in the extended ticker
 
 
 def test_admin_score_adjustment_is_logged_and_undoable(system):
@@ -2552,3 +2553,26 @@ def test_tennis_retirement_names_the_winner():
     assert abandoned['tennis']['winner'] is None and 'match_won' not in event
     with pytest.raises(RuleError):
         apply(s, 'game_end', {'winner': 'nobody'}, 0)
+
+
+def test_missed_shots_and_possession_are_recorded_for_the_box_score(system):
+    _, client = system
+    slug = client.post('/api/scoreboards', json={'sport': 'basketball'}).json()['slug']
+    player = str(uuid4())
+    command(client, slug, 'squad', {'team': 'home', 'players': [{'id': player, 'number': '11', 'name': 'Luke'}]})
+    command(client, slug, 'period_start')
+    assert command(client, slug, 'possession', {'team': 'home'}).json()['possession'] == 'home'
+    for action, data in (('score', {'points': 2}), ('score', {'points': 3}), ('two_missed', {}), ('two_missed', {}), ('three_missed', {}), ('assist', {})):
+        command(client, slug, action, {'team': 'home', 'player_id': player, **data})
+    s = command(client, slug, 'possession', {'team': 'away'}).json()
+    row = next(p for p in s['home']['statistics']['players'] if p['id'] == player)
+    assert (row['pts'], row['fgm2'], row['fgx2'], row['fgm3'], row['fgx3'], row['ast']) == (5, 1, 2, 1, 1, 1)
+    assert s['possession'] == 'away' and [e['team'] for e in s['events'] if e['type'] == 'possession'] == ['home', 'away']
+    # A missed shot can be taken back like any other entry; spectators do not get the misses.
+    back = command(client, slug, 'two_missed_correction', {'team': 'home'}).json()
+    assert next(p for p in back['home']['statistics']['players'] if p['id'] == player)['fgx2'] == 1
+    # Spectators see misses and assists in the extended ticker, corrected ones marked.
+    public = state(client, slug)['events']
+    assert [e['type'] for e in public if e['type'] in ('two_missed', 'three_missed', 'assist')] == ['two_missed', 'two_missed', 'three_missed', 'assist']
+    assert sum(1 for e in public if e['type'] == 'two_missed' and e['corrected']) == 1
+    assert command(client, slug, 'three_missed', {'team': 'nobody'}).status_code == 422

@@ -249,7 +249,7 @@ function render() {
   }
   if (!overlay && logSignature !== `${state.match_id}:${state.revision}:${lang}`) {
     logSignature = `${state.match_id}:${state.revision}:${lang}`;
-    const entries = (state.events || []).filter(e => ['score','score_adjust','red_card','yellow_card','score_correction','red_card_correction','yellow_card_correction','team_foul','team_foul_correction','timeout','timeout_correction','tennis_point','tennis_game','tennis_set','shootout_start','shootout_kick'].includes(e.type)).slice(-30).reverse();
+    const entries = (state.events || []).filter(e => ['score','score_adjust','red_card','yellow_card','score_correction','red_card_correction','yellow_card_correction','team_foul','team_foul_correction','timeout','timeout_correction','rebound','assist','free_throw_missed','two_missed','three_missed','tennis_point','tennis_game','tennis_set','shootout_start','shootout_kick'].includes(e.type)).slice(-30).reverse();
     el('match-events').hidden = entries.length === 0;
     el('event-list').replaceChildren(...entries.map(event => {
       const row = document.createElement('li');

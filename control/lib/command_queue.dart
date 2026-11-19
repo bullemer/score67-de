@@ -18,6 +18,8 @@ const tallyActions = {
   'block',
   'turnover',
   'free_throw_missed',
+  'two_missed',
+  'three_missed',
   'foul',
   'free_kick',
   'penalty',
@@ -33,7 +35,9 @@ bool queueable(String action) =>
     tallyActions.contains(action.replaceFirst(RegExp(r'_correction$'), '')) ||
     action == 'assign_player' ||
     action == 'lineup' ||
-    action == 'squad';
+    action == 'squad' ||
+    // Who has the ball changes every few seconds: never wait for the network.
+    action == 'possession';
 
 /// The basketball clock may be started and stopped behind unconfirmed taps:
 /// a whistle cannot wait for the network. Not replayed after a reload.
@@ -53,6 +57,8 @@ const _statColumns = {
   'personal_foul': 'pf',
   'technical_foul': 'pf',
   'free_throw_missed': 'ftx',
+  'two_missed': 'fgx2',
+  'three_missed': 'fgx3',
 };
 
 /// Server state plus the visible effect of unconfirmed tally commands.
@@ -95,6 +101,10 @@ Map<String, dynamic> optimisticState(
       continue;
     }
     final team = data['team'];
+    if (action == 'possession') {
+      s['possession'] = team;
+      continue;
+    }
     if (team != 'home' && team != 'away') continue;
     if (action == 'lineup') {
       (s[team] as Map)['on_court'] = data['player_ids'];
