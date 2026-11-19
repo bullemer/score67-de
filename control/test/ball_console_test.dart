@@ -189,6 +189,20 @@ void main() {
     },
   );
 
+  testWidgets('2 and 3 points are on top and larger than the rest', (
+    tester,
+  ) async {
+    await mount(tester, game(ball: 'home'));
+    Rect box(String id) =>
+        tester.getRect(find.byKey(ValueKey('ball-action-$id')));
+    expect(box('2pt').top, lessThan(box('3pt').top));
+    expect(box('3pt').top, lessThan(box('ft_hit').top));
+    for (final big in ['2pt', '3pt']) {
+      expect(box(big).height, greaterThan(box('ft_hit').height));
+      expect(box(big).width, greaterThan(box('ft_hit').width));
+    }
+  });
+
   testWidgets('team card, add player and long press on court', (tester) async {
     await mount(tester, game(ball: 'home'));
     await tester.tap(find.text('console.timeout'));

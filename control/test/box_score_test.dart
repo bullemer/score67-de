@@ -8,6 +8,25 @@ Map<String, dynamic> p(String id, String number) => {
 };
 
 void main() {
+  test('log time counts up across periods', () {
+    Map<String, dynamic> entry(int period, int clockMs, {int? duration}) => {
+      'period': period,
+      'period_count': 4,
+      'period_length_min': 10,
+      'period_duration_ms': duration ?? 600000,
+      'clock_ms': clockMs,
+    };
+    expect(gameClock(basketballGameMs(entry(1, 94300))), '01:34');
+    expect(gameClock(basketballGameMs(entry(2, 203000))), '13:23');
+    expect(gameClock(basketballGameMs(entry(4, 600000))), '40:00');
+    // Overtime periods of 5 minutes follow the 40 minutes of regular time.
+    expect(
+      gameClock(basketballGameMs(entry(5, 61000, duration: 300000))),
+      '41:01',
+    );
+    expect(gameClock(basketballGameMs(entry(6, 0, duration: 300000))), '45:00');
+  });
+
   test('basketball box score: points, free throws, minutes per period', () {
     var id = 0;
     Map<String, dynamic> e(String type, Map<String, dynamic> data) => {
