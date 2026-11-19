@@ -10,6 +10,7 @@ import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'account.dart';
+import 'ball_console.dart';
 import 'app_settings.dart';
 import 'dashboard.dart';
 import 'active_games.dart';
@@ -158,6 +159,29 @@ class _Score67State extends State<Score67> {
   final ledSent = <int, String>{};
   int ledTicks = 0;
   final consoleKey = GlobalKey<MatchConsoleState>();
+  final ballKey = GlobalKey<BallConsoleState>();
+
+  /// Basketball: the classic console (action buttons right, both teams left)
+  /// instead of the one built around ball possession. Kept per browser.
+  bool classicConsole = savedClassicConsole();
+  static bool savedClassicConsole() {
+    try {
+      return web.window.localStorage.getItem('score67-console') == 'classic';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  void setClassicConsole(bool classic) {
+    setState(() => classicConsole = classic);
+    try {
+      web.window.localStorage.setItem(
+        'score67-console',
+        classic ? 'classic' : 'ball',
+      );
+    } catch (_) {}
+  }
+
   Timer? refreshTimer, renderTimer, reconnectTimer;
   WebSocketChannel? channel;
   StreamSubscription? subscription;
@@ -2720,8 +2744,9 @@ class _Score67State extends State<Score67> {
         (phase == 'period_running' &&
             (period == count || period == count + 2) &&
             !tied);
-    return MatchConsole(
-      key: consoleKey,
+    final ballView = basketball && !classicConsole;
+    final console = MatchConsole(
+      key: ballView ? null : consoleKey,
       state: state,
       t: t,
       clock: upcoming && phase != 'pre_game'
@@ -2836,6 +2861,16 @@ class _Score67State extends State<Score67> {
           ),
         ),
       ],
+    );
+    if (!ballView) return console;
+    final shown = events.reversed
+        .where((e) => visibleInFlow(e) && e['cancelled'] != true)
+        .firstOrNull;
+    return BallConsole(
+      key: ballKey,
+      base: console,
+      onAddPlayer: (team) => editPlayer(team, ''),
+      lastEntry: shown == null ? null : flowLine(shown),
     );
   }
 
@@ -3068,6 +3103,12 @@ class _Score67State extends State<Score67> {
         });
       case 'ft_miss':
         command('free_throw_missed', {'team': team, ...player});
+      case 'miss2':
+        command('two_missed', {'team': team, ...player});
+      case 'miss3':
+        command('three_missed', {'team': team, ...player});
+      case 'ast':
+        command('assist', {'team': team, ...player});
       case 'timeout':
         command('timeout', {'team': team});
     }
@@ -3129,6 +3170,10 @@ class _Score67State extends State<Score67> {
         return t('console.free_kick_short');
       case 'free_throw_missed':
         return t('console.ft_missed');
+      case 'two_missed':
+        return t('ball.flow_miss2');
+      case 'three_missed':
+        return t('ball.flow_miss3');
       case 'score_adjust':
         return '${t('console.admin_adjust')} ${e['points'] > 0 ? '+' : ''}${e['points']}';
       case 'penalty':
@@ -3272,8 +3317,13 @@ class _Score67State extends State<Score67> {
       for (final p in state[team]['squad'] as List? ?? [])
         Map<String, dynamic>.from(p),
     ];
-    final player = squad.where((p) => p['id'] == playerId).firstOrNull;
+    // An empty id adds a new player (the "+ Player" card).
+    final adding = playerId.isEmpty;
+    final player = adding
+        ? <String, dynamic>{'id': const Uuid().v4(), 'number': '', 'name': ''}
+        : squad.where((p) => p['id'] == playerId).firstOrNull;
     if (player == null) return;
+    if (adding) squad.add(player);
     final number = TextEditingController(text: player['number']);
     final name = TextEditingController(text: player['name']);
     final revision = state['revision'];
@@ -3281,7 +3331,9 @@ class _Score67State extends State<Score67> {
       context: navigator.currentContext!,
       builder: (context) => InputDialog(
         scrollable: true,
-        title: Text('${t('player.edit')} · ${state[team]['short']}'),
+        title: Text(
+          '${t(adding ? 'player.add' : 'player.edit')} · ${state[team]['short']}',
+        ),
         content: SizedBox(
           width: 360,
           child: Row(
@@ -3333,9 +3385,20 @@ class _Score67State extends State<Score67> {
     number.dispose();
     name.dispose();
     if (ok != true || !mounted) return;
-    if (state['revision'] != revision) {
+    if (adding && values.$1.isEmpty && values.$2.isEmpty) return;
+    if (state['revision'] != revision && !adding) {
       notify(t('error.state_changed'));
       return;
+    }
+    if (adding) {
+      // The game went on meanwhile (ball, points): add to the squad as it is now.
+      squad
+        ..clear()
+        ..addAll([
+          for (final p in state[team]['squad'] as List? ?? [])
+            Map<String, dynamic>.from(p),
+          player,
+        ]);
     }
     player
       ..['number'] = values.$1
@@ -3479,6 +3542,10 @@ class _Score67State extends State<Score67> {
     'free_kick',
     'penalty',
     'free_throw_missed',
+    'two_missed',
+    'three_missed',
+    'rebound',
+    'assist',
   };
 
   /// Undo what the game flow shows last. A hidden clock entry after it is
@@ -3506,6 +3573,17 @@ class _Score67State extends State<Score67> {
     }
   }
 
+  String flowLine(dynamic e) {
+    final team = e['team'];
+    final player = e['player'];
+    return [
+      if (team != null && e['type'] != 'possession') state[team]['short'],
+      eventStamp(e),
+      flowWhat(e),
+      if (player != null) playerLabel(player),
+    ].where((part) => '$part'.isNotEmpty).join('  ');
+  }
+
   Widget gameFlow() {
     final list = events.reversed.where(visibleInFlow).toList();
     if (list.isEmpty) {
@@ -3516,14 +3594,7 @@ class _Score67State extends State<Score67> {
       itemBuilder: (context, index) {
         final e = list[index];
         final inactive = e['cancelled'] == true || e['corrected'] == true;
-        final team = e['team'];
-        final player = e['player'];
-        final line = [
-          if (team != null && e['type'] != 'possession') state[team]['short'],
-          eventStamp(e),
-          flowWhat(e),
-          if (player != null) playerLabel(player),
-        ].where((part) => '$part'.isNotEmpty).join('  ');
+        final line = flowLine(e);
         return InkWell(
           onTap: inactive ? null : () => eventMenu(e),
           child: Padding(
@@ -3556,6 +3627,10 @@ class _Score67State extends State<Score67> {
       'free_kick',
       'penalty',
       'free_throw_missed',
+      'two_missed',
+      'three_missed',
+      'rebound',
+      'assist',
     };
     const assignable = {
       'score',
@@ -3566,6 +3641,10 @@ class _Score67State extends State<Score67> {
       'free_kick',
       'penalty',
       'free_throw_missed',
+      'two_missed',
+      'three_missed',
+      'rebound',
+      'assist',
     };
     final type = e['type'] as String;
     final choice = await showModalBottomSheet<String>(
@@ -4518,6 +4597,12 @@ class _Score67State extends State<Score67> {
         // Other controls live in the console tabs (Team, Sharing, LED) and
         // the 🏁 button; settings get a full page, easier in portrait.
         for (final entry in [
+          if (basketball && admin)
+            (
+              'view',
+              Icons.swap_horiz,
+              t(classicConsole ? 'ball.view_new' : 'ball.view_classic'),
+            ),
           ('settings', Icons.tune, t('console.settings')),
           ('app', Icons.settings_outlined, t('app.settings')),
           ('start', Icons.home_outlined, t('menu.start')),
@@ -4541,6 +4626,8 @@ class _Score67State extends State<Score67> {
     if (!mounted || choice == null) return;
     final [kind, ...] = choice.split(':');
     switch (kind) {
+      case 'view':
+        setClassicConsole(!classicConsole);
       case 'update':
         updateApp();
       case 'settings':

@@ -151,6 +151,20 @@ Color hexColor(String value) =>
   );
 }
 
+/// Technical and unsportsmanlike fouls of a player that still count: two of
+/// them (in any mix) send the player off.
+int technicalFouls(Map<String, dynamic> state, String team, String playerId) =>
+    (state['events'] as List? ?? [])
+        .where(
+          (e) =>
+              e['type'] == 'technical_foul' &&
+              e['team'] == team &&
+              e['cancelled'] != true &&
+              e['corrected'] != true &&
+              e['player']?['id'] == playerId,
+        )
+        .length;
+
 class MatchConsoleState extends State<MatchConsole> {
   String? pending;
   int tab = 0;
@@ -327,19 +341,8 @@ class MatchConsoleState extends State<MatchConsole> {
     if (action == 'penalty') setState(() => penalty = (team, playerId));
   }
 
-  /// Technical and unsportsmanlike fouls of a player that still count: two
-  /// of them (in any mix) send the player off.
   int sendingOffFouls(String team, String playerId) =>
-      (s['events'] as List? ?? [])
-          .where(
-            (e) =>
-                e['type'] == 'technical_foul' &&
-                e['team'] == team &&
-                e['cancelled'] != true &&
-                e['corrected'] != true &&
-                e['player']?['id'] == playerId,
-          )
-          .length;
+      technicalFouls(s, team, playerId);
 
   /// Tells the scorer when this entry sends the player off: second yellow,
   /// second technical/unsportsmanlike foul, fifth foul. The entry is booked
