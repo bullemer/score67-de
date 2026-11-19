@@ -134,7 +134,11 @@ async function setLanguage(next) {
   document.querySelectorAll('[data-i18n]').forEach(e => e.textContent = words[e.dataset.i18n]);
   if (el('language')) el('language').textContent = lang === 'de' ? 'EN' : 'DE';
 }
-await setLanguage(lang);
+// An OBS source loaded while the server restarts must not stay blank for the
+// rest of the stream: keep trying until the texts arrive.
+for (let wait = 500; ; wait = Math.min(wait * 2, 5000)) {
+  try { await setLanguage(lang); break; } catch { await new Promise(done => setTimeout(done, wait)); }
+}
 if (el('language')) el('language').onclick = () => { const next = lang === 'de' ? 'en' : 'de'; saveLanguage(next); setLanguage(next); };
 function receive(s, latency = 0) {
   if (s.server_now < lastReceived) return;

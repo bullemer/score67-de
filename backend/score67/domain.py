@@ -364,14 +364,17 @@ def apply(state, action, data, now_ms):
         event["period_duration_ms"] = period_ms(s)
     elif action == "period_set":
         # Corrects a period started or ended by mistake: entries stay where they
-        # were booked, later ones go to the chosen period, the clock stands still.
+        # were booked, later ones go to the chosen period. The basketball clock
+        # stands still (Play starts it); football has no Play button, so its
+        # clock runs on from the resume time, as after a period start.
         target = integer(data.get("period"), 1, max(s["period_count"], s["period"]))
         if phase == "shootout" or s.get("shootout") or (target == s["period"] and phase == "period_running"):
             raise RuleError("invalid_transition")
         event["from_period"] = s["period"]
         s.update(phase="period_running", period=target)
         resume = number(data.get("resume_ms", 0), 0, period_ms(s))
-        c.update(elapsed_ms=round(resume), running=False, started_at=None)
+        runs = c["enabled"] and not basketball
+        c.update(elapsed_ms=round(resume), running=runs, started_at=now_ms if runs else None)
         event["period"] = target
         event["clock_ms"] = round(resume) if c["enabled"] else None
         event["period_duration_ms"] = period_ms(s)
@@ -413,6 +416,11 @@ def apply(state, action, data, now_ms):
             if phase != "period_running":
                 raise RuleError("invalid_transition")
             value = round(elapsed(s, now_ms))
+            if action == "clock_stop" and data.get("elapsed_ms") is not None:
+                # A stop sent on bad reception arrives late: the clock stops where
+                # the scorer saw it, never before its last start.
+                value = max(c["elapsed_ms"], min(value, round(number(data["elapsed_ms"], 0, 86400000))))
+                event["clock_ms"] = value
             running = action == "clock_start" and value < period_ms(s)
             c.update(elapsed_ms=value, running=running, started_at=now_ms if running else None)
     elif action == "clock_adjust":

@@ -182,6 +182,8 @@ class MatchConsoleState extends State<MatchConsole> {
     super.dispose();
   }
 
+  final entryTap = Stopwatch();
+
   void showHint(String text) {
     hintTimer?.cancel();
     setState(() => hint = text);
@@ -257,6 +259,9 @@ class MatchConsoleState extends State<MatchConsole> {
   void target(String team, String? playerId) {
     final action = pending;
     if (action == null) {
+      // A second tap right after an entry is a slip of the finger, not a
+      // substitution.
+      if (entryTap.isRunning && entryTap.elapsedMilliseconds < 700) return;
       if (playerId != null && widget.canTap) {
         // No action armed: a player tap moves them on court / to the bench.
         final court = onCourt(team);
@@ -273,6 +278,9 @@ class MatchConsoleState extends State<MatchConsole> {
       return;
     }
     setState(() => pending = null);
+    entryTap
+      ..reset()
+      ..start();
     if (action == 'subs') {
       widget.onSubstitutions(team);
     } else {

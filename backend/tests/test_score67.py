@@ -2166,7 +2166,8 @@ def test_period_jump_back_and_forward_keeps_entries(system):
     command(client, slug, 'period_start')  # period 2 started by mistake
     command(client, slug, 'score', {'team': 'away', 'points': 1})
     back = command(client, slug, 'period_set', {'period': 1}).json()
-    assert back['period'] == 1 and back['phase'] == 'period_running' and not back['clock']['running']
+    # Football has no Play button: its clock runs on after the jump.
+    assert back['period'] == 1 and back['phase'] == 'period_running' and back['clock']['running']
     assert back['home']['score'] == 1 and back['away']['score'] == 1
     # The jump itself can be undone.
     undone = command(client, slug, 'undo', {'event_id': back['events'][-1]['id']}).json()
@@ -2335,3 +2336,36 @@ def test_release_update_page_and_cache_headers(system):
     assert page.headers['cache-control'] == 'no-store'
     for path in ['/static/update.mjs', '/i18n/en.json']:
         assert client.get(path).headers['cache-control'] == 'no-cache'
+
+
+def test_basketball_period_jump_keeps_the_clock_stopped(system):
+    _, client = system
+    slug = client.post('/api/scoreboards', json={'sport': 'basketball'}).json()['slug']
+    command(client, slug, 'period_start')
+    command(client, slug, 'clock_start')
+    command(client, slug, 'period_end')
+    command(client, slug, 'period_start')
+    back = command(client, slug, 'period_set', {'period': 1}).json()
+    assert back['period'] == 1 and not back['clock']['running']
+    assert command(client, slug, 'clock_start').json()['clock']['running']
+
+
+def test_late_clock_stop_freezes_where_the_scorer_saw_it():
+    from score67.domain import apply, initial_state
+    s = initial_state(4, 10, 'basketball')
+    s, *_ = apply(s, 'period_start', {}, 1_000)
+    s, *_ = apply(s, 'clock_start', {}, 1_000)
+    # Tapped at 0:05 played, delivered 20 s later.
+    late, event, _ = apply(s, 'clock_stop', {'elapsed_ms': 5_000}, 26_000)
+    assert late['clock'] == {**late['clock'], 'elapsed_ms': 5_000, 'running': False} and event['clock_ms'] == 5_000
+    # Never beyond what the server clock has run, never before the last start.
+    assert apply(s, 'clock_stop', {'elapsed_ms': 90_000}, 26_000)[0]['clock']['elapsed_ms'] == 25_000
+    again, *_ = apply(late, 'clock_start', {}, 30_000)
+    assert apply(again, 'clock_stop', {'elapsed_ms': 0}, 31_000)[0]['clock']['elapsed_ms'] == 5_000
+    assert apply(s, 'clock_stop', {}, 26_000)[0]['clock']['elapsed_ms'] == 25_000
+
+
+def test_backslash_in_a_title_does_not_break_the_page():
+    from score67 import seo
+    page = seo.fill('<html lang="en"><title>x</title>', 'en', title='FC A\\B \\1 \\g<0> C:\\Users')
+    assert '<title>FC A\\B \\1 \\g&lt;0&gt; C:\\Users</title>' in page
