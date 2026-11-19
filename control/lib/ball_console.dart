@@ -22,11 +22,15 @@ class BallConsole extends StatefulWidget {
   /// The game flow, always in view in its own column on the right (the
   /// classic view has it as a tab).
   final Widget log;
+
+  /// Moves the game clock by [seconds] (positive = more time left).
+  final void Function(int seconds) onAdjustClock;
   const BallConsole({
     super.key,
     required this.base,
     required this.onAddPlayer,
     required this.log,
+    required this.onAdjustClock,
   });
 
   @override
@@ -50,6 +54,9 @@ class BallConsoleState extends State<BallConsole> {
   bool editing = false, skipArmed = false;
   String? hint;
   Timer? hintTimer, skipTimer;
+
+  /// Clock correction being prepared on screen, in seconds (null = closed).
+  int? clockDelta;
 
   /// Entry held back while its period (or clock) has not started.
   (String, String, String?)? deferred;
@@ -389,7 +396,14 @@ class BallConsoleState extends State<BallConsole> {
               ),
             ),
             GestureDetector(
-              onTap: c.onClockTap,
+              // Corrected on screen with large buttons: no dialog, no keyboard.
+              onTap: () {
+                if (c.canWrite &&
+                    s['phase'] == 'period_running' &&
+                    s['clock']?['enabled'] == true) {
+                  setState(() => clockDelta = clockDelta == null ? 0 : null);
+                }
+              },
               // On its own dark plate: readable on every team colour.
               child: Container(
                 margin: const EdgeInsets.symmetric(horizontal: 8),
@@ -922,6 +936,146 @@ class BallConsoleState extends State<BallConsole> {
     ),
   );
 
+  /// Seconds left on the game clock as shown in the header ("08:45").
+  int get shownSeconds {
+    final parts = c.clock.split(':');
+    return parts.length == 2
+        ? (int.tryParse(parts[0]) ?? 0) * 60 + (int.tryParse(parts[1]) ?? 0)
+        : 0;
+  }
+
+  int get periodSeconds {
+    final overtime = (s['period'] as int) > (s['period_count'] as int);
+    return ((overtime ? s['overtime_length_min'] ?? 5 : s['period_length_min'])
+            as int) *
+        60;
+  }
+
+  /// The clock after the prepared correction; follows a running clock.
+  int get previewSeconds =>
+      (shownSeconds + (clockDelta ?? 0)).clamp(0, periodSeconds);
+
+  /// Covers the tab content while the clock is being corrected: the new time
+  /// in large type, minus and plus buttons, apply or cancel.
+  Widget clockEditor() {
+    String mmss(int seconds) =>
+        '${(seconds ~/ 60).toString().padLeft(2, '0')}:${(seconds % 60).toString().padLeft(2, '0')}';
+    Widget step(int seconds) {
+      final size = seconds.abs();
+      final label =
+          '${seconds < 0 ? '−' : '+'}${size >= 60 ? '${size ~/ 60} min' : '$size s'}';
+      return Expanded(
+        child: Padding(
+          padding: const EdgeInsets.all(3),
+          child: FilledButton(
+            key: ValueKey('clock-step-$seconds'),
+            style: FilledButton.styleFrom(
+              backgroundColor: neutral,
+              foregroundColor: Colors.white,
+              padding: EdgeInsets.zero,
+              minimumSize: const Size(40, 48),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            // Kept within the period: the preview never lies about the result.
+            onPressed: () => setState(
+              () => clockDelta =
+                  (shownSeconds + clockDelta! + seconds).clamp(
+                    0,
+                    periodSeconds,
+                  ) -
+                  shownSeconds,
+            ),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    final delta = clockDelta ?? 0;
+    return ColoredBox(
+      color: const Color(0xff151e2a),
+      child: Padding(
+        padding: const EdgeInsets.all(6),
+        child: Column(
+          children: [
+            Expanded(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Row(
+                  children: [
+                    Text(
+                      '${t('clock_set')}  ',
+                      style: const TextStyle(color: Colors.white70),
+                    ),
+                    Text(
+                      mmss(previewSeconds),
+                      key: const ValueKey('clock-preview'),
+                      style: const TextStyle(
+                        fontSize: 44,
+                        fontWeight: FontWeight.w900,
+                        color: foulTrouble,
+                        fontFeatures: [FontFeature.tabularFigures()],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Row(children: [step(-60), step(-10), step(-1)]),
+            Row(children: [step(60), step(10), step(1)]),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.all(3),
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size(40, 44),
+                      ),
+                      onPressed: () => setState(() => clockDelta = null),
+                      child: Text(t('cancel')),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.all(3),
+                    child: FilledButton(
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size(40, 44),
+                        backgroundColor: green,
+                        foregroundColor: Colors.black,
+                      ),
+                      onPressed: delta == 0 || !c.canWrite
+                          ? null
+                          : () {
+                              widget.onAdjustClock(delta);
+                              setState(() => clockDelta = null);
+                            },
+                      child: Text(t('save')),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget middlePanel() {
     // The first classic tab is the game flow: here it has its own column.
     final tabs = [(t('ball.scoring'), scoringTab()), ...c.tabs.skip(1)];
@@ -986,9 +1140,14 @@ class BallConsoleState extends State<BallConsole> {
           // IndexedStack keeps every tab alive, so unsaved Team edits survive
           // switching tabs.
           Expanded(
-            child: IndexedStack(
-              index: tab.clamp(0, tabs.length - 1),
-              children: [for (final entry in tabs) entry.$2],
+            child: Stack(
+              children: [
+                IndexedStack(
+                  index: tab.clamp(0, tabs.length - 1),
+                  children: [for (final entry in tabs) entry.$2],
+                ),
+                if (clockDelta != null) Positioned.fill(child: clockEditor()),
+              ],
             ),
           ),
         ],
