@@ -103,6 +103,7 @@ class _Score67State extends State<Score67> {
     'best_of': 3,
     'mode': 'detailed',
     'final_tiebreak': 7,
+    'deciding': 'set',
   };
   final periodsInput = TextEditingController(text: '2');
   final minutesInput = TextEditingController(text: '45');
@@ -132,14 +133,18 @@ class _Score67State extends State<Score67> {
       busy = false,
       connected = false,
       polling = false,
-      refreshQueued = false;
+      refreshQueued = false,
+          // False until the server answered who we are: a failed check on a bad
+          // connection must not turn the scorer into a spectator for good.
+          adminKnown =
+          false,
+      queueRestored = false;
+  Completer<void>? pollDone;
   int serverAt = 0, anchorAt = 0, reconnectMs = 500, ticks = 0;
   // `state` is what the UI shows: the last server state plus queued taps.
   Map<String, dynamic> serverState = {};
   final List<Map<String, dynamic>> queue = [];
   final completers = <String, Completer<Map<String, dynamic>?>>{};
-  bool sending = false;
-  int retryMs = 500;
   web.WakeLockSentinel? wakeLock;
   bool landscapeRequested = false;
 
@@ -153,7 +158,7 @@ class _Score67State extends State<Score67> {
   final ledSent = <int, String>{};
   int ledTicks = 0;
   final consoleKey = GlobalKey<MatchConsoleState>();
-  Timer? refreshTimer, renderTimer, reconnectTimer, retryTimer;
+  Timer? refreshTimer, renderTimer, reconnectTimer;
   WebSocketChannel? channel;
   StreamSubscription? subscription;
   final pinInput = TextEditingController();
@@ -256,6 +261,12 @@ class _Score67State extends State<Score67> {
     final language =
         url.queryParameters['lang'] ?? saved ?? web.window.navigator.language;
     lang = language.startsWith('de') ? 'de' : 'en';
+    // Reload, closed tab, phone switching apps: the queue is saved at once,
+    // so players typed a moment ago survive.
+    web.window.addEventListener(
+      'pagehide',
+      ((web.Event _) => teamFlush()).toJS,
+    );
     initialize();
   }
 
@@ -291,19 +302,16 @@ class _Score67State extends State<Score67> {
     try {
       words = Map<String, dynamic>.from(await api('/i18n/$lang.json'));
       if (slug.isNotEmpty) {
+        if (error == 'network') error = '';
         await refresh();
         await checkAdmin();
-        if (admin) {
-          restoreQueue();
-          await refresh();
-        }
         connect();
         refreshTimer = Timer.periodic(const Duration(seconds: 2), (_) async {
           ticks++;
           unawaited(keepAwake());
-          if (!connected || ticks % 7 == 0) {
+          if (!connected || !adminKnown || ticks % 7 == 0) {
             await refresh();
-            if (admin) await checkAdmin();
+            if (admin || !adminKnown) await checkAdmin();
           }
         });
         renderTimer = Timer.periodic(const Duration(milliseconds: 200), (_) {
@@ -313,11 +321,21 @@ class _Score67State extends State<Score67> {
       }
     } catch (_) {
       error = 'network';
+      // Texts could not be loaded (bad reception, server restarting): nothing
+      // runs yet, so try again instead of leaving a dead page.
+      if (mounted && refreshTimer == null) {
+        Timer(const Duration(seconds: 2), () {
+          if (mounted && refreshTimer == null) initialize();
+        });
+      }
     }
     if (mounted) setState(() => ready = true);
   }
 
+  final teamFlush = TeamEditorFlush();
+
   void navigate(String path) {
+    teamFlush(); // a full page load: queue unsaved players first
     final url = Uri.parse(path);
     web.window.location.assign(
       url
@@ -490,6 +508,8 @@ class _Score67State extends State<Score67> {
   /// Taps recorded before a reload or crash are replayed with their original
   /// command IDs, so the server never counts them twice.
   void restoreQueue() {
+    if (queueRestored) return;
+    queueRestored = true;
     try {
       final saved = jsonDecode(
         web.window.localStorage.getItem(queueKey) ?? '[]',
@@ -502,6 +522,7 @@ class _Score67State extends State<Score67> {
               Map<String, dynamic>.from(item),
         ]);
     } catch (_) {}
+    if (serverState.isNotEmpty) state = optimisticState(serverState, queue);
   }
 
   /// Full screen plus orientation lock (Android browsers). Browsers without
@@ -548,9 +569,20 @@ class _Score67State extends State<Score67> {
     }
   }
 
-  Future<void> refresh() async {
-    if (polling) return;
+  /// [fresh]: the caller needs state from after this moment. A poll that is
+  /// already under way may predate it, so wait for that one and ask again.
+  Future<void> refresh({bool fresh = false}) async {
+    if (polling) {
+      if (!fresh) return;
+      await pollDone?.future;
+      if (polling) {
+        // A queued poll started meanwhile; it is new enough.
+        await pollDone?.future;
+        return;
+      }
+    }
     polling = true;
+    final done = pollDone = Completer<void>();
     final start = stopwatch.elapsedMilliseconds;
     try {
       accept(
@@ -566,6 +598,7 @@ class _Score67State extends State<Score67> {
       connected = false;
     }
     polling = false;
+    done.complete();
     if (refreshQueued && mounted) {
       refreshQueued = false;
       unawaited(refresh());
@@ -589,14 +622,25 @@ class _Score67State extends State<Score67> {
   }
 
   Future<void> checkAdmin() async {
+    final was = admin;
     try {
       await api('/api/s/$slug/admins');
       admin = true;
+      adminKnown = true;
       followDisplays();
     } on ApiError catch (e) {
-      if (e.code == 'admin_required') admin = false;
+      if (e.code == 'admin_required') {
+        admin = false;
+        adminKnown = true;
+      }
     } catch (_) {
       connected = false;
+    }
+    if (admin && !was) {
+      // Taps from before a reload come back first, then the controller's
+      // state; accepting it sends them on.
+      restoreQueue();
+      await refresh(fresh: true);
     }
     if (mounted) setState(() {});
   }
@@ -630,8 +674,9 @@ class _Score67State extends State<Score67> {
     );
   }
 
-  void notify(String message) =>
-      messenger.currentState?.showSnackBar(SnackBar(content: Text(message)));
+  void notify(String message) => messenger.currentState
+    ?..hideCurrentSnackBar() // one at a time: they cover the bottom buttons
+    ..showSnackBar(SnackBar(content: Text(message)));
 
   Future<bool> confirm(String message) async =>
       await showDialog<bool>(
@@ -661,7 +706,11 @@ class _Score67State extends State<Score67> {
     String action, [
     Map<String, dynamic>? data,
   ]) {
-    if (!(queueable(action) ? canTap : canWrite)) return Future.value(null);
+    if (!(tappable(action) ? canTap : canWrite)) return Future.value(null);
+    if (action == 'clock_stop') {
+      // The clock stops where the scorer saw it, however late the tap arrives.
+      data = {...?data, 'elapsed_ms': elapsed()};
+    }
     final id = const Uuid().v4();
     final completer = Completer<Map<String, dynamic>?>();
     completers[id] = completer;
@@ -670,6 +719,8 @@ class _Score67State extends State<Score67> {
       'match_id': state['match_id'],
       'action': action,
       'data': data ?? {},
+      // Kept locally (not sent): when the tap happened, for the shown clock.
+      'at': now,
     });
     error = '';
     queueChanged();
@@ -677,67 +728,64 @@ class _Score67State extends State<Score67> {
     return completer.future;
   }
 
-  Future<void> pump() async {
-    if (sending || !mounted) return;
-    sending = true;
-    retryTimer?.cancel();
-    while (queue.isNotEmpty && mounted) {
-      final item = queue.first;
-      // The revision is fixed when a command is first sent and kept for
-      // retries: the server recognises a retry by its identical fingerprint.
-      if (item['expected_revision'] == null) {
-        item['expected_revision'] = serverState['revision'];
-        queueChanged();
-      }
+  /// Sends the queued taps one at a time, in order (see [CommandPump]).
+  late final sender = CommandPump(
+    queue: queue,
+    alive: () => mounted,
+    revision: () => serverState['revision'],
+    send: (item) async {
       try {
-        final result = await api(
-          '/api/s/$slug/matches/${item['match_id']}/commands',
-          method: 'POST',
-          body: {
-            for (final key in [
-              'command_id',
-              'expected_revision',
-              'action',
-              'data',
-            ])
-              key: item[key],
-          },
+        return Map<String, dynamic>.from(
+          await api(
+            '/api/s/$slug/matches/${item['match_id']}/commands',
+            method: 'POST',
+            body: {
+              for (final key in [
+                'command_id',
+                'expected_revision',
+                'action',
+                'data',
+              ])
+                key: item[key],
+            },
+          ),
         );
-        final applied = (result['events'] as List? ?? [])
-            .where((e) => e['command_id'] == item['command_id'])
-            .firstOrNull;
-        queue.removeAt(0);
-        retryMs = 500;
-        accept(Map<String, dynamic>.from(result));
-        queueChanged();
-        completers
-            .remove(item['command_id'])
-            ?.complete(
-              applied == null
-                  ? <String, dynamic>{}
-                  : Map<String, dynamic>.from(applied),
-            );
       } on ApiError catch (e) {
-        queue.removeAt(0);
-        queueChanged();
-        completers.remove(item['command_id'])?.complete(null);
-        error = e.code;
-        notify(t('error.${e.code}'));
-        if (e.code == 'admin_required') admin = false;
-        sending = false;
-        await refresh();
-        sending = true;
-      } catch (_) {
-        // Unknown outcome: keep the command and retry it unchanged.
-        if (mounted) setState(() => connected = false);
-        retryTimer = Timer(Duration(milliseconds: retryMs), pump);
-        retryMs = (retryMs * 2).clamp(500, 5000);
-        break;
+        throw CommandRejected(e.code);
       }
-    }
-    sending = false;
-    if (mounted) setState(() {});
-  }
+    },
+    applied: (item, result) {
+      final applied = (result['events'] as List? ?? [])
+          .where((e) => e['command_id'] == item['command_id'])
+          .firstOrNull;
+      accept(result);
+      queueChanged();
+      completers
+          .remove(item['command_id'])
+          ?.complete(
+            applied == null
+                ? <String, dynamic>{}
+                : Map<String, dynamic>.from(applied),
+          );
+    },
+    rejected: (item, code) {
+      queueChanged();
+      completers.remove(item['command_id'])?.complete(null);
+      error = code;
+      notify(t('error.$code'));
+      if (code == 'admin_required') admin = false;
+    },
+    fresh: () => refresh(fresh: true),
+    changed: queueChanged,
+    offline: () {
+      if (mounted) setState(() => connected = false);
+    },
+    idle: () {
+      if (mounted) setState(() {});
+    },
+  );
+  bool get sending => sender.sending;
+  Future<void> pump() => sender.run();
 
   Widget syncBadge() {
     final waiting = queue.length;
@@ -831,7 +879,9 @@ class _Score67State extends State<Score67> {
       );
       pinInput.clear();
       admin = true;
-      await refresh();
+      adminKnown = true;
+      restoreQueue();
+      await refresh(fresh: true);
     } on ApiError catch (e) {
       error = e.code;
     } catch (_) {
@@ -2470,16 +2520,7 @@ class _Score67State extends State<Score67> {
       settingsCard(t('settings.led_connection'), [boardDisplaysPanel()]),
       settingsCard(t('settings.access'), [accessSettings()]),
       if (state['phase'] != 'finished')
-        action(
-          t('game_end'),
-          canWrite
-              ? () async {
-                  if (await confirm(t('tennis.end_confirm'))) {
-                    await command('game_end');
-                  }
-                }
-              : null,
-        ),
+        action(t('game_end'), canWrite ? endTennis : null),
       if (state['phase'] != 'finished') cancelGameButton(),
       if (state['phase'] == 'finished')
         action(
@@ -2563,12 +2604,53 @@ class _Score67State extends State<Score67> {
     ),
   );
 
+  /// Ending a tennis match by hand: a retirement or walkover has a winner,
+  /// an abandoned match has none.
+  Future<void> endTennis() async {
+    final choice = await showDialog<String>(
+      context: navigator.currentContext!,
+      builder: (context) => SimpleDialog(
+        title: Text(t('tennis.retire_question')),
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+            child: Text(t('tennis.end_confirm')),
+          ),
+          for (final side in ['home', 'away'])
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, side),
+              child: Text(
+                '${state[side]['name']} · ${t('tennis.winner')}',
+                style: const TextStyle(fontSize: 18),
+              ),
+            ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(context, 'none'),
+            child: Text(t('tennis.no_winner')),
+          ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(context),
+            child: Text(t('cancel')),
+          ),
+        ],
+      ),
+    );
+    if (choice == null) return;
+    await command('game_end', choice == 'none' ? {} : {'winner': choice});
+  }
+
   Widget basketballConsole() {
     if (tennis) return tennisConsole();
     final phase = state['phase'];
     final last = events.where((e) => e['cancelled'] == false).lastOrNull;
     final running = basketball && basketballClockRunning;
-    // Football: the clock runs continuously; Play starts the next half.
+    // Football: the clock runs continuously; Play starts the next half. It
+    // can be paused for an interruption (injury, thunderstorm).
+    final footballClock =
+        !basketball &&
+        phase == 'period_running' &&
+        state['clock']['enabled'] == true;
+    final footballRuns = footballClock && state['clock']['running'] == true;
     final finalBreak =
         phase == 'break' && state['period'] >= state['period_count'];
     final String? nextPeriod =
@@ -2678,12 +2760,15 @@ class _Score67State extends State<Score67> {
       skipEndsGame: basketball ? lastPeriod && !tied : footballEnds,
       onToggleActive: toggleActive,
       lineupMax: lineupSize,
-      running: running,
+      running: running || footballRuns,
+      clockPaused: footballClock && !footballRuns,
+      // Start/Stop also works behind taps that are still on their way.
       canToggleClock: basketball
-          ? canWrite &&
+          ? (canWrite || (canTap && phase == 'period_running')) &&
                 state['clock']['enabled'] == true &&
                 (phase == 'period_running' || nextPeriod != null)
-          : canWrite && (kickOff || extraTimeBreak || drawBreak),
+          : (canWrite && (kickOff || extraTimeBreak || drawBreak)) ||
+                (canTap && footballClock),
       canTap: canTap,
       canWrite: canWrite,
       connected: connected,
@@ -2702,6 +2787,8 @@ class _Score67State extends State<Score67> {
               }
               await command(running ? 'clock_stop' : 'clock_start');
             }
+          : footballClock
+          ? () => command(footballRuns ? 'clock_stop' : 'clock_start')
           : drawBreak
           ? () => drawChoice(running: false)
           : () => command(opening!),
@@ -2931,6 +3018,15 @@ class _Score67State extends State<Score67> {
     switch (action) {
       case 'goal':
         command('score', {'team': team, 'points': 1, ...player});
+      case 'own_goal':
+        // Tapped on the player who put it into the own net: the goal counts
+        // for the other team.
+        command('score', {
+          'team': team == 'home' ? 'away' : 'home',
+          'points': 1,
+          'detail': 'own_goal',
+          ...player,
+        });
       case 'penalty_goal':
         command('score', {
           'team': team,
@@ -2955,6 +3051,12 @@ class _Score67State extends State<Score67> {
         }
       case 'tech':
         command('technical_foul', {'team': team, ...player});
+      case 'unsp':
+        command('technical_foul', {
+          'team': team,
+          'kind': 'unsportsmanlike',
+          ...player,
+        });
       case 'reb':
         command('rebound', {'team': team, ...player});
       case 'ft_hit':
@@ -3010,7 +3112,15 @@ class _Score67State extends State<Score67> {
       case 'tennis_server':
         return t('tennis.serving');
       case 'score' when !basketball:
-        return '${t('console.goal_short')}${e['detail'] == 'penalty' ? ' (${t('console.penalty_short')})' : ''}';
+        return '${t('console.goal_short')}${e['detail'] == 'penalty'
+            ? ' (${t('console.penalty_short')})'
+            : e['detail'] == 'own_goal'
+            ? ' (${t('console.own_goal_short')})'
+            : ''}';
+      case 'yellow_card' when e['second_yellow'] == true:
+        return t('console.yellow_red_short');
+      case 'game_end' when e['retired'] == true:
+        return '${t('game_end')} · ${t('tennis.retired')}';
       case 'score_correction' when !basketball:
         return t('score_correction');
       case 'foul':
@@ -3032,7 +3142,11 @@ class _Score67State extends State<Score67> {
       case 'personal_foul':
         return t('console.foul_short');
       case 'technical_foul':
-        return t('console.tech_short');
+        return t(
+          e['kind'] == 'unsportsmanlike'
+              ? 'console.unsp_short'
+              : 'console.tech_short',
+        );
       case 'team_foul':
         return t('console.team_foul_short');
       case 'timeout':
@@ -3309,6 +3423,7 @@ class _Score67State extends State<Score67> {
         : (path, method, body) => api(path, method: method, body: body),
     onApply: tennis ? null : applySavedTeam,
     onPortrait: page ? null : openTeamPage,
+    flush: teamFlush,
     onSave: (team, players, onCourt) async {
       String roster(List list) => [
         for (final p in list) '${p['id']}|${p['number']}|${p['name']}',
@@ -4850,7 +4965,7 @@ class _Score67State extends State<Score67> {
     refreshTimer?.cancel();
     renderTimer?.cancel();
     reconnectTimer?.cancel();
-    retryTimer?.cancel();
+    sender.retryTimer?.cancel();
     unawaited(wakeLock?.release().toDart);
     subscription?.cancel();
     channel?.sink.close();

@@ -68,7 +68,7 @@ class RuleError(Exception):
     pass
 
 
-def initial_state(period_count=None, period_length_min=None, sport="football", lineup_size=None, tennis_category="women", tennis_best_of=3, tennis_mode="detailed", tennis_final_tiebreak=7):
+def initial_state(period_count=None, period_length_min=None, sport="football", lineup_size=None, tennis_category="women", tennis_best_of=3, tennis_mode="detailed", tennis_final_tiebreak=7, tennis_deciding="set"):
     basketball = sport == "basketball"
     period_count = period_count if period_count is not None else (4 if basketball else 2)
     period_length_min = period_length_min if period_length_min is not None else (10 if basketball else 45)
@@ -83,10 +83,10 @@ def initial_state(period_count=None, period_length_min=None, sport="football", l
     }
 
     if sport == "tennis":
-        if tennis_category not in ("women", "men") or tennis_best_of not in (3, 5) or tennis_mode not in ("simple", "detailed") or tennis_final_tiebreak not in (7, 10):
+        if tennis_category not in ("women", "men") or tennis_best_of not in (3, 5) or tennis_mode not in ("simple", "detailed") or tennis_final_tiebreak not in (7, 10) or tennis_deciding not in ("set", "match_tiebreak"):
             raise RuleError("invalid_value")
         result.update(period_count=tennis_best_of, period_length_min=1, lineup_size=1,
-                      tennis=tennis.initial(tennis_category, tennis_best_of, tennis_mode, tennis_final_tiebreak))
+                      tennis=tennis.initial(tennis_category, tennis_best_of, tennis_mode, tennis_final_tiebreak, tennis_deciding))
         result["clock"]["enabled"] = False
         result["home"].update(name="Player 1", short="P1")
         result["away"].update(name="Player 2", short="P2")
@@ -227,11 +227,11 @@ def apply(state, action, data, now_ms):
             raise RuleError("invalid_score")
         event.update(team=data["team"], points=int(points))
         if data.get("detail") is not None:
-            # Football: converted penalty. Basketball: made free throw (1 point).
-            allowed = "free_throw" if basketball else "penalty"
-            if action != "score" or data["detail"] != allowed or (basketball and points != 1):
+            # Football: converted penalty or own goal. Basketball: made free throw (1 point).
+            allowed = ("free_throw",) if basketball else ("penalty", "own_goal")
+            if action != "score" or data["detail"] not in allowed or (basketball and points != 1):
                 raise RuleError("invalid_value")
-            event["detail"] = allowed
+            event["detail"] = data["detail"]
     elif action.removesuffix("_correction") in BASKETBALL_STATS:
         if not basketball or data.get("team") not in ("home", "away"):
             raise RuleError("invalid_value")
@@ -254,6 +254,10 @@ def apply(state, action, data, now_ms):
         if basketball or data.get("team") not in ("home", "away"):
             raise RuleError("invalid_value")
         event.update(team=data["team"], cards=-1 if action.endswith("_correction") else 1)
+        if action == "yellow_card" and data.get("second") is True:
+            # The player's second yellow (worked out by the server from the
+            # game's entries): yellow-red, the team also gets a red card.
+            event["second_yellow"] = True
     elif action in ("team_foul", "team_foul_correction", "timeout", "timeout_correction"):
         if not basketball or data.get("team") not in ("home", "away"):
             raise RuleError("invalid_value")
@@ -268,9 +272,16 @@ def apply(state, action, data, now_ms):
             raise RuleError("invalid_value")
         event.update(team=team, technical=True)
         if action == "technical_foul":
+            kind = data.get("kind")
+            if kind not in (None, "unsportsmanlike"):
+                raise RuleError("invalid_value")
             player = foul_player(s, team, data)
             # A player's technical is a personal and team foul (FIBA); a coach/bench one is neither.
-            event.update(player=player, counts_team=player is not None and foul_mode(s) in ("team", "both"))
+            # An unsportsmanlike foul is always a player's, named or not. Kept with the
+            # technicals: two of either kind send the player off.
+            event.update(player=player, counts_team=(player is not None or kind is not None) and foul_mode(s) in ("team", "both"))
+            if kind:
+                event["kind"] = kind
     elif action == "possession":
         if not basketball or data.get("team") not in ("home", "away", None):
             raise RuleError("invalid_value")
@@ -364,14 +375,17 @@ def apply(state, action, data, now_ms):
         event["period_duration_ms"] = period_ms(s)
     elif action == "period_set":
         # Corrects a period started or ended by mistake: entries stay where they
-        # were booked, later ones go to the chosen period, the clock stands still.
+        # were booked, later ones go to the chosen period. The basketball clock
+        # stands still (Play starts it); football has no Play button, so its
+        # clock runs on from the resume time, as after a period start.
         target = integer(data.get("period"), 1, max(s["period_count"], s["period"]))
         if phase == "shootout" or s.get("shootout") or (target == s["period"] and phase == "period_running"):
             raise RuleError("invalid_transition")
         event["from_period"] = s["period"]
         s.update(phase="period_running", period=target)
         resume = number(data.get("resume_ms", 0), 0, period_ms(s))
-        c.update(elapsed_ms=round(resume), running=False, started_at=None)
+        runs = c["enabled"] and not basketball
+        c.update(elapsed_ms=round(resume), running=runs, started_at=now_ms if runs else None)
         event["period"] = target
         event["clock_ms"] = round(resume) if c["enabled"] else None
         event["period_duration_ms"] = period_ms(s)
@@ -404,7 +418,9 @@ def apply(state, action, data, now_ms):
         s["shootout"] = {**s["shootout"], "kicks": [*s["shootout"]["kicks"], kick]}
         event.update(kick, clock_ms=None)
     elif action in ("clock_start", "clock_stop", "clock_set"):
-        if not basketball or not c["enabled"] or phase == "finished":
+        # Football may pause its clock (injury, thunderstorm, stopped-time
+        # formats); setting the remaining time is the basketball way.
+        if not c["enabled"] or phase == "finished" or (not basketball and action == "clock_set"):
             raise RuleError("invalid_transition")
         if action == "clock_set":
             remaining = integer(data.get("remaining_ms"), 0, period_ms(s))
@@ -413,7 +429,13 @@ def apply(state, action, data, now_ms):
             if phase != "period_running":
                 raise RuleError("invalid_transition")
             value = round(elapsed(s, now_ms))
-            running = action == "clock_start" and value < period_ms(s)
+            if action == "clock_stop" and data.get("elapsed_ms") is not None:
+                # A stop sent on bad reception arrives late: the clock stops where
+                # the scorer saw it, never before its last start.
+                value = max(c["elapsed_ms"], min(value, round(number(data["elapsed_ms"], 0, 86400000))))
+                event["clock_ms"] = value
+            # The football clock runs on past the period length (added time).
+            running = action == "clock_start" and (not basketball or value < period_ms(s))
             c.update(elapsed_ms=value, running=running, started_at=now_ms if running else None)
     elif action == "clock_adjust":
         if not c["enabled"]:
@@ -423,14 +445,14 @@ def apply(state, action, data, now_ms):
                  started_at=now_ms if c["running"] else None)
     elif action == "settings":
         if s["sport"] == "tennis":
-            if set(data) - {"tennis_category", "tennis_best_of", "tennis_mode", "tennis_final_tiebreak", "home", "away"}:
+            if set(data) - {"tennis_category", "tennis_best_of", "tennis_mode", "tennis_final_tiebreak", "tennis_deciding", "home", "away"}:
                 raise RuleError("invalid_value")
-            for key, choices in (("category", ("women", "men")), ("best_of", (3, 5)), ("mode", ("simple", "detailed")), ("final_tiebreak", (7, 10))):
+            for key, choices in (("category", ("women", "men")), ("best_of", (3, 5)), ("mode", ("simple", "detailed")), ("final_tiebreak", (7, 10)), ("deciding", ("set", "match_tiebreak"))):
                 field = "tennis_" + key
                 if field in data:
                     if isinstance(data[field], bool) or data[field] not in choices:
                         raise RuleError("invalid_value")
-                    if key != "category" and s["phase"] != "pre_game" and data[field] != s["tennis"][key]:
+                    if key != "category" and s["phase"] != "pre_game" and data[field] != s["tennis"].get(key, "set"):
                         raise RuleError("invalid_transition")
                     s["tennis"][key] = data[field]
             s["period_count"] = s["tennis"]["best_of"]
@@ -503,7 +525,10 @@ def apply(state, action, data, now_ms):
     else:
         raise RuleError("unsupported_action")
     if action in ("score", "red_card", "yellow_card"):
-        event["player"] = player_snapshot(s, data["team"], data.get("player_id"))
+        # An own goal counts for data["team"]; the player named is an opponent.
+        own_goal = action == "score" and event.get("detail") == "own_goal"
+        side = ("away" if data["team"] == "home" else "home") if own_goal else data["team"]
+        event["player"] = player_snapshot(s, side, data.get("player_id"))
         if basketball and action == "score" and event["player"]:
             if not event["player"].get("number"):
                 raise RuleError("player_number_required")

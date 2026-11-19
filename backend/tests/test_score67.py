@@ -525,7 +525,7 @@ def test_squad_attribution_corrections_and_undo(system):
     undone = command(client, slug, 'undo', {'event_id': corrected['events'][-1]['id']}).json()
     assert undone['home']['counters']['yellow_cards'] == 2
     command(client, slug, 'yellow_card', {'team': 'home', 'player_id': alice['id']})
-    assert state(client, slug)['home']['counters']['red_cards'] == 0
+    assert state(client, slug)['home']['counters']['red_cards'] == 1   # Alice's second yellow: yellow-red
     assert command(client, slug, 'red_card', {'team': 'home', 'player_id': alice['id']}).json()['events'][-1]['player'] == alice
     command(client, slug, 'squad', {'team': 'home', 'players': [{**bob, 'name': 'Renamed'}]})
     assert next(e for e in state(client, slug)['events'] if e['id'] == goal['id'])['player']['name'] == 'Alice'
@@ -1100,6 +1100,15 @@ def test_overdue_games_end_automatically(system):
         assert end.payload['type'] == 'game_end' and end.payload['automatic']
         end_id = end.id
     assert command(client, football, 'undo', {'event_id': end_id}).json()['phase'] == 'period_running'
+    # Reopened for corrections: it stays open until it has been quiet again.
+    from score67.db import Match
+    with app.state.sessions() as db:
+        reopened = db.scalar(select(Match).where(Match.slug == football))
+        assert reopened.touched_at >= t0                              # the undo counts as activity
+        reopened.touched_at = t0 + 190 * minute                       # as if undone 190 min after kickoff
+        db.commit()
+        assert finish_overdue_matches(db, t0 + 195 * minute) == 0
+        assert finish_overdue_matches(db, t0 + 206 * minute) == 1
 
 
 def test_private_board_hides_spectators_but_keeps_controllers_and_obs(system):
@@ -2166,7 +2175,8 @@ def test_period_jump_back_and_forward_keeps_entries(system):
     command(client, slug, 'period_start')  # period 2 started by mistake
     command(client, slug, 'score', {'team': 'away', 'points': 1})
     back = command(client, slug, 'period_set', {'period': 1}).json()
-    assert back['period'] == 1 and back['phase'] == 'period_running' and not back['clock']['running']
+    # Football has no Play button: its clock runs on after the jump.
+    assert back['period'] == 1 and back['phase'] == 'period_running' and back['clock']['running']
     assert back['home']['score'] == 1 and back['away']['score'] == 1
     # The jump itself can be undone.
     undone = command(client, slug, 'undo', {'event_id': back['events'][-1]['id']}).json()
@@ -2384,3 +2394,161 @@ def test_a_failing_maintenance_job_is_logged_and_does_not_stop_the_others(system
             client.get('/health')
             time.sleep(0.05)
     assert ran and 'maintenance job broken failed' in caplog.text
+
+
+def test_basketball_period_jump_keeps_the_clock_stopped(system):
+    _, client = system
+    slug = client.post('/api/scoreboards', json={'sport': 'basketball'}).json()['slug']
+    command(client, slug, 'period_start')
+    command(client, slug, 'clock_start')
+    command(client, slug, 'period_end')
+    command(client, slug, 'period_start')
+    back = command(client, slug, 'period_set', {'period': 1}).json()
+    assert back['period'] == 1 and not back['clock']['running']
+    assert command(client, slug, 'clock_start').json()['clock']['running']
+
+
+def test_late_clock_stop_freezes_where_the_scorer_saw_it():
+    from score67.domain import apply, initial_state
+    s = initial_state(4, 10, 'basketball')
+    s, *_ = apply(s, 'period_start', {}, 1_000)
+    s, *_ = apply(s, 'clock_start', {}, 1_000)
+    # Tapped at 0:05 played, delivered 20 s later.
+    late, event, _ = apply(s, 'clock_stop', {'elapsed_ms': 5_000}, 26_000)
+    assert late['clock'] == {**late['clock'], 'elapsed_ms': 5_000, 'running': False} and event['clock_ms'] == 5_000
+    # Never beyond what the server clock has run, never before the last start.
+    assert apply(s, 'clock_stop', {'elapsed_ms': 90_000}, 26_000)[0]['clock']['elapsed_ms'] == 25_000
+    again, *_ = apply(late, 'clock_start', {}, 30_000)
+    assert apply(again, 'clock_stop', {'elapsed_ms': 0}, 31_000)[0]['clock']['elapsed_ms'] == 5_000
+    assert apply(s, 'clock_stop', {}, 26_000)[0]['clock']['elapsed_ms'] == 25_000
+
+
+def test_backslash_in_a_title_does_not_break_the_page():
+    from score67 import seo
+    page = seo.fill('<html lang="en"><title>x</title>', 'en', title='FC A\\B \\1 \\g<0> C:\\Users')
+    assert '<title>FC A\\B \\1 \\g&lt;0&gt; C:\\Users</title>' in page
+
+
+def test_second_yellow_is_a_yellow_red_and_follows_corrections(system):
+    _, client = system
+    slug = create(client)['slug']
+    ids = [str(uuid4()) for _ in range(2)]
+    command(client, slug, 'squad', {'team': 'home', 'players': [{'id': i, 'number': str(n), 'name': ''} for n, i in enumerate(ids, 4)]})
+    command(client, slug, 'period_start')
+    first = command(client, slug, 'yellow_card', {'team': 'home', 'player_id': ids[0], 'second': True}).json()
+    assert not first['events'][-1].get('second_yellow') and first['home']['counters'] == {**first['home']['counters'], 'yellow_cards': 1, 'red_cards': 0}
+    other = command(client, slug, 'yellow_card', {'team': 'home', 'player_id': ids[1]}).json()
+    assert not other['events'][-1].get('second_yellow')
+    assert not command(client, slug, 'yellow_card', {'team': 'home'}).json()['events'][-1].get('second_yellow')   # no player named
+    second = command(client, slug, 'yellow_card', {'team': 'home', 'player_id': ids[0]}).json()
+    assert second['events'][-1]['second_yellow'] and second['home']['counters']['yellow_cards'] == 4 and second['home']['counters']['red_cards'] == 1
+    # Taking the second yellow back takes the red back as well.
+    undone = command(client, slug, 'yellow_card_correction', {'team': 'home', 'event_id': second['events'][-1]['id']}).json()
+    assert undone['home']['counters']['yellow_cards'] == 3 and undone['home']['counters']['red_cards'] == 0
+    again = command(client, slug, 'yellow_card', {'team': 'home', 'player_id': ids[0]}).json()
+    assert again['events'][-1]['second_yellow'] and again['home']['counters']['red_cards'] == 1
+
+
+def test_own_goal_counts_for_the_other_team_and_names_the_unlucky_player(system):
+    _, client = system
+    slug = create(client)['slug']
+    player = str(uuid4())
+    command(client, slug, 'squad', {'team': 'home', 'players': [{'id': player, 'number': '5', 'name': 'Kim'}]})
+    command(client, slug, 'period_start')
+    s = command(client, slug, 'score', {'team': 'away', 'points': 1, 'detail': 'own_goal', 'player_id': player}).json()
+    assert (s['home']['score'], s['away']['score']) == (0, 1)
+    goal = s['events'][-1]
+    assert goal['detail'] == 'own_goal' and goal['team'] == 'away' and goal['player']['name'] == 'Kim'
+    # A player of the scoring team cannot be the own-goal scorer.
+    assert command(client, slug, 'score', {'team': 'home', 'points': 1, 'detail': 'own_goal', 'player_id': player}).status_code == 422
+    assert command(client, slug, 'score', {'team': 'home', 'points': 1, 'detail': 'own_goal'}).json()['home']['score'] == 1
+
+
+def test_football_clock_can_be_paused_and_runs_into_added_time():
+    s = initial_state(2, 45)
+    s, *_ = apply(s, 'period_start', {}, 0)
+    s, *_ = apply(s, 'clock_stop', {}, 10 * 60000)
+    assert not s['clock']['running'] and elapsed(s, 30 * 60000) == 10 * 60000
+    s, *_ = apply(s, 'clock_start', {}, 30 * 60000)
+    assert s['clock']['running'] and elapsed(s, 31 * 60000) == 11 * 60000
+    # Stopped in added time, it starts again (no cap at 45:00 as in basketball).
+    s, *_ = apply(s, 'clock_stop', {}, 67 * 60000)
+    assert elapsed(s, 0) == 47 * 60000
+    assert apply(s, 'clock_start', {}, 70 * 60000)[0]['clock']['running']
+    with pytest.raises(RuleError):
+        apply(s, 'clock_set', {'remaining_ms': 1000}, 0)
+    # Ending the half while paused keeps the paused time.
+    assert apply(s, 'period_end', {}, 99 * 60000)[0]['clock']['elapsed_ms'] == 47 * 60000
+
+
+def test_unsportsmanlike_foul_counts_as_player_and_team_foul(system):
+    _, client = system
+    slug = client.post('/api/scoreboards', json={'sport': 'basketball'}).json()['slug']
+    player = str(uuid4())
+    command(client, slug, 'squad', {'team': 'home', 'players': [{'id': player, 'number': '7', 'name': ''}]})
+    command(client, slug, 'period_start')
+    s = command(client, slug, 'technical_foul', {'team': 'home', 'player_id': player, 'kind': 'unsportsmanlike'}).json()
+    foul = s['events'][-1]
+    assert foul['kind'] == 'unsportsmanlike' and foul['counts_team'] and s['home']['counters']['team_fouls'] == 1
+    assert next(p for p in s['home']['personal_fouls'] if p['id'] == player)['fouls'] == 1
+    # Without a named player it is still a team foul (a coach technical is not).
+    assert command(client, slug, 'technical_foul', {'team': 'home', 'kind': 'unsportsmanlike'}).json()['home']['counters']['team_fouls'] == 2
+    assert command(client, slug, 'technical_foul', {'team': 'home'}).json()['home']['counters']['team_fouls'] == 2
+    assert command(client, slug, 'technical_foul', {'team': 'home', 'kind': 'flagrant'}).status_code == 422
+
+
+def tennis_match(**options):
+    s = initial_state(sport='tennis', **options)
+    return apply(s, 'period_start', {}, 0)[0]
+
+
+def test_tennis_match_tiebreak_replaces_the_deciding_set():
+    s = tennis_match(tennis_mode='simple', tennis_deciding='match_tiebreak')
+    s, *_ = apply(s, 'tennis_set', {'games': [6, 3]}, 0)
+    assert not s['tennis']['tiebreak']
+    s, *_ = apply(s, 'tennis_set', {'games': [4, 6]}, 0)
+    t = s['tennis']
+    assert t['tiebreak'] and t['sets'] == [1, 1] and s['period'] == 3 and s['phase'] == 'period_running'
+    with pytest.raises(RuleError):
+        apply(s, 'tennis_game', {'team': 'home'}, 0)              # no games in a match tie-break
+    with pytest.raises(RuleError):
+        apply(s, 'tennis_set', {'games': [6, 4]}, 0)              # nor a full set
+    with pytest.raises(RuleError):
+        apply(s, 'tennis_set', {'games': [1, 0], 'tiebreak': [7, 5]}, 0)   # to 10, not 7
+    done, event, _ = apply(s, 'tennis_set', {'games': [1, 0], 'tiebreak': [10, 8]}, 0)
+    assert done['phase'] == 'finished' and done['tennis']['winner'] == 0 and event['match_won']
+    assert done['tennis']['set_scores'][-1] == {'games': [1, 0], 'tiebreak': [10, 8]}
+    # Point by point: first to 10 with two clear, the first server alternates as in any tie-break.
+    first = s['tennis']['tiebreak_first']
+    for _ in range(9):
+        s, *_ = apply(s, 'tennis_point', {'team': 'home'}, 0)
+        s, *_ = apply(s, 'tennis_point', {'team': 'away'}, 0)
+    assert s['tennis']['points'] == [9, 9] and s['phase'] == 'period_running'
+    s, *_ = apply(s, 'tennis_point', {'team': 'away'}, 0)
+    assert s['phase'] == 'period_running'                         # 9:10, not two clear
+    s, *_ = apply(s, 'tennis_point', {'team': 'away'}, 0)
+    assert s['phase'] == 'finished' and s['tennis']['winner'] == 1 and s['tennis']['set_scores'][-1] == {'games': [0, 1], 'tiebreak': [9, 11]}
+    assert first in (0, 1)
+    # The classic format still plays the third set out.
+    classic = tennis_match(tennis_mode='simple')
+    classic, *_ = apply(classic, 'tennis_set', {'games': [6, 3]}, 0)
+    classic, *_ = apply(classic, 'tennis_set', {'games': [4, 6]}, 0)
+    assert not classic['tennis']['tiebreak']
+    # Best of five: only the fifth set is replaced.
+    five = tennis_match(tennis_mode='simple', tennis_best_of=5, tennis_deciding='match_tiebreak')
+    for games in ([6, 3], [3, 6], [6, 3]):
+        five, *_ = apply(five, 'tennis_set', {'games': games}, 0)
+    assert not five['tennis']['tiebreak']
+    five, *_ = apply(five, 'tennis_set', {'games': [3, 6]}, 0)
+    assert five['tennis']['tiebreak']
+
+
+def test_tennis_retirement_names_the_winner():
+    s = tennis_match()
+    s, *_ = apply(s, 'tennis_point', {'team': 'home'}, 0)
+    done, event, _ = apply(s, 'game_end', {'winner': 'away'}, 0)
+    assert done['phase'] == 'finished' and done['tennis']['winner'] == 1 and event['retired'] and event['match_won'] and event['team'] == 'away'
+    abandoned, event, _ = apply(s, 'game_end', {}, 0)
+    assert abandoned['tennis']['winner'] is None and 'match_won' not in event
+    with pytest.raises(RuleError):
+        apply(s, 'game_end', {'winner': 'nobody'}, 0)

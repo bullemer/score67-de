@@ -9,6 +9,7 @@
     {service: 0xfee7, write: 0xfec7},
   ];
   const slots = {};
+  const listened = new WeakSet();
   const encoder = new TextEncoder();
 
   async function findCharacteristic(server) {
@@ -31,24 +32,39 @@
     const characteristic = await findCharacteristic(server);
     if (!characteristic) { device.gatt.disconnect(); throw new Error('no_writable_characteristic'); }
     const entry = slots[slot] || {};
+    if (entry.device && entry.device !== device) {
+      try { entry.device.gatt.disconnect(); } catch { /* already gone */ }
+    }
     Object.assign(entry, {device, characteristic, state: 'connected', queue: entry.queue || Promise.resolve(), wanted: true});
     slots[slot] = entry;
-    if (!entry.listening) {
-      entry.listening = true;
-      device.addEventListener('gattserverdisconnected', () => reconnect(slot));
+    // Once per device, not per slot: a second panel paired into the same slot
+    // needs its own listener, and only the slot's current panel may reconnect.
+    if (!listened.has(device)) {
+      listened.add(device);
+      device.addEventListener('gattserverdisconnected', () => {
+        if (slots[slot] && slots[slot].device === device) reconnect(slot);
+      });
     }
     return device.name || 'Bluetooth';
   }
 
   async function reconnect(slot) {
     const entry = slots[slot];
-    if (!entry || !entry.wanted) return;
+    if (!entry || !entry.wanted || entry.reconnecting) return;
+    entry.reconnecting = true;
     entry.state = 'reconnecting';
-    for (let delay = 500; entry.wanted && delay <= 16000; delay *= 2) {
-      await new Promise(resolve => setTimeout(resolve, delay));
-      try { await attach(slot, entry.device); return; } catch { /* keep trying */ }
+    const device = entry.device;
+    // A panel switched off at half-time comes back by itself: keep trying
+    // (every 15 s after the first attempts) until it is removed by hand.
+    try {
+      for (let delay = 500; entry.wanted && entry.device === device; delay = Math.min(delay * 2, 15000)) {
+        await new Promise(resolve => setTimeout(resolve, delay));
+        if (!entry.wanted || entry.device !== device) return;
+        try { await attach(slot, device); return; } catch { /* keep trying */ }
+      }
+    } finally {
+      entry.reconnecting = false;
     }
-    if (entry.wanted) entry.state = 'disconnected';
   }
 
   async function connect(slot) {
