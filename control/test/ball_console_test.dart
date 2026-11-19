@@ -43,7 +43,10 @@ void main() {
         theme: ThemeData.dark(),
         home: Scaffold(
           body: BallConsole(
-            onAddPlayer: (team) => log.add('add $team'),
+            onAddPlayer: (team, number, name) async {
+              log.add('add $team $number $name');
+              return true;
+            },
             onAdjustClock: (seconds) => log.add('adjust $seconds'),
             log: const Text('BSV  Q2 08:45  2 PTS  #11'),
             base: MatchConsole(
@@ -75,7 +78,12 @@ void main() {
               onEditTeam: (_) {},
               onEditPlayer: (_, _) {},
               onScoreTap: (_) {},
-              tabs: const [('Feed', SizedBox()), ('Teams', SizedBox())],
+              tabs: const [
+                ('Feed', SizedBox()),
+                ('Teams', SizedBox()),
+                ('Periods', SizedBox()),
+                ('Stats', SizedBox()),
+              ],
             ),
           ),
         ),
@@ -256,8 +264,49 @@ void main() {
     await tester.pump();
     await tester.longPress(find.text('33'));
     await tester.pump();
-    await tester.tap(find.text('ball.add_player'));
     await tester.tap(find.text('ball.undo'));
-    expect(log, ['timeout home null', 'court home home33', 'add home', 'undo']);
+    expect(log, ['timeout home null', 'court home home33', 'undo']);
+  });
+
+  testWidgets('players are typed in on the Scoring tab, without a dialog', (
+    tester,
+  ) async {
+    await mount(tester, game(ball: 'away'));
+    expect(find.byKey(const ValueKey('ball-add-number')), findsNothing);
+    await tester.tap(find.text('ball.add_player'));
+    await tester.pump();
+    await tester.enterText(find.byKey(const ValueKey('ball-add-number')), '23');
+    await tester.enterText(find.byKey(const ValueKey('ball-add-name')), 'Kim');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+    expect(log, ['add away 23 Kim']);
+    expect(find.byType(Dialog), findsNothing);
+    // Cleared and ready for the next player; an empty row adds nobody.
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const ValueKey('ball-add-number')))
+          .controller!
+          .text,
+      '',
+    );
+    await tester.tap(find.byIcon(Icons.add).last);
+    await tester.pump();
+    expect(log.length, 1);
+    await tester.tap(find.byIcon(Icons.close));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('ball-add-number')), findsNothing);
+  });
+
+  testWidgets('team tab and box score get the full width, without the log', (
+    tester,
+  ) async {
+    await mount(tester, game(ball: 'home'));
+    expect(find.text('console.flow'), findsOneWidget);
+    await tester.tap(find.text('Teams'));
+    await tester.pump();
+    expect(find.text('console.flow'), findsNothing);
+    await tester.tap(find.text('ball.scoring'));
+    await tester.pump();
+    expect(find.text('console.flow'), findsOneWidget);
   });
 }

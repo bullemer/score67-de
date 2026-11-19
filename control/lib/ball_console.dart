@@ -17,7 +17,10 @@ import 'match_console.dart';
 /// configuration, so both views always behave the same towards the server.
 class BallConsole extends StatefulWidget {
   final MatchConsole base;
-  final void Function(String team) onAddPlayer;
+
+  /// Adds a player to [team]'s squad; false when refused (number taken, …).
+  final Future<bool> Function(String team, String number, String name)
+  onAddPlayer;
 
   /// The game flow, always in view in its own column on the right (the
   /// classic view has it as a tab).
@@ -51,9 +54,14 @@ class BallConsoleState extends State<BallConsole> {
   /// Team whose cards are shown when it is not the team with the ball.
   String? shown;
   int tab = 0;
-  bool editing = false, skipArmed = false;
+  bool editing = false, typing = false, skipArmed = false;
   String? hint;
   Timer? hintTimer, skipTimer;
+
+  /// New player being typed in on the Scoring tab (no dialog).
+  bool adding = false, addBusy = false;
+  final addNumber = TextEditingController(), addName = TextEditingController();
+  final addNumberFocus = FocusNode(), addNameFocus = FocusNode();
 
   /// Clock correction being prepared on screen, in seconds (null = closed).
   int? clockDelta;
@@ -93,6 +101,10 @@ class BallConsoleState extends State<BallConsole> {
   void dispose() {
     hintTimer?.cancel();
     skipTimer?.cancel();
+    addNumber.dispose();
+    addName.dispose();
+    addNumberFocus.dispose();
+    addNameFocus.dispose();
     super.dispose();
   }
 
@@ -693,6 +705,84 @@ class BallConsoleState extends State<BallConsole> {
     );
   }
 
+  Future<void> addPlayer(String team) async {
+    final number = addNumber.text.trim(), name = addName.text.trim();
+    if (addBusy || (number.isEmpty && name.isEmpty)) return;
+    setState(() => addBusy = true);
+    final ok = await widget.onAddPlayer(team, number, name);
+    if (!mounted) return;
+    setState(() => addBusy = false);
+    if (!ok) return; // the reason is shown by the app; the fields stay
+    addNumber.clear();
+    addName.clear();
+    // Ready for the next player: a whole team is typed in one go.
+    addNumberFocus.requestFocus();
+  }
+
+  /// Number and name typed right here, above the cards: the keyboard covers
+  /// the lower half of the screen, never this row.
+  Widget addPlayerRow(String team) {
+    const dense = InputDecoration(
+      isDense: true,
+      counterText: '',
+      border: OutlineInputBorder(),
+      contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+    );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(6, 4, 6, 4),
+      child: Row(
+        children: [
+          Text(
+            '${s[team]['short']}  ',
+            style: const TextStyle(fontWeight: FontWeight.w800),
+          ),
+          SizedBox(
+            width: 64,
+            child: TextField(
+              key: const ValueKey('ball-add-number'),
+              controller: addNumber,
+              focusNode: addNumberFocus,
+              maxLength: 3,
+              keyboardType: TextInputType.number,
+              textInputAction: TextInputAction.next,
+              decoration: dense.copyWith(hintText: t('player.number')),
+              onSubmitted: (_) => addNameFocus.requestFocus(),
+            ),
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: TextField(
+              key: const ValueKey('ball-add-name'),
+              controller: addName,
+              focusNode: addNameFocus,
+              maxLength: 60,
+              textInputAction: TextInputAction.done,
+              decoration: dense.copyWith(hintText: t('player.name')),
+              onSubmitted: (_) => addPlayer(team),
+            ),
+          ),
+          const SizedBox(width: 6),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              minimumSize: const Size(48, 40),
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+            ),
+            onPressed: addBusy ? null : () => addPlayer(team),
+            child: const Icon(Icons.add),
+          ),
+          IconButton(
+            tooltip: t('close'),
+            onPressed: () {
+              FocusManager.instance.primaryFocus?.unfocus();
+              setState(() => adding = false);
+            },
+            icon: const Icon(Icons.close),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget scoringTab() {
     final team = shownTeam;
     final squad = [
@@ -785,6 +875,7 @@ class BallConsoleState extends State<BallConsole> {
             ],
           ),
         ),
+        if (adding) addPlayerRow(team),
         Expanded(
           child: SingleChildScrollView(
             padding: const EdgeInsets.symmetric(horizontal: 3),
@@ -804,7 +895,10 @@ class BallConsoleState extends State<BallConsole> {
                       ),
                     ),
                     onPressed: c.canWrite
-                        ? () => widget.onAddPlayer(team)
+                        ? () {
+                            setState(() => adding = true);
+                            addNumberFocus.requestFocus();
+                          }
                         : null,
                     icon: const Icon(Icons.add, size: 18),
                     label: Text(t('ball.add_player')),
@@ -1089,7 +1183,7 @@ class BallConsoleState extends State<BallConsole> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // Hidden while typing: in landscape the keyboard leaves little room.
-          if (!editing)
+          if (!typing)
             SizedBox(
               height: 40,
               child: Row(
@@ -1157,8 +1251,12 @@ class BallConsoleState extends State<BallConsole> {
 
   @override
   Widget build(BuildContext context) {
+    // Typing with the keyboard up (the viewport is short then): everything
+    // but the middle panel makes room. Once the keyboard is closed the console
+    // is complete again, even if the field still has the focus.
+    typing = editing && MediaQuery.sizeOf(context).height < 320;
     Widget side(Widget child) =>
-        Visibility(visible: !editing, maintainState: true, child: child);
+        Visibility(visible: !typing, maintainState: true, child: child);
     return ColoredBox(
       color: consoleBackground,
       child: Column(
@@ -1180,7 +1278,8 @@ class BallConsoleState extends State<BallConsole> {
                       child: KeyedSubtree(key: middleKey, child: middlePanel()),
                     ),
                   ),
-                  side(logColumn()),
+                  // Team and box score need the width; the log is for scoring.
+                  if (tab != 1 && tab != c.tabs.length - 1) side(logColumn()),
                 ],
               ),
             ),
