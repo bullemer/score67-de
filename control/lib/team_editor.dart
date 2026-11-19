@@ -615,12 +615,18 @@ class _TeamEditorState extends State<TeamEditor> {
                   ),
                 ),
               Expanded(
-                child: Text(
-                  '${t('team.on_court')} $checked/$limit',
-                  textAlign: TextAlign.right,
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: checked > limit ? Colors.orange : Colors.white70,
+                // One line, shrunk if need be: in a narrow panel the label
+                // used to wrap into three lines.
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerRight,
+                  child: Text(
+                    '${t('team.on_court')} $checked/$limit',
+                    maxLines: 1,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: checked > limit ? Colors.orange : Colors.white70,
+                    ),
                   ),
                 ),
               ),

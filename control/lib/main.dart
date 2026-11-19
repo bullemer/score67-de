@@ -2866,7 +2866,14 @@ class _Score67State extends State<Score67> {
     return BallConsole(
       key: ballKey,
       base: console,
-      onAddPlayer: (team) => editPlayer(team, ''),
+      onAddPlayer: (team, number, name) => command('squad', {
+        'team': team,
+        'players': [
+          for (final p in state[team]['squad'] as List? ?? [])
+            Map<String, dynamic>.from(p),
+          {'id': const Uuid().v4(), 'number': number, 'name': name},
+        ],
+      }),
       onAdjustClock: (seconds) => command('clock_adjust', {'seconds': seconds}),
       log: gameFlow(compact: true),
     );
